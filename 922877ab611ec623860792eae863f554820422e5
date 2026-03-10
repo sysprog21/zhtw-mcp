@@ -1,0 +1,25 @@
+README.md
+  b4daec97903dc903 130,137
+docs/rules.md
+  b4daec97903dc903 112-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.9",
+  "base_commit_sha": "922877ab611ec623860792eae863f554820422e5",
+  "prompts": {
+    "b4daec97903dc903": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f189ad3-b77b-44fa-92d9-de7f8908076a",
+        "model": "<synthetic>"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 45,
+      "overriden_lines": 0
+    }
+  }
+}

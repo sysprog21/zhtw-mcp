@@ -1,0 +1,23 @@
+.github/workflows/main.yml
+  158673636ec1b3af 1-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.9",
+  "base_commit_sha": "66c2639e6956ce5fc4fd498ee1834111dc679b5e",
+  "prompts": {
+    "158673636ec1b3af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ef8e46b6-21e6-45bf-9e7b-b3ac7c704dde",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 222,
+      "total_deletions": 151,
+      "accepted_lines": 71,
+      "overriden_lines": 1
+    }
+  }
+}

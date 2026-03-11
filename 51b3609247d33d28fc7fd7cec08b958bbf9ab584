@@ -1,0 +1,49 @@
+Cargo.toml
+  b83012b5a687b69c 8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.10",
+  "base_commit_sha": "51b3609247d33d28fc7fd7cec08b958bbf9ab584",
+  "prompts": {
+    "44f92b68284250dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cdafa-139c-7a21-bb61-5f87047d2a9d",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1309,
+      "overriden_lines": 0
+    },
+    "b83012b5a687b69c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "108a866d-4058-4ea2-bfb6-551cc902f8a1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 227,
+      "total_deletions": 6,
+      "accepted_lines": 225,
+      "overriden_lines": 0
+    },
+    "c588f9f9c2dc787b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72242966-6034-48f6-a82c-5985b73537d8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 198,
+      "total_deletions": 134,
+      "accepted_lines": 156,
+      "overriden_lines": 0
+    }
+  }
+}

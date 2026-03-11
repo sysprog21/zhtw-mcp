@@ -1,0 +1,33 @@
+assets/ruleset.json
+  86f6b5af6a1e45f5 2271-2273
+tests/e2e_mcp.rs
+  86f6b5af6a1e45f5 554-683,690-817
+src/mcp/tools.rs
+  86f6b5af6a1e45f5 47-48,83,207,311,686-688,691-692,699-740,1052,1055,1057,1060,1063,1068
+src/main.rs
+  86f6b5af6a1e45f5 56,120,122,416,762-764,766-825,829-845,847-849
+src/rules/ruleset.rs
+  86f6b5af6a1e45f5 254-262,462-501
+tests/cli_lint.rs
+  86f6b5af6a1e45f5 522-559,561-620
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.10",
+  "base_commit_sha": "ff9bd7ff7a271761683f09a597f6dc147cc39b2f",
+  "prompts": {
+    "86f6b5af6a1e45f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2813d348-c581-4f93-a87f-c3e21ba2ed9c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 1,
+      "accepted_lines": 553,
+      "overriden_lines": 0
+    }
+  }
+}

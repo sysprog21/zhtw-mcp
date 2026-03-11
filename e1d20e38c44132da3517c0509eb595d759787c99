@@ -1,0 +1,23 @@
+tests/cli_lint.rs
+  86f6b5af6a1e45f5 549,591-594
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.10",
+  "base_commit_sha": "e1d20e38c44132da3517c0509eb595d759787c99",
+  "prompts": {
+    "86f6b5af6a1e45f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2813d348-c581-4f93-a87f-c3e21ba2ed9c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

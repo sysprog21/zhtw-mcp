@@ -1,0 +1,25 @@
+src/engine/segment.rs
+  acfa8a6306a00a35 311-321
+assets/ruleset.json
+  acfa8a6306a00a35 2382
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.11",
+  "base_commit_sha": "3af1632e803474d9c2cc7c6ce80e58b1eb07f81a",
+  "prompts": {
+    "acfa8a6306a00a35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2f58418-98c2-4c06-a830-d4d28fd36439",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 3,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}

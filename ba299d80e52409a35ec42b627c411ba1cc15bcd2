@@ -1,0 +1,27 @@
+src/engine/segment.rs
+  acfa8a6306a00a35 289-348,493-495,977-1026
+src/engine/scan/spelling.rs
+  acfa8a6306a00a35 150-160
+src/engine/scan/mod.rs
+  acfa8a6306a00a35 293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.11",
+  "base_commit_sha": "ba299d80e52409a35ec42b627c411ba1cc15bcd2",
+  "prompts": {
+    "acfa8a6306a00a35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2f58418-98c2-4c06-a830-d4d28fd36439",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 179,
+      "total_deletions": 53,
+      "accepted_lines": 125,
+      "overriden_lines": 0
+    }
+  }
+}

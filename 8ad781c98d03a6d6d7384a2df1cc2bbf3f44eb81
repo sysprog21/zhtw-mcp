@@ -1,0 +1,38 @@
+src/mcp/tools.rs
+  7e84bf976ff4906a 293-294,333,389,435,437-445,450-452,457,462,857-859,863
+benches/scanner.rs
+  7e84bf976ff4906a 293-388,401
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "8ad781c98d03a6d6d7384a2df1cc2bbf3f44eb81",
+  "prompts": {
+    "7e84bf976ff4906a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6edb2c6f-1aa6-4b48-ae04-39d276633601",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 137,
+      "total_deletions": 25,
+      "accepted_lines": 121,
+      "overriden_lines": 0
+    },
+    "f0bbd845ea2522af": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ced47-1388-78d1-8eff-ef00a04c7500",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 4,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

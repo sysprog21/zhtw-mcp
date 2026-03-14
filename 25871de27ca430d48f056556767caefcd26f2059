@@ -1,0 +1,84 @@
+src/main.rs
+  bfe0e4a3327c1886 715,845-846,858
+src/engine/scan/mod.rs
+  bfe0e4a3327c1886 12-15,19,863-867
+src/mcp/transport_async.rs
+  bfe0e4a3327c1886 147-149
+src/mcp/tools.rs
+  bfe0e4a3327c1886 791-806,809-811,814
+tests/scanner_integration.rs
+  bfe0e4a3327c1886 699-886
+src/engine/scan/punctuation.rs
+  bfe0e4a3327c1886 139-164
+src/fixer.rs
+  bfe0e4a3327c1886 105-120
+src/rules/ruleset.rs
+  bfe0e4a3327c1886 41-42,71-73,90,103,116,448,459,473,487
+src/engine/scan/grammar.rs
+  a881e9675d6c3636 1650
+  bfe0e4a3327c1886 1-1609,1611,1613-1649,1651-1749
+  d7fe8db9180b2079 1610,1612
+tests/cli_lint.rs
+  bfe0e4a3327c1886 646-791
+src/mcp/types.rs
+  bfe0e4a3327c1886 7-8,331-468
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "25871de27ca430d48f056556767caefcd26f2059",
+  "prompts": {
+    "81610eb4fc053368": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ce7f9-2312-78f2-bd55-cc83e9094fac",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 24,
+      "total_deletions": 6,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "a881e9675d6c3636": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ce7e3-ba25-7cd2-8f23-48a001d745a1",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 50,
+      "total_deletions": 46,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "bfe0e4a3327c1886": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ea54da7-4dea-4c9f-a943-6f3155a1eba0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 2485,
+      "total_deletions": 231,
+      "accepted_lines": 2313,
+      "overriden_lines": 0
+    },
+    "d7fe8db9180b2079": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cea65-f81a-7c41-8445-813a99098055",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 20,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

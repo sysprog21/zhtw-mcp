@@ -1,0 +1,25 @@
+TODO.md
+  d1867479a61e9a27 111-116
+src/mcp/tools.rs
+  d1867479a61e9a27 6,871,878-975,1020-1023,1035-1051,1053-1054,1056-1069,1072-1073,1075-1078,1080-1086,1088,1090,1094,1109-1114,1118-1120,1122,1124,1126-1129,1131,1133-1137,1141,1143,1149-1152,1181-1184,1192-1195,1198,1202,1208,1210,1212,1214-1215,1217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "a3eb2eb383174480bb66405ba562aaebef6a5c20",
+  "prompts": {
+    "d1867479a61e9a27": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d6365cf-5ef5-47a9-a843-599378a16785",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 213,
+      "total_deletions": 141,
+      "accepted_lines": 207,
+      "overriden_lines": 0
+    }
+  }
+}

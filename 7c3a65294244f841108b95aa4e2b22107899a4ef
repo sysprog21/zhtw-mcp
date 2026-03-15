@@ -1,0 +1,23 @@
+scripts/measure-tokens.py
+  46f7de97e32a2418 9,13-16,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "7c3a65294244f841108b95aa4e2b22107899a4ef",
+  "prompts": {
+    "46f7de97e32a2418": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "974da075-006f-4407-be6c-7531dac34e9b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 1,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}

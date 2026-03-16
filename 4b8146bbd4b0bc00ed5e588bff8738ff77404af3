@@ -1,0 +1,25 @@
+scripts/check-ruleset.py
+  538c51e6ce4525e7 43
+src/engine/scan/grammar.rs
+  538c51e6ce4525e7 808-839,874-878,904-906,2230-2231,2234,2238-2242,2253-2266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "4b8146bbd4b0bc00ed5e588bff8738ff77404af3",
+  "prompts": {
+    "538c51e6ce4525e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65dd623b-396b-4525-8177-6dd596fca59b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 74,
+      "total_deletions": 13,
+      "accepted_lines": 70,
+      "overriden_lines": 0
+    }
+  }
+}

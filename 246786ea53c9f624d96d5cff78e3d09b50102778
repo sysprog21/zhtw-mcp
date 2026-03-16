@@ -1,0 +1,40 @@
+docs/cli.md
+  00dfb205ad7c4147 17,20,40-53,98-99
+docs/mcp.md
+  00dfb205ad7c4147 16,20
+docs/internals.md
+  00dfb205ad7c4147 10,28-30,41-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "246786ea53c9f624d96d5cff78e3d09b50102778",
+  "prompts": {
+    "00dfb205ad7c4147": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7fae716-b48c-4141-ae04-fed6bd6e7d30",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 50,
+      "total_deletions": 18,
+      "accepted_lines": 41,
+      "overriden_lines": 0
+    },
+    "90da253e011f3858": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c756dfa3-4972-4bd7-9759-e0f0e59c18d9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}

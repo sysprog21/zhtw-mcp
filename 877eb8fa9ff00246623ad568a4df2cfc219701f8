@@ -1,0 +1,51 @@
+src/fixer.rs
+  538c51e6ce4525e7 174-175,617-659
+src/mcp/tools.rs
+  538c51e6ce4525e7 648,871-881,884,886,1628
+src/engine/scan/punctuation.rs
+  538c51e6ce4525e7 358
+src/engine/scan/spelling.rs
+  538c51e6ce4525e7 133-138
+src/engine/scan/mod.rs
+  538c51e6ce4525e7 870-876,903
+src/engine/segment.rs
+  538c51e6ce4525e7 5,895
+src/engine/scan/ellipsis.rs
+  538c51e6ce4525e7 1,11
+src/mcp/setup.rs
+  538c51e6ce4525e7 22,199,212,241,277
+README.md
+  538c51e6ce4525e7 11,50-58,129-138,140
+src/mcp/prompts.rs
+  538c51e6ce4525e7 137-138,183
+src/mcp/sampling.rs
+  538c51e6ce4525e7 179
+src/rules/ruleset.rs
+  538c51e6ce4525e7 7-9,16-20,50-54,69-74,82,92,110-111,125-126,140-141,144-158,169,180,284-286,322,496,508-511,526,541,581
+src/engine/scan/grammar.rs
+  538c51e6ce4525e7 691-912,2098-2235
+src/engine/scan/quotes.rs
+  538c51e6ce4525e7 116
+tests/scanner_integration.rs
+  538c51e6ce4525e7 884-910,912-929,931-944,946-968
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "877eb8fa9ff00246623ad568a4df2cfc219701f8",
+  "prompts": {
+    "538c51e6ce4525e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65dd623b-396b-4525-8177-6dd596fca59b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 987,
+      "total_deletions": 185,
+      "accepted_lines": 867,
+      "overriden_lines": 3
+    }
+  }
+}

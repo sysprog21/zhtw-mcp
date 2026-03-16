@@ -1,0 +1,60 @@
+docs/mcp.md
+  90da253e011f3858 12,33,95
+src/mcp/prompts.rs
+  90da253e011f3858 136,182
+tests/vocabulary_expansion.rs
+  90da253e011f3858 221,227-228,231,236,250,252,256,261,275,277-278,281
+scripts/measure-tokens.py
+  90da253e011f3858 186,199,212,333,348
+docs/cli.md
+  90da253e011f3858 24-26
+src/main.rs
+  90da253e011f3858 167-168,170-174,1246
+scripts/test-mcp-qwen.py
+  90da253e011f3858 9,65,69,77,81,88,92,99,103,111,115,122,126,134,138,147,151,159,163,180,184,191,195,202,206,216,219,223,226,235-237,466,597,604,609,615,617,622,628,642,686,746-747
+src/mcp/setup.rs
+  90da253e011f3858 27,55,97,186,210,234,274,284
+TODO.md
+  90da253e011f3858 196-207
+tests/e2e_mcp.rs
+  90da253e011f3858 197,222,427,440,451,455,628
+tests/fix_tier_benchmark.rs
+  90da253e011f3858 1-158,160-201
+src/fixer.rs
+  90da253e011f3858 3,5-13,22-24,27,29-37,58,93-101,109-118,126-132,163,165-190,192-201,229-232,234-237,350-360,362,365,372,375,382,385,391,397,406,414,419-436,439-526,530,539-540,545,560,566,581,587,596,637,641
+src/mcp/tools.rs
+  90da253e011f3858 365,617-619,622,1611
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "c22cae72bfa62998a21f8af733a3731585f091e0",
+  "prompts": {
+    "90da253e011f3858": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c756dfa3-4972-4bd7-9759-e0f0e59c18d9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 576,
+      "total_deletions": 220,
+      "accepted_lines": 549,
+      "overriden_lines": 1
+    },
+    "f4376965d07c8e9c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7d4a2cb-1289-4cd5-aaa7-7f54d760c411",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 24,
+      "total_deletions": 29,
+      "accepted_lines": 24,
+      "overriden_lines": 0
+    }
+  }
+}

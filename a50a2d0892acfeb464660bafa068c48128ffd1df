@@ -1,0 +1,49 @@
+scripts/check-ruleset.py
+  06bd322f865485f4 718-719,768-771,774-776
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "a50a2d0892acfeb464660bafa068c48128ffd1df",
+  "prompts": {
+    "06bd322f865485f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "326dc255-9158-4c3f-90fc-9b0dac881410",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 7,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    },
+    "3c0d2330cd0e655b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cfcc6-de00-7311-90e0-e9b7cf903717",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 12362,
+      "total_deletions": 0,
+      "accepted_lines": 12362,
+      "overriden_lines": 0
+    },
+    "69d1d224f2b121fd": {
+      "agent_id": {
+        "tool": "gemini",
+        "id": "8baf5a22-ea13-4dad-9616-812b43f4d5da",
+        "model": "gemini-3.1-pro-preview-customtools"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 11,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}

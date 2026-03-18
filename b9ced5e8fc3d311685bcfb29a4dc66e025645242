@@ -1,0 +1,33 @@
+src/main.rs
+  0afa518770a9ca28 907-911,1090-1095,1099,1154-1157,1159-1160
+src/engine/scan/spelling.rs
+  0afa518770a9ca28 221-226,228-237
+src/rules/ruleset.rs
+  0afa518770a9ca28 397-402,581-582
+src/engine/scan/mod.rs
+  0afa518770a9ca28 258,260-261,263-272,275,281
+scripts/check-ruleset.py
+  0afa518770a9ca28 457-459,826-869,873-889
+assets/ruleset.json
+  0afa518770a9ca28 353,491,895,902,909,923,980,1557,1671,6471
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "b9ced5e8fc3d311685bcfb29a4dc66e025645242",
+  "prompts": {
+    "0afa518770a9ca28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2ff8e6b-2166-459d-bcc7-203df7a3ff91",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 131,
+      "overriden_lines": 0
+    }
+  }
+}

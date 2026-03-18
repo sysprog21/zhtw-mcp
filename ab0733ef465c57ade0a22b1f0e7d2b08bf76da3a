@@ -1,0 +1,25 @@
+scripts/check-ruleset.py
+  0afa518770a9ca28 842-845,853,855
+src/engine/scan/spelling.rs
+  0afa518770a9ca28 224,228-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "ab0733ef465c57ade0a22b1f0e7d2b08bf76da3a",
+  "prompts": {
+    "0afa518770a9ca28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2ff8e6b-2166-459d-bcc7-203df7a3ff91",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 4,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}

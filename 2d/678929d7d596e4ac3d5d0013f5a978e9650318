@@ -1,0 +1,31 @@
+src/main.rs
+  061c9b09405e70db 90-95,293-352,403-426,477-484,506,524-541,545-546,596,633-639,854-855,857-865,868,962-975,977,979-987,1037-1039,1595-1664
+benches/scanner.rs
+  061c9b09405e70db 210
+src/config.rs
+  061c9b09405e70db 27
+src/mcp/tools.rs
+  061c9b09405e70db 32,41-42,59,70,371,397,433-435,464-468,470-475,479,532-535,560,575-600,1027-1034,1163,1168,1205-1206,1219
+src/rules/store.rs
+  061c9b09405e70db 479-674,678-687,691-771,1414-1623
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "2d678929d7d596e4ac3d5d0013f5a978e9650318",
+  "prompts": {
+    "061c9b09405e70db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c07742b6-56bc-485d-a908-45d5ffa9a94e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 93,
+      "total_deletions": 44,
+      "accepted_lines": 801,
+      "overriden_lines": 0
+    }
+  }
+}

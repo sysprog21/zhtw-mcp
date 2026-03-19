@@ -1,0 +1,23 @@
+src/mcp/sampling.rs
+  af3a17c4088e2203 80-82,88,220,307
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "978b595f01ff68260e5f1a9e28b3e7601019f2e7",
+  "prompts": {
+    "af3a17c4088e2203": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f28b679-3818-4816-b5db-7c19db1bac5e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 4,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}

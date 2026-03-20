@@ -1,0 +1,75 @@
+benches/scanner.rs
+  448e305f684af527 4-12,14,80,82,86-90,92-93,152,165-168,175,188-189,196,206,217-220,232-239,247-248,251,267-286,298,446-449,465
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "828fad427ae5d113ba8e153a49c71e612d1eaa96",
+  "prompts": {
+    "04d325066a8d1d2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "220e5f1f-858c-46bf-9584-8ffbcab15b9c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 2,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "061c9b09405e70db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c07742b6-56bc-485d-a908-45d5ffa9a94e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 143,
+      "total_deletions": 44,
+      "accepted_lines": 64,
+      "overriden_lines": 0
+    },
+    "448e305f684af527": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7623bc1-1229-49af-92c9-ce91cf66e11b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 149,
+      "total_deletions": 79,
+      "accepted_lines": 125,
+      "overriden_lines": 0
+    },
+    "7e84bf976ff4906a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6edb2c6f-1aa6-4b48-ae04-39d276633601",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 137,
+      "total_deletions": 25,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    },
+    "ce82ecbabb55e0eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f61a0e5-d305-4ce5-b0a4-f6cd06feb3ce",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 49,
+      "overriden_lines": 0
+    }
+  }
+}

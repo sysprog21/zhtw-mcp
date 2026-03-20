@@ -1,0 +1,23 @@
+validate.py
+  81bec4382287c5ea 30,36,42-44,53,82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "c5dc1955804bae24ae30e0c970a507cd8110a0fa",
+  "prompts": {
+    "81bec4382287c5ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65d7b964-1d57-468c-b184-53711d5b8e65",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 7,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}

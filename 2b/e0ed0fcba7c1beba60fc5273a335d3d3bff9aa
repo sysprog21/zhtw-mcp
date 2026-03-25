@@ -1,0 +1,23 @@
+scripts/check-ruleset.py
+  dc16fb27afb895e8 633-645
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.19",
+  "base_commit_sha": "2be0ed0fcba7c1beba60fc5273a335d3d3bff9aa",
+  "prompts": {
+    "dc16fb27afb895e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab699812-3160-4aab-9ec9-bc5d025fde0e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 1,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}

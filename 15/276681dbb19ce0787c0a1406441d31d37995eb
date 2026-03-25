@@ -1,0 +1,70 @@
+assets/ruleset.json
+  dc16fb27afb895e8 1319,4442-4444,4574-4576,4583-4585,4629-4631,7255-7257,8283-8284
+scripts/check-ruleset.py
+  dc16fb27afb895e8 57,71,625-630,632-642
+src/engine/segment.rs
+  079958ec81f638f0 411-414,416-417,1134-1147
+  dc16fb27afb895e8 320-336,370,375-376,378-379,384-393,415,418-419,596
+src/engine/scan/spelling.rs
+  dc16fb27afb895e8 180-185
+  079958ec81f638f0 189-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "15276681dbb19ce0787c0a1406441d31d37995eb",
+  "prompts": {
+    "079958ec81f638f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d2464-a89b-75a0-9285-2cca52b42446",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 25,
+      "total_deletions": 7,
+      "accepted_lines": 25,
+      "overriden_lines": 0
+    },
+    "ca1f6796ca9c1f96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dcd8760f-e424-4d9b-a7da-b709d76814fb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    },
+    "dc16fb27afb895e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab699812-3160-4aab-9ec9-bc5d025fde0e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 101,
+      "total_deletions": 37,
+      "accepted_lines": 79,
+      "overriden_lines": 1
+    },
+    "f9fc66f6dd15b844": {
+      "agent_id": {
+        "tool": "gemini",
+        "id": "fdb1aa90-b9a8-493d-92b3-a9b696dc8583",
+        "model": "gemini-3-flash-preview"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 103,
+      "total_deletions": 0,
+      "accepted_lines": 103,
+      "overriden_lines": 0
+    }
+  }
+}

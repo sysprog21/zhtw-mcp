@@ -1,0 +1,40 @@
+src/fixer.rs
+  ca1f6796ca9c1f96 311-357,934-1026
+src/mcp/tools.rs
+  ca1f6796ca9c1f96 533-536,538,540,542
+tests/exclusion-remap.rs
+  ca1f6796ca9c1f96 1-87,89-309,311-331,333-347
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "4b8e837b520ef0212cd6943de7edd8c93666e972",
+  "prompts": {
+    "18d31507347ca169": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f529e075-2367-4498-a04e-a4d9a6568390",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 26,
+      "total_deletions": 34,
+      "accepted_lines": 26,
+      "overriden_lines": 0
+    },
+    "ca1f6796ca9c1f96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dcd8760f-e424-4d9b-a7da-b709d76814fb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 545,
+      "total_deletions": 27,
+      "accepted_lines": 491,
+      "overriden_lines": 3
+    }
+  }
+}

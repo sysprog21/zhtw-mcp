@@ -1,0 +1,44 @@
+scripts/check-ruleset.py
+  dc16fb27afb895e8 57,71,625-630,632-654
+assets/ruleset.json
+  dc16fb27afb895e8 1319,4442-4444,4574-4576,4583-4585,4629-4631,7255-7257,8283-8284
+src/engine/scan/spelling.rs
+  dc16fb27afb895e8 180-185
+  079958ec81f638f0 189-191
+src/engine/segment.rs
+  dc16fb27afb895e8 320-336,370,375-376,378-379,384-393,415,418-419,596
+  079958ec81f638f0 411-414,416-417,1134-1147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.19",
+  "base_commit_sha": "b5f34c6203b4818420c932809817c471b6320a33",
+  "prompts": {
+    "079958ec81f638f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d2464-a89b-75a0-9285-2cca52b42446",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 25,
+      "total_deletions": 7,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    },
+    "dc16fb27afb895e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab699812-3160-4aab-9ec9-bc5d025fde0e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 1,
+      "accepted_lines": 91,
+      "overriden_lines": 0
+    }
+  }
+}

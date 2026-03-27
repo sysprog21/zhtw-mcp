@@ -1,0 +1,96 @@
+src/engine/scan/overlap.rs
+  33688cce20e4f24a 17,19-31,39-41,50-51,55,57,59
+Cargo.toml
+  33688cce20e4f24a 41-46
+src/engine/scan/mod.rs
+  33688cce20e4f24a 23,36,48-102,175-178,180-181,183-184,186-187,189-190,341-391,405-409,420,579-580,592,595-601,612-628,633-635,652,668,670,674,676,683,830-833,840-857,866-876,878-886,889-897,900,903,906,909,912,915-916,923-928,930-933,939,946,952,960,967,971,981,992,1008-1013,1016,1027,1183,1223,1240,1262,1291,1318,1350,1393,1419,1434
+src/rules/loader.rs
+  33688cce20e4f24a 6-9,11-12,101,105-161
+tests/ir-parity.rs
+  33688cce20e4f24a 1-14,16-198,200-248,250-301,303-407,409-567
+src/engine/scan/grammar.rs
+  33688cce20e4f24a 13-19,151-709,711,761,831,917,962,1024,1088,1192,2110-2114,2116-2154,3890-3994
+src/engine/segment.rs
+  33688cce20e4f24a 52-109,440-502
+src/engine/scan/spelling.rs
+  390b5d9532396014 95
+  33688cce20e4f24a 6,8,10,34,36-38,46-47,50,52-54,56-63,66-85,87-94,96-154,159,162,164,166,168,176,263,423-424,471-477,483,490-491,496,498,508-514,516,522,528,533-535,537-539,542-543
+  d1663e3dc0e5dbea 31
+src/cache.rs
+  33688cce20e4f24a 72-73,77,113-114,118,124-140,146,152-156,173,178-180,201,225-227,231,234-235,240,242,251,531,544,563,568,570
+src/engine/zhtype.rs
+  33688cce20e4f24a 37,43
+benches/scanner.rs
+  33688cce20e4f24a 361-374,480,607-621
+src/main.rs
+  33688cce20e4f24a 575-672,763-765,833,861,1127-1142,1404,1406-1410,1420-1430,1432-1440,1476-1486,1488-1490
+build.rs
+  33688cce20e4f24a 1-70
+src/engine/scan/rule_ir.rs
+  33688cce20e4f24a 1-412,414-422,442-443,461-476,479-997,1000-1040
+  63a129f5c29e8265 413
+  d1663e3dc0e5dbea 423-441,444-460,477-478,998-999
+src/rules/ruleset.rs
+  33688cce20e4f24a 68-70,130,149,168,189,500-505,532
+src/engine/lineindex.rs
+  33688cce20e4f24a 36-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.20",
+  "base_commit_sha": "34317955081ab6cddd8657cdfc9e4a8a93669e56",
+  "prompts": {
+    "33688cce20e4f24a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c4f92b1-833f-4cf7-a5b1-38f964ce7377",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 4400,
+      "total_deletions": 1967,
+      "accepted_lines": 3306,
+      "overriden_lines": 5
+    },
+    "390b5d9532396014": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d2fbd-1e41-7a22-8868-57d73c421562",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 2,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "63a129f5c29e8265": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d2d03-53e0-7221-bfe3-f9d5d8910ff3",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 9,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "d1663e3dc0e5dbea": {
+      "agent_id": {
+        "tool": "gemini",
+        "id": "0609afb1-ec2d-4755-8b24-7ad7cbc3bfc1",
+        "model": "gemini-3-flash-preview"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 131,
+      "total_deletions": 39,
+      "accepted_lines": 48,
+      "overriden_lines": 0
+    }
+  }
+}

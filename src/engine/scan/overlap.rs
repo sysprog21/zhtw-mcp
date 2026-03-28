@@ -14,7 +14,21 @@ use crate::rules::ruleset::Issue;
 /// This avoids the ghost-suppression flaw in a forward greedy scan, where A
 /// can be wrongly discarded because B beats A and then C beats B — even though
 /// A and C would not have overlapped.
+#[allow(dead_code)]
 pub(crate) fn resolve_overlaps(issues: &mut Vec<Issue>) {
+    let mut order = Vec::new();
+    let mut keep = Vec::new();
+    let mut accepted = Vec::new();
+    resolve_overlaps_with_scratch(issues, &mut order, &mut keep, &mut accepted);
+}
+
+/// Like [`resolve_overlaps`] but reuses caller-provided scratch buffers.
+pub(crate) fn resolve_overlaps_with_scratch(
+    issues: &mut Vec<Issue>,
+    order: &mut Vec<usize>,
+    keep: &mut Vec<bool>,
+    accepted: &mut Vec<(usize, usize)>,
+) {
     if issues.len() <= 1 {
         return;
     }
@@ -22,7 +36,9 @@ pub(crate) fn resolve_overlaps(issues: &mut Vec<Issue>) {
     // Process in priority order: longest first; on tie, highest severity;
     // on further tie, earliest offset (deterministic).
     let n = issues.len();
-    let mut order: Vec<usize> = (0..n).collect();
+
+    order.clear();
+    order.extend(0..n);
     order.sort_by(|&a, &b| {
         issues[b]
             .length
@@ -31,14 +47,16 @@ pub(crate) fn resolve_overlaps(issues: &mut Vec<Issue>) {
             .then_with(|| issues[a].offset.cmp(&issues[b].offset))
     });
 
-    let mut keep = vec![false; n];
+    keep.clear();
+    keep.resize(n, false);
+
     // Accepted byte intervals (start, end), kept sorted by start offset
     // for O(log n) overlap checks via binary search.
-    let mut accepted: Vec<(usize, usize)> = Vec::new();
+    accepted.clear();
 
-    for &i in &order {
+    for &i in order.iter() {
         let start = issues[i].offset;
-        let end = start + issues[i].length;
+        let end = start.saturating_add(issues[i].length);
 
         // Binary search for the insertion point, then check neighbors.
         // Two intervals [s1,e1) and [s2,e2) overlap iff s1 < e2 && e1 > s2.

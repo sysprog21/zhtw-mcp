@@ -643,7 +643,7 @@ mod tests {
     #[test]
     fn calibrate_stopword_only_anchor_yields_none() {
         // "if and only if" — all stopwords.  Should not produce a false match.
-        let _issues = vec![Issue::new(
+        let _issues = [Issue::new(
             0,
             6,
             "當且僅當",

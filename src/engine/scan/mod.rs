@@ -20,11 +20,11 @@ mod grammar;
 mod overlap;
 mod punctuation;
 mod quotes;
+pub(crate) mod rule_ir;
 mod spacing;
 mod spelling;
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
-use daachorse::{CharwiseDoubleArrayAhoCorasickBuilder, MatchKind as DaacMatchKind};
 
 use super::excluded::{build_excluded_ranges, merge_ranges_pub, ByteRange};
 use super::lineindex::{ColumnEncoding, LineIndex};
@@ -33,18 +33,72 @@ use super::markdown::{
     build_yaml_excluded_ranges,
 };
 use super::normalize::{map_offset, normalize_nfc, Normalized};
-use super::segment::Segmenter;
+use super::segment::{BoundaryBitmap, Segmenter};
 use super::suppression::build_suppression_ranges;
 use serde::{Deserialize, Serialize};
 
-use super::zhtype::{detect_chinese_type, ChineseType};
+use super::zhtype::ChineseType;
 use crate::rules::ruleset::{
     CaseRule, Issue, IssueType, Profile, ProfileConfig, Severity, SpellingRule,
 };
 
 use self::ellipsis::scan_ellipsis;
-use self::overlap::resolve_overlaps;
 use self::quotes::{fix_quote_pairing, validate_quote_hierarchy};
+
+// ---------------------------------------------------------------------------
+// Scratch space — reusable buffers for per-scan mutable state
+// ---------------------------------------------------------------------------
+
+/// Pre-allocated buffers for per-scan mutable state.
+///
+/// Creating one of these and passing it to `scan_with_config_into` avoids
+/// repeated `Vec` allocations on the hot path.  Callers that process many
+/// documents in a loop (e.g. the MCP server) can keep a single
+/// `ScratchSpace` alive across requests.
+///
+/// All buffers are cleared (without deallocating) at the start of each
+/// scan via [`ScratchSpace::clear`].
+pub struct ScratchSpace {
+    /// Accumulator for issues found during a scan.
+    pub(crate) issues: Vec<Issue>,
+    /// Document-wide clue hit index (byte_offset, clue_id).
+    pub(crate) clue_index: Vec<(usize, u16)>,
+    // -- overlap resolution scratch --
+    /// Priority-order indices into the issues vec.
+    pub(crate) overlap_order: Vec<usize>,
+    /// Per-issue keep/discard flags.
+    pub(crate) overlap_keep: Vec<bool>,
+    /// Accepted byte intervals for overlap checking.
+    pub(crate) overlap_accepted: Vec<(usize, usize)>,
+}
+
+impl ScratchSpace {
+    /// Create a new scratch space with no pre-allocated capacity.
+    pub fn new() -> Self {
+        Self {
+            issues: Vec::new(),
+            clue_index: Vec::new(),
+            overlap_order: Vec::new(),
+            overlap_keep: Vec::new(),
+            overlap_accepted: Vec::new(),
+        }
+    }
+
+    /// Clear all buffers without releasing their backing memory.
+    pub fn clear(&mut self) {
+        self.issues.clear();
+        self.clue_index.clear();
+        self.overlap_order.clear();
+        self.overlap_keep.clear();
+        self.overlap_accepted.clear();
+    }
+}
+
+impl Default for ScratchSpace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // Public types
 
@@ -118,30 +172,22 @@ impl PositionalClue {
     /// Parse a positional clue string (e.g. "before:函式", "not_after:的").
     /// Returns None if the syntax is unrecognized.
     fn parse(s: &str) -> Option<Self> {
-        if let Some(term) = s.strip_prefix("before:") {
-            if !term.is_empty() {
-                return Some(PositionalClue::Before(term.to_string()));
-            }
+        // Order matters: longer prefixes (not_before, not_after) must be
+        // checked before their shorter counterparts (before, after).
+        if let Some(t) = s.strip_prefix("not_before:").filter(|t| !t.is_empty()) {
+            return Some(PositionalClue::NotBefore(t.to_string()));
         }
-        if let Some(term) = s.strip_prefix("after:") {
-            if !term.is_empty() {
-                return Some(PositionalClue::After(term.to_string()));
-            }
+        if let Some(t) = s.strip_prefix("not_after:").filter(|t| !t.is_empty()) {
+            return Some(PositionalClue::NotAfter(t.to_string()));
         }
-        if let Some(term) = s.strip_prefix("adjacent:") {
-            if !term.is_empty() {
-                return Some(PositionalClue::Adjacent(term.to_string()));
-            }
+        if let Some(t) = s.strip_prefix("before:").filter(|t| !t.is_empty()) {
+            return Some(PositionalClue::Before(t.to_string()));
         }
-        if let Some(term) = s.strip_prefix("not_before:") {
-            if !term.is_empty() {
-                return Some(PositionalClue::NotBefore(term.to_string()));
-            }
+        if let Some(t) = s.strip_prefix("after:").filter(|t| !t.is_empty()) {
+            return Some(PositionalClue::After(t.to_string()));
         }
-        if let Some(term) = s.strip_prefix("not_after:") {
-            if !term.is_empty() {
-                return Some(PositionalClue::NotAfter(term.to_string()));
-            }
+        if let Some(t) = s.strip_prefix("adjacent:").filter(|t| !t.is_empty()) {
+            return Some(PositionalClue::Adjacent(t.to_string()));
         }
         None
     }
@@ -292,10 +338,60 @@ pub(crate) fn surrounding_window_bounded<'a>(
     &text[cs..ce]
 }
 
+/// Detect Chinese type (SC/TC) and build a LineIndex in a single pass
+/// over the text's characters.  Replaces the two separate O(n) passes of
+/// `detect_chinese_type(text)` + `LineIndex::new(text)`.
+/// Fused single-pass: detect SC/TC type, build LineIndex, and optionally
+/// build BoundaryBitmap.  Shares one `char_indices()` iteration for all three.
+fn detect_type_lineindex_and_bitmap<'a>(
+    text: &'a str,
+    segmenter: Option<&Segmenter>,
+) -> (ChineseType, LineIndex<'a>, BoundaryBitmap) {
+    use super::zhtype::{SIMPLIFIED_CHARS, TRADITIONAL_CHARS};
+
+    let mut line_starts = vec![0usize];
+    let mut simplified_count: usize = 0;
+    let mut traditional_count: usize = 0;
+
+    // Collect char indices (needed for bitmap forward probing).
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+
+    for &(byte_offset, ch) in &chars {
+        if ch == '\n' {
+            line_starts.push(byte_offset + 1);
+        }
+        if SIMPLIFIED_CHARS.contains(&ch) {
+            simplified_count += 1;
+        } else if TRADITIONAL_CHARS.contains(&ch) {
+            traditional_count += 1;
+        }
+    }
+
+    let zh_type = if text.trim().is_empty() {
+        ChineseType::Unknown
+    } else if simplified_count > traditional_count {
+        ChineseType::Simplified
+    } else if traditional_count > simplified_count {
+        ChineseType::Traditional
+    } else {
+        ChineseType::Unknown
+    };
+
+    let line_index = LineIndex::from_parts(text, line_starts);
+
+    // Build boundary bitmap from the same char indices if segmenter provided.
+    let bitmap = if let Some(seg) = segmenter {
+        seg.build_boundary_bitmap_from_chars(text, &chars)
+    } else {
+        BoundaryBitmap::empty()
+    };
+
+    (zh_type, line_index, bitmap)
+}
+
 /// Remap issue offsets from NFC-normalized text back to original positions.
 /// Updates offset, length, found text, and recomputes line/col.
 fn remap_issues_to_original(issues: &mut [Issue], original: &str, norm: &Normalized) {
-    let line_index = LineIndex::new(original);
     for issue in issues.iter_mut() {
         let orig_offset = map_offset(&norm.offset_map, issue.offset);
         let orig_end = map_offset(&norm.offset_map, issue.offset + issue.length);
@@ -305,10 +401,12 @@ fn remap_issues_to_original(issues: &mut [Issue], original: &str, norm: &Normali
         if let Some(found) = original.get(orig_offset..end) {
             issue.found = found.to_string();
         }
-        let (line, col) = line_index.line_col(issue.offset, ColumnEncoding::Utf16);
-        issue.line = line;
-        issue.col = col;
     }
+    // NFC offset mapping is monotonically non-decreasing, so issues that
+    // were sorted by NFC offset remain sorted by original offset.  Use the
+    // linear-pass fill to avoid O(log n) binary search per issue.
+    let line_index = LineIndex::new(original);
+    line_index.fill_line_col_sorted(issues, ColumnEncoding::Utf16);
 }
 
 /// Build suggestion list from a rule's `to` and `english` fields.
@@ -319,7 +417,7 @@ fn remap_issues_to_original(issues: &mut [Issue], original: &str, norm: &Normali
 /// AiFiller deletion rules (`to: [""]`) are special: the empty string is
 /// the intended suggestion (delete the filler phrase), so it is preserved
 /// as-is instead of being filtered away.
-fn effective_suggestions(rule: &SpellingRule) -> Vec<String> {
+pub(crate) fn effective_suggestions(rule: &SpellingRule) -> Vec<String> {
     // AiFiller deletion: to == [""] means 'delete this phrase'.
     // Preserve the empty-string suggestion so the fixer can apply it.
     if rule.is_deletion_rule() {
@@ -338,27 +436,6 @@ fn effective_suggestions(rule: &SpellingRule) -> Vec<String> {
         Some(e) if !e.is_empty() => vec![e.to_string()],
         _ => Vec::new(),
     }
-}
-
-/// Returns true if the text around the match already contains one of the
-/// rule's correct forms as a superstring of the matched wrong term.
-/// E.g., skip "算法" match when surrounding text reads "演算法".
-///
-/// Checks all positions where the wrong term appears within each correct
-/// form (not just the first), handling cases like wrong="A", correct="ABA".
-fn already_correct_form(text: &str, match_start: usize, rule: &SpellingRule) -> bool {
-    for correct in &rule.to {
-        for (wrong_pos, _) in correct.match_indices(&rule.from) {
-            if let Some(correct_start) = match_start.checked_sub(wrong_pos) {
-                let correct_end = correct_start + correct.len();
-                // Use get() to avoid panic on non-char-boundary indices.
-                if text.get(correct_start..correct_end) == Some(correct.as_str()) {
-                    return true;
-                }
-            }
-        }
-    }
-    false
 }
 
 /// Returns true if ch is a CJK ideograph (unified, extensions A-I,
@@ -499,43 +576,29 @@ pub fn build_exclusions_for_content_type(text: &str, content_type: ContentType) 
 
 /// Compiled scanner, reusable across multiple scan calls.
 pub struct Scanner {
-    /// Charwise double-array AC for spelling (primary; ~3x fewer states for CJK).
-    spelling_ac_charwise: Option<daachorse::CharwiseDoubleArrayAhoCorasick<usize>>,
-    /// Bytewise AC fallback (built only when charwise is unavailable).
-    spelling_ac_bytewise: Option<AhoCorasick>,
-    spelling_rules: Vec<SpellingRule>,
-    /// Precomputed suggestions per rule (avoids per-match allocation).
-    spelling_suggestions: Vec<Vec<String>>,
+    /// Compiled spelling rule database (AC automata + per-rule data).
+    spelling_db: rule_ir::CompiledSpellingDb,
 
     case_ac: Option<AhoCorasick>,
     case_rules: Vec<CaseRule>,
 
     /// MMSEG segmenter for fixer context-clue checks and public accessor.
     segmenter: Segmenter,
-
-    /// Bytewise AC over all unique clue strings (positive + negative).
-    clue_ac: Option<AhoCorasick>,
-    /// Per-rule positive clue IDs into the clue AC pattern list.
-    rule_pos_clue_ids: Vec<Option<Vec<u16>>>,
-    /// Per-rule negative clue IDs into the clue AC pattern list.
-    rule_neg_clue_ids: Vec<Option<Vec<u16>>>,
-    /// Per-rule parsed positional clues (checked after context-clue gate).
-    rule_positional_clues: Vec<Option<Vec<PositionalClue>>>,
-    /// Absorption patterns retained for force_bytewise() rebuild.
-    #[cfg_attr(not(test), allow(dead_code))]
-    absorber_strings: Vec<String>,
-    /// Per-rule bitflags gating optional filter stages (spelling::FILTER_*).
-    rule_filter_flags: Vec<u8>,
-    /// Per-rule dispatch class for monomorphic fast paths (spelling::CLASS_*).
-    /// Computed from filter flags at build time; determines which
-    /// process_match_dispatch<CLASS> variant handles each AC hit.
-    rule_classes: Vec<u8>,
 }
 
 impl Scanner {
     /// Read-only access to the spelling rules held by this scanner.
     pub fn spelling_rules(&self) -> &[SpellingRule] {
-        &self.spelling_rules
+        &self.spelling_db.spelling_rules
+    }
+
+    /// Read-only access to the charwise double-array Aho-Corasick automaton.
+    ///
+    /// Exposed for benchmarking (e.g. measuring raw AC traversal cost
+    /// independently of eval/overlap/line-col).  Returns `None` when the
+    /// scanner fell back to bytewise AC (daachorse build failure).
+    pub fn ac_charwise(&self) -> Option<&daachorse::CharwiseDoubleArrayAhoCorasick<usize>> {
+        self.spelling_db.ac_charwise.as_ref()
     }
 
     /// Build a scanner from loaded rules.
@@ -544,241 +607,32 @@ impl Scanner {
     /// case folding). The case automaton is ASCII-case-insensitive so it
     /// catches e.g. "javascript" when the canonical form is "JavaScript".
     pub fn new(spelling_rules: Vec<SpellingRule>, case_rules: Vec<CaseRule>) -> Self {
-        let mut spelling_rules: Vec<SpellingRule> =
-            spelling_rules.into_iter().filter(|r| !r.disabled).collect();
         let case_rules: Vec<CaseRule> = case_rules.into_iter().filter(|r| !r.disabled).collect();
 
-        // Deduplicate by `from` key (last wins; overrides come after embedded).
-        {
-            let mut seen = std::collections::HashSet::new();
-            let mut i = spelling_rules.len();
-            while i > 0 {
-                i -= 1;
-                if !seen.insert(spelling_rules[i].from.clone()) {
-                    spelling_rules.remove(i);
-                }
-            }
-        }
-
-        // Deduplicate context clues within each rule.
-        for rule in &mut spelling_rules {
-            if let Some(ref mut clues) = rule.context_clues {
-                let mut seen = std::collections::HashSet::new();
-                clues.retain(|c| seen.insert(c.clone()));
-            }
-            if let Some(ref mut clues) = rule.negative_context_clues {
-                let mut seen = std::collections::HashSet::new();
-                clues.retain(|c| seen.insert(c.clone()));
-            }
-        }
-
-        let spelling_suggestions: Vec<Vec<String>> =
-            spelling_rules.iter().map(effective_suggestions).collect();
-
-        let segmenter = Segmenter::from_rules(&spelling_rules);
-
-        // Build clue AC: intern all unique clue strings, map per-rule clue
-        // lists to indices, build a bytewise AC for windowed lookups.
-        let (clue_ac, rule_pos_clue_ids, rule_neg_clue_ids) = {
-            let mut clue_map: std::collections::HashMap<String, u16> =
-                std::collections::HashMap::new();
-            let mut clue_vec: Vec<String> = Vec::new();
-
-            let mut intern_clue = |s: &String| -> u16 {
-                if let Some(&idx) = clue_map.get(s) {
-                    idx
-                } else {
-                    let idx = u16::try_from(clue_vec.len()).expect("clue index overflow");
-                    clue_map.insert(s.clone(), idx);
-                    clue_vec.push(s.clone());
-                    idx
-                }
-            };
-
-            let mut pos_ids: Vec<Option<Vec<u16>>> = Vec::with_capacity(spelling_rules.len());
-            let mut neg_ids: Vec<Option<Vec<u16>>> = Vec::with_capacity(spelling_rules.len());
-
-            for rule in &spelling_rules {
-                let pos = rule.context_clues.as_ref().and_then(|clues| {
-                    if clues.is_empty() {
-                        None
-                    } else {
-                        Some(clues.iter().map(&mut intern_clue).collect())
-                    }
-                });
-                let neg = rule.negative_context_clues.as_ref().and_then(|clues| {
-                    if clues.is_empty() {
-                        None
-                    } else {
-                        Some(clues.iter().map(&mut intern_clue).collect())
-                    }
-                });
-                pos_ids.push(pos);
-                neg_ids.push(neg);
-            }
-
-            let ac = if clue_vec.is_empty() {
-                None
-            } else {
-                match AhoCorasickBuilder::new()
-                    .match_kind(MatchKind::Standard)
-                    .build(&clue_vec)
-                {
-                    Ok(ac) => Some(ac),
-                    Err(e) => {
-                        eprintln!("[zhtw-mcp] clue AC build failed: {e}");
-                        None
-                    }
-                }
-            };
-
-            (ac, pos_ids, neg_ids)
-        };
-
-        // Validate clue-ID counts fit the fixed bitset (capacity 32).
-        for (i, pos) in rule_pos_clue_ids.iter().enumerate() {
-            if let Some(ids) = pos {
-                assert!(
-                    ids.len() <= 32,
-                    "rule '{}' has {} positive clues, exceeds bitset capacity 32",
-                    spelling_rules[i].from,
-                    ids.len(),
-                );
-            }
-        }
-        for (i, neg) in rule_neg_clue_ids.iter().enumerate() {
-            if let Some(ids) = neg {
-                assert!(
-                    ids.len() <= 32,
-                    "rule '{}' has {} negative clues, exceeds bitset capacity 32",
-                    spelling_rules[i].from,
-                    ids.len(),
-                );
-            }
-        }
-
-        let rule_positional_clues: Vec<Option<Vec<PositionalClue>>> = spelling_rules
-            .iter()
-            .map(|rule| {
-                rule.positional_clues.as_ref().and_then(|raw| {
-                    let parsed: Vec<PositionalClue> = raw
-                        .iter()
-                        .filter_map(|s| {
-                            let clue = PositionalClue::parse(s);
-                            if clue.is_none() {
-                                eprintln!(
-                                    "[zhtw-mcp] rule '{}': unrecognized positional clue '{}'",
-                                    rule.from, s
-                                );
-                            }
-                            clue
-                        })
-                        .collect();
-                    if parsed.is_empty() {
-                        None
-                    } else {
-                        Some(parsed)
-                    }
-                })
-            })
-            .collect();
-
-        let spelling_patterns: Vec<&str> = spelling_rules.iter().map(|r| r.from.as_str()).collect();
-
-        // Absorption patterns: exception phrases and superstring `to` forms
-        // injected into the AC so LeftmostLongest suppresses shorter `from`
-        // matches.  Indices >= spelling_rules.len() act as sentinels.
-        let absorber_strings: Vec<String> = {
-            let from_set: std::collections::HashSet<&str> =
-                spelling_patterns.iter().copied().collect();
-            let mut candidates: Vec<(String, &str)> = Vec::new();
-            let mut dedup = std::collections::HashSet::new();
-            for rule in &spelling_rules {
-                if let Some(ref exceptions) = rule.exceptions {
-                    for exc in exceptions {
-                        if exc.contains(&rule.from)
-                            && !from_set.contains(exc.as_str())
-                            && dedup.insert(exc.clone())
-                        {
-                            candidates.push((exc.clone(), rule.from.as_str()));
-                        }
-                    }
-                }
-                for to in &rule.to {
-                    if to.contains(&rule.from)
-                        && to != &rule.from
-                        && !from_set.contains(to.as_str())
-                        && dedup.insert(to.clone())
-                    {
-                        candidates.push((to.clone(), rule.from.as_str()));
-                    }
-                }
-            }
-            // Reject absorbers that would shadow a different rule's `from`.
-            candidates
-                .into_iter()
-                .filter(|(absorber, orig_from)| {
-                    !spelling_patterns.iter().any(|&f| {
-                        if f == *orig_from {
-                            return false;
-                        }
-                        if absorber.contains(f) {
-                            return true;
-                        }
-                        // Right-boundary overlap: proper suffix of absorber
-                        // is a prefix of f.
-                        let mut chars = absorber.char_indices();
-                        chars.next(); // skip position 0 (full string)
-                        for (byte_idx, _) in chars {
-                            let suffix = &absorber[byte_idx..];
-                            if f.starts_with(suffix) {
-                                return true;
-                            }
-                        }
-                        false
-                    })
-                })
-                .map(|(s, _)| s)
-                .collect()
-        };
-        let all_patterns: Vec<&str> = spelling_patterns
-            .iter()
-            .copied()
-            .chain(absorber_strings.iter().map(|s| s.as_str()))
-            .collect();
-
-        let spelling_ac_charwise = {
-            let patvals: Vec<(&str, usize)> = all_patterns
-                .iter()
-                .enumerate()
-                .map(|(i, &p)| (p, i))
-                .collect();
-            match CharwiseDoubleArrayAhoCorasickBuilder::new()
-                .match_kind(DaacMatchKind::LeftmostLongest)
-                .build_with_values(patvals)
-            {
-                Ok(ac) => Some(ac),
-                Err(e) => {
-                    eprintln!("[zhtw-mcp] charwise AC build failed, using bytewise fallback: {e}");
-                    None
+        let spelling_db = match rule_ir::compile_spelling_rules(spelling_rules) {
+            Ok(db) => db,
+            Err(e) => {
+                eprintln!("[zhtw-mcp] spelling rule compilation failed: {e}");
+                rule_ir::CompiledSpellingDb {
+                    ac_charwise: None,
+                    ac_bytewise: None,
+                    rules: Vec::new(),
+                    clue_ac: None,
+                    absorber_strings: Vec::new(),
+                    spelling_rules: Vec::new(),
+                    spelling_suggestions: Vec::new(),
+                    rule_pos_clue_ids: Vec::new(),
+                    rule_neg_clue_ids: Vec::new(),
+                    rule_positional_clues: Vec::new(),
+                    rule_filter_flags: Vec::new(),
+                    rule_classes: Vec::new(),
                 }
             }
         };
 
-        let spelling_ac_bytewise = if spelling_ac_charwise.is_none() {
-            match AhoCorasickBuilder::new()
-                .match_kind(MatchKind::LeftmostLongest)
-                .build(&all_patterns)
-            {
-                Ok(ac) => Some(ac),
-                Err(e) => {
-                    eprintln!("[zhtw-mcp] bytewise spelling AC build failed: {e}");
-                    None
-                }
-            }
-        } else {
-            None
-        };
+        // Build segmenter from the deduped rules (post-compilation) so it
+        // sees exactly the same rule set as the IR evaluator.
+        let segmenter = Segmenter::from_rules(&spelling_db.spelling_rules);
 
         let case_patterns: Vec<String> = case_rules.iter().map(|r| r.term.to_lowercase()).collect();
 
@@ -794,65 +648,11 @@ impl Scanner {
             }
         };
 
-        let rule_filter_flags: Vec<u8> = spelling_rules
-            .iter()
-            .enumerate()
-            .map(|(i, rule)| {
-                let mut f: u8 = 0;
-                if rule.to.iter().any(|t| t.contains(&rule.from)) {
-                    f |= spelling::FILTER_HAS_SUPERSTRING;
-                }
-                if rule.exceptions.as_ref().is_some_and(|v| !v.is_empty()) {
-                    f |= spelling::FILTER_HAS_EXCEPTIONS;
-                }
-                if rule_pos_clue_ids[i].is_some() {
-                    f |= spelling::FILTER_HAS_POS_CLUES;
-                }
-                if rule_neg_clue_ids[i].is_some() {
-                    f |= spelling::FILTER_HAS_NEG_CLUES;
-                }
-                if rule_positional_clues[i].is_some() {
-                    f |= spelling::FILTER_HAS_POSITIONAL;
-                }
-                if rule.is_deletion_rule() {
-                    f |= spelling::FILTER_IS_DELETION;
-                }
-                f
-            })
-            .collect();
-
-        // Dispatch class per rule: determines which monomorphic fast path
-        // handles each AC hit.  Positional implies FULL; context clues
-        // without positional implies CLUED; everything else is SIMPLE.
-        let rule_classes: Vec<u8> = rule_filter_flags
-            .iter()
-            .map(|&f| {
-                if f & spelling::FILTER_HAS_POSITIONAL != 0 {
-                    spelling::CLASS_FULL
-                } else if f & (spelling::FILTER_HAS_POS_CLUES | spelling::FILTER_HAS_NEG_CLUES) != 0
-                {
-                    spelling::CLASS_CLUED
-                } else {
-                    spelling::CLASS_SIMPLE
-                }
-            })
-            .collect();
-
         Self {
-            spelling_ac_charwise,
-            spelling_ac_bytewise,
-            spelling_rules,
-            spelling_suggestions,
+            spelling_db,
             case_ac,
             case_rules,
             segmenter,
-            clue_ac,
-            rule_pos_clue_ids,
-            rule_neg_clue_ids,
-            rule_positional_clues,
-            absorber_strings,
-            rule_filter_flags,
-            rule_classes,
         }
     }
 
@@ -865,21 +665,22 @@ impl Scanner {
     /// Disables charwise and builds bytewise if not already present.
     #[cfg(test)]
     fn force_bytewise(&mut self) {
-        if self.spelling_ac_bytewise.is_none() {
+        if self.spelling_db.ac_bytewise.is_none() {
             let patterns: Vec<&str> = self
+                .spelling_db
                 .spelling_rules
                 .iter()
                 .map(|r| r.from.as_str())
-                .chain(self.absorber_strings.iter().map(|s| s.as_str()))
+                .chain(self.spelling_db.absorber_strings.iter().map(|s| s.as_str()))
                 .collect();
-            self.spelling_ac_bytewise = Some(
+            self.spelling_db.ac_bytewise = Some(
                 AhoCorasickBuilder::new()
                     .match_kind(MatchKind::LeftmostLongest)
                     .build(&patterns)
                     .expect("build bytewise AC for test"),
             );
         }
-        self.spelling_ac_charwise = None;
+        self.spelling_db.ac_charwise = None;
     }
 
     /// Scan text with Profile::Default and return all issues found.
@@ -1026,12 +827,34 @@ impl Scanner {
     }
 
     /// Scan with a fully-specified ProfileConfig (allows stance overrides).
+    ///
+    /// Allocates a fresh [`ScratchSpace`] internally.  For hot loops that
+    /// process many documents, prefer [`scan_with_config_into`] with a
+    /// reusable scratch buffer.
     pub fn scan_with_config(
         &self,
         text: &str,
         excluded: &[ByteRange],
         cfg: ProfileConfig,
     ) -> ScanOutput {
+        let mut scratch = ScratchSpace::new();
+        self.scan_with_config_into(text, excluded, cfg, &mut scratch)
+    }
+
+    /// Scan with a fully-specified ProfileConfig, reusing a caller-provided
+    /// [`ScratchSpace`] to avoid per-scan allocations.
+    ///
+    /// The scratch buffers are cleared at entry; on return the issues live
+    /// in the returned `ScanOutput` (moved out of `scratch.issues`).
+    pub fn scan_with_config_into(
+        &self,
+        text: &str,
+        excluded: &[ByteRange],
+        cfg: ProfileConfig,
+        scratch: &mut ScratchSpace,
+    ) -> ScanOutput {
+        scratch.clear();
+
         if text.is_empty() {
             return ScanOutput {
                 issues: Vec::new(),
@@ -1040,60 +863,93 @@ impl Scanner {
             };
         }
 
-        let zh_type = detect_chinese_type(text);
+        // Fused single-pass: detect SC/TC type, build LineIndex, and
+        // optionally build BoundaryBitmap -- shares one char_indices() iteration.
+        let build_bitmap = cfg.spelling && text.len() > 4096;
+        let (zh_type, line_index, boundary_bitmap) = detect_type_lineindex_and_bitmap(
+            text,
+            if build_bitmap {
+                Some(&self.segmenter)
+            } else {
+                None
+            },
+        );
 
-        // Pre-allocate with a capacity estimate based on text length.
-        // Typical CJK prose yields ~1 issue per 2KB, so this avoids
-        // incremental reallocation for most documents.
-        let estimated_issues = (text.len() / 2048).max(8);
-        let mut issues = Vec::with_capacity(estimated_issues);
+        // Destructure scratch to allow simultaneous mutable borrows of
+        // independent fields (avoids borrow-checker conflict on &mut scratch).
+        let ScratchSpace {
+            ref mut issues,
+            ref mut clue_index,
+            ref mut overlap_order,
+            ref mut overlap_keep,
+            ref mut overlap_accepted,
+        } = *scratch;
+
         if cfg.spelling {
-            self.scan_spelling(text, excluded, zh_type, &mut issues, &cfg);
+            self.scan_spelling(
+                text,
+                excluded,
+                zh_type,
+                issues,
+                &cfg,
+                clue_index,
+                &boundary_bitmap,
+            );
         }
         if cfg.casing {
-            self.scan_case(text, excluded, &mut issues);
+            self.scan_case(text, excluded, issues);
         }
         if cfg.basic_punctuation {
-            self.scan_punctuation(text, excluded, &mut issues, &cfg);
+            self.scan_punctuation(text, excluded, issues, &cfg);
         }
         if cfg.dunhao_detection {
-            self.scan_dunhao(text, excluded, &mut issues);
+            self.scan_dunhao(text, excluded, issues);
         }
         if cfg.range_normalization {
-            self.scan_range_indicators(text, excluded, &mut issues, &cfg);
+            self.scan_range_indicators(text, excluded, issues, &cfg);
         }
         if cfg.ellipsis_normalization {
-            scan_ellipsis(text, excluded, &mut issues);
+            scan_ellipsis(text, excluded, issues);
         }
         if cfg.basic_punctuation {
-            self.scan_cn_curly_quotes(text, excluded, &mut issues);
-            self.scan_spacing(text, excluded, &mut issues);
+            self.scan_cn_curly_quotes(text, excluded, issues);
+            self.scan_spacing(text, excluded, issues);
         }
         // Sort by offset, then by length (longer match first for same offset).
         issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(b.length.cmp(&a.length)));
 
         // Remove overlapping issues: longer match wins; on tie, higher severity
         // wins. Handles both same-offset and cross-offset overlaps.
-        resolve_overlaps(&mut issues);
+        overlap::resolve_overlaps_with_scratch(
+            issues,
+            overlap_order,
+            overlap_keep,
+            overlap_accepted,
+        );
+
+        // Inflate deferred spelling issues: fill in suggestions, context,
+        // english, context_clues from the compiled DB.  Only survivors
+        // of overlap resolution get the full clone cost.
+        rule_ir::inflate_spelling_issues(&self.spelling_db, text, issues);
 
         // Grammar checks run AFTER overlap resolution so broad grammar spans
         // (e.g. 是不是…嗎) do not suppress narrower spelling/case issues
         // that happen to fall inside the grammar match range.
         if cfg.grammar_checks {
-            grammar::scan_grammar(text, excluded, &mut issues);
+            grammar::scan_grammar(text, excluded, issues);
         }
 
         // AI writing detection grammar checks: semantic safety words,
         // copula avoidance, passive voice overuse.  Separate from base grammar
         // checks — gated by ai_semantic_safety profile flag.
         if cfg.ai_semantic_safety {
-            grammar::scan_ai_grammar(text, excluded, &mut issues);
+            grammar::scan_ai_grammar(text, excluded, issues);
         }
 
         // Structural AI pattern detection: binary contrast density,
         // paragraph endings, dash overuse, formulaic headings, list density.
         if cfg.ai_structural_patterns {
-            grammar::scan_ai_structural(text, excluded, &mut issues, cfg.ai_threshold_multiplier);
+            grammar::scan_ai_structural(text, excluded, issues, cfg.ai_threshold_multiplier);
         }
 
         // Density-based AI phrase detection: post-scan frequency pass counts
@@ -1101,18 +957,18 @@ impl Scanner {
         // exceeds per-phrase thresholds.  Distinct from per-occurrence filler
         // detection — catches the statistical signature of AI writing.
         if cfg.ai_density_detection {
-            grammar::scan_ai_density(text, excluded, &mut issues, cfg.ai_threshold_multiplier);
+            grammar::scan_ai_density(text, excluded, issues, cfg.ai_threshold_multiplier);
         }
 
         // Fix CN quotation mark pairing with depth-based nesting:
         // well-formed quotes use character-based depth tracking; misordered
         // or all-same-char quotes fall back to positional alternation.
         // Paragraph breaks reset nesting depth.
-        fix_quote_pairing(text, &mut issues);
+        fix_quote_pairing(text, issues);
 
         // Validate structural nesting of existing TW bracket quotes:
         // checks for mismatched, interleaved, and unclosed quotes per paragraph.
-        validate_quote_hierarchy(text, excluded, &mut issues);
+        validate_quote_hierarchy(text, excluded, issues);
 
         // Compute AI signature score when any AI detection flag is active.
         let ai_signature = if cfg.ai_filler_detection
@@ -1122,7 +978,7 @@ impl Scanner {
         {
             crate::engine::ai_score::compute_ai_score(
                 text,
-                &issues,
+                issues,
                 excluded,
                 cfg.ai_threshold_multiplier,
             )
@@ -1133,18 +989,10 @@ impl Scanner {
         // Skip O(n) line index construction when no issues found (common case).
         if issues.is_empty() {
             return ScanOutput {
-                issues,
+                issues: std::mem::take(issues),
                 detected_script: zh_type,
                 ai_signature,
             };
-        }
-
-        // Fill line/col coordinates from the pre-computed line index.
-        let line_index = LineIndex::new(text);
-        for issue in &mut issues {
-            let (line, col) = line_index.line_col(issue.offset, ColumnEncoding::Utf16);
-            issue.line = line;
-            issue.col = col;
         }
 
         // Deterministic output contract: issues are sorted by byte offset
@@ -1157,8 +1005,15 @@ impl Scanner {
                 .then(a.rule_type.sort_order().cmp(&b.rule_type.sort_order()))
         });
 
+        // Fill line/col coordinates AFTER the final sort so that the
+        // linear-pass cursor correctly advances through offset-sorted issues.
+        // Grammar/AI issues appended after overlap resolution are now in order.
+        if !cfg.offset_only {
+            line_index.fill_line_col_sorted(issues, ColumnEncoding::Utf16);
+        }
+
         ScanOutput {
-            issues,
+            issues: std::mem::take(issues),
             detected_script: zh_type,
             ai_signature,
         }
@@ -1169,6 +1024,7 @@ impl Scanner {
 
 #[cfg(test)]
 mod tests {
+    use super::overlap::resolve_overlaps;
     use super::*;
     use crate::rules::ruleset::RuleType;
 
@@ -1324,7 +1180,7 @@ mod tests {
     fn charwise_ac_is_built_for_cjk_patterns() {
         let scanner = Scanner::new(sample_spelling_rules(), vec![]);
         assert!(
-            scanner.spelling_ac_charwise.is_some(),
+            scanner.spelling_db.ac_charwise.is_some(),
             "charwise AC should be built for CJK-only patterns"
         );
     }
@@ -1364,7 +1220,7 @@ mod tests {
             SpellingRule::new("數據庫", vec!["資料庫".into()], RuleType::CrossStrait),
         ];
         let scanner = Scanner::new(rules, vec![]);
-        assert!(scanner.spelling_ac_charwise.is_some());
+        assert!(scanner.spelling_db.ac_charwise.is_some());
 
         let issues = scanner.scan("這個數據庫很大").issues;
         assert_eq!(issues.len(), 1);
@@ -1381,7 +1237,7 @@ mod tests {
             RuleType::Variant,
         )];
         let scanner = Scanner::new(rules, vec![]);
-        assert!(scanner.spelling_ac_charwise.is_some());
+        assert!(scanner.spelling_db.ac_charwise.is_some());
 
         let issues = scanner
             .scan_profiled("裏面有東西", Profile::StrictMoe)
@@ -1403,7 +1259,7 @@ mod tests {
             ),
         ];
         let scanner = Scanner::new(rules, vec![]);
-        assert!(scanner.spelling_ac_charwise.is_some());
+        assert!(scanner.spelling_db.ac_charwise.is_some());
 
         let issues = scanner.scan("查看IP地址和CPU使用率").issues;
         let spelling: Vec<_> = issues
@@ -1432,7 +1288,7 @@ mod tests {
             tags: None,
         }];
         let scanner = Scanner::new(rules, vec![]);
-        assert!(scanner.spelling_ac_charwise.is_some());
+        assert!(scanner.spelling_db.ac_charwise.is_some());
 
         // "下著" is an exception — should not fire.
         let issues = scanner.scan_profiled("下著棋", Profile::StrictMoe).issues;
@@ -1459,7 +1315,7 @@ mod tests {
             tags: None,
         }];
         let scanner = Scanner::new(rules, vec![]);
-        assert!(scanner.spelling_ac_charwise.is_some());
+        assert!(scanner.spelling_db.ac_charwise.is_some());
 
         // No context clue present — should NOT fire.
         let issues = scanner.scan("我支持你的決定").issues;
@@ -1491,7 +1347,7 @@ mod tests {
             tags: None,
         }];
         let scanner = Scanner::new(rules, vec![]);
-        assert!(scanner.spelling_ac_charwise.is_some());
+        assert!(scanner.spelling_db.ac_charwise.is_some());
 
         // No negative clue — should fire.
         let issues = scanner.scan("請卸載這個應用程式").issues;
@@ -1534,7 +1390,7 @@ mod tests {
             SpellingRule::new("數據結構", vec!["資料結構".into()], RuleType::CrossStrait),
         ];
         let scanner = Scanner::new(rules, vec![]);
-        assert!(scanner.spelling_ac_charwise.is_some());
+        assert!(scanner.spelling_db.ac_charwise.is_some());
 
         // Leftmost-longest: "數據結構" beats "數據" beats "數".
         let issues = scanner.scan("學習數據結構").issues;
@@ -1560,7 +1416,7 @@ mod tests {
             SpellingRule::new("開發", vec!["研發".into()], RuleType::CrossStrait),
         ];
         let scanner = Scanner::new(rules, vec![]);
-        assert!(scanner.spelling_ac_charwise.is_some());
+        assert!(scanner.spelling_db.ac_charwise.is_some());
 
         // "軟件開發" — both patterns match adjacently.
         let issues = scanner.scan("軟件開發很重要").issues;
@@ -1575,7 +1431,7 @@ mod tests {
         let ruleset = crate::rules::loader::load_embedded_ruleset().unwrap();
         let scanner = Scanner::new(ruleset.spelling_rules, ruleset.case_rules);
         assert!(
-            scanner.spelling_ac_charwise.is_some(),
+            scanner.spelling_db.ac_charwise.is_some(),
             "charwise AC should build for the full embedded ruleset"
         );
     }

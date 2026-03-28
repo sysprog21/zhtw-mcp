@@ -358,19 +358,20 @@ fn bench_post_scan_transforms(c: &mut Criterion) {
         let issues: Vec<Issue> = (0..count)
             .map(|i| {
                 let term = terms[i % terms.len()];
-                Issue {
-                    offset: i * 100,
-                    length: term.len(),
-                    line: i + 1,
-                    col: 1,
-                    found: term.to_string(),
-                    suggestions: vec!["替代".to_string()],
-                    rule_type: IssueType::CrossStrait,
-                    severity: Severity::Warning,
-                    context: Some("test context".to_string()),
-                    english: Some("term".to_string()),
-                    context_clues: None,
-                    anchor_match: None,
+                {
+                    let mut issue = Issue::new(
+                        i * 100,
+                        term.len(),
+                        term,
+                        vec!["替代".to_string()],
+                        IssueType::CrossStrait,
+                        Severity::Warning,
+                    );
+                    issue.line = i + 1;
+                    issue.col = 1;
+                    issue.context = Some("test context".to_string());
+                    issue.english = Some("term".to_string());
+                    issue
                 }
             })
             .collect();
@@ -476,6 +477,7 @@ fn bench_cpu_attribution_100kb(c: &mut Criterion) {
         ai_structural_patterns: false,
         ai_threshold_multiplier: 1.0,
         political_stance: PoliticalStance::RocCentric,
+        offset_only: false,
     };
 
     // Spelling-only config.
@@ -599,6 +601,22 @@ fn bench_cpu_attribution_100kb(c: &mut Criterion) {
                 sum += line + col;
             }
             black_box(sum);
+        });
+    });
+
+    // Stage 6: pure AC traversal (no eval, no sort, no overlap, no line/col).
+    // Measures the floor cost of the DAAC iteration itself.
+    group.bench_function("ac_traversal_only", |b| {
+        let ac = scanner
+            .ac_charwise()
+            .expect("charwise AC must be available for traversal benchmark");
+        b.iter(|| {
+            let mut count = 0usize;
+            for mat in ac.leftmost_find_iter(black_box(&text)) {
+                black_box(mat.value());
+                count += 1;
+            }
+            black_box(count);
         });
     });
 

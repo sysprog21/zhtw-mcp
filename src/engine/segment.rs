@@ -49,6 +49,64 @@ pub struct Token {
     pub in_dict: bool,
 }
 
+/// Pre-computed bitmap for word-boundary straddle resolution.
+///
+/// For each byte position, records whether any non-rule dictionary word
+/// crosses it, and (for crossed positions) the minimum byte start of any
+/// crossing word.  Both start and end boundary checks are answered
+/// directly from the bitmap -- no per-hit segmenter call needed.
+pub struct BoundaryBitmap {
+    /// `crossed[pos] == true` means some non-rule dict word straddles
+    /// byte position `pos`.
+    crossed: Vec<bool>,
+    /// For crossed positions: minimum start byte of any crossing word.
+    /// Used for exact end-boundary resolution without segmenter fallback.
+    /// `u32::MAX` sentinel means "not crossed".
+    min_cross_start: Vec<u32>,
+}
+
+impl BoundaryBitmap {
+    /// An empty bitmap where all lookups return false.
+    ///
+    /// Used for short texts where building the bitmap is not worth the cost
+    /// (the per-hit segmenter is called directly instead).
+    pub fn empty() -> Self {
+        Self {
+            crossed: Vec::new(),
+            min_cross_start: Vec::new(),
+        }
+    }
+
+    /// Whether the bitmap is empty (no precomputation done).
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.crossed.is_empty()
+    }
+
+    /// Whether any non-rule dictionary word crosses the start position.
+    /// This is an exact answer -- no segmenter fallback needed.
+    #[inline]
+    pub fn start_straddles(&self, pos: usize) -> bool {
+        pos < self.crossed.len() && self.crossed[pos]
+    }
+
+    /// Whether any non-rule dictionary word crosses the end position
+    /// with start <= match_start (i.e. the word starts outside the match).
+    /// This is an exact answer -- no segmenter fallback needed.
+    ///
+    /// Uses min_cross_start: if the earliest-starting crossing word
+    /// starts at or before match_start, at least one word violates the
+    /// boundary from outside. If all crossing words start after
+    /// match_start, they're inside the match (different segmentation).
+    #[inline]
+    pub fn end_straddles(&self, end: usize, match_start: usize) -> bool {
+        if end >= self.crossed.len() || !self.crossed[end] {
+            return false;
+        }
+        (self.min_cross_start[end] as usize) <= match_start
+    }
+}
+
 // Internal type: (char_length, freq_weight, in_dict).
 type ChunkWord = (usize, u32, bool);
 
@@ -377,6 +435,69 @@ impl Segmenter {
     pub fn match_straddles_word_boundary(&self, text: &str, start: usize, end: usize) -> bool {
         self.word_straddles_boundary(text, start)
             || self.word_straddles_boundary_with_limit(text, end, Some(start))
+    }
+
+    /// Pre-compute a [`BoundaryBitmap`] with exact straddle answers.
+    pub fn build_boundary_bitmap(&self, text: &str) -> BoundaryBitmap {
+        let chars: Vec<(usize, char)> = text.char_indices().collect();
+        self.build_boundary_bitmap_from_chars(text, &chars)
+    }
+
+    /// Like [`build_boundary_bitmap`] but reuses a pre-collected char index
+    /// to avoid a redundant `char_indices()` pass when the caller already has it.
+    pub fn build_boundary_bitmap_from_chars(
+        &self,
+        text: &str,
+        chars: &[(usize, char)],
+    ) -> BoundaryBitmap {
+        use super::scan::is_cjk_ideograph;
+
+        debug_assert!(
+            text.len() <= u32::MAX as usize,
+            "BoundaryBitmap uses u32 for byte positions; text exceeds 4GB"
+        );
+        let text_len = text.len();
+        let cap = text_len + 1;
+        let mut crossed = vec![false; cap];
+        let mut min_cross_start = vec![u32::MAX; cap];
+
+        let n = chars.len();
+
+        for i in 0..n {
+            let (start_byte, ch) = chars[i];
+            if !is_cjk_ideograph(ch) {
+                continue;
+            }
+
+            // Try extending forward 2..=max_word_len chars from this position.
+            let max_len = self.max_word_len.min(n - i);
+            for len in 2..=max_len {
+                let end_idx = i + len;
+                let end_byte = if end_idx < n {
+                    chars[end_idx].0
+                } else {
+                    text_len
+                };
+
+                let candidate = &text[start_byte..end_byte];
+                if self.dict.contains_key(candidate) && !self.rule_from_terms.contains(candidate) {
+                    let sb = start_byte as u32;
+                    // Mark all internal byte boundaries.
+                    for &(pos, _) in &chars[(i + 1)..end_idx.min(n)] {
+                        crossed[pos] = true;
+                        // Track minimum start byte (for exact end-boundary).
+                        if sb < min_cross_start[pos] {
+                            min_cross_start[pos] = sb;
+                        }
+                    }
+                }
+            }
+        }
+
+        BoundaryBitmap {
+            crossed,
+            min_cross_start,
+        }
     }
 
     /// Inner implementation of boundary straddling check, called after

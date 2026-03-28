@@ -826,12 +826,10 @@ fn cli_lint_detect_ai_enables_density_detection() {
     let stdout = String::from_utf8_lossy(&output_default.stdout);
     let json_default: serde_json::Value =
         serde_json::from_str(&stdout).expect("default output should be valid JSON");
-    let has_ai_density_default = json_default["issues"].as_array().map_or(false, |arr| {
+    let has_ai_density_default = json_default["issues"].as_array().is_some_and(|arr| {
         arr.iter().any(|i| {
             i["rule_type"] == "ai_style"
-                && i["context"]
-                    .as_str()
-                    .map_or(false, |c| c.contains("次/千字"))
+                && i["context"].as_str().is_some_and(|c| c.contains("次/千字"))
         })
     });
     assert!(
@@ -844,12 +842,10 @@ fn cli_lint_detect_ai_enables_density_detection() {
     let stdout_ai = String::from_utf8_lossy(&output_ai.stdout);
     let json_ai: serde_json::Value =
         serde_json::from_str(&stdout_ai).expect("--detect-ai output should be valid JSON");
-    let has_ai_density = json_ai["issues"].as_array().map_or(false, |arr| {
+    let has_ai_density = json_ai["issues"].as_array().is_some_and(|arr| {
         arr.iter().any(|i| {
             i["rule_type"] == "ai_style"
-                && i["context"]
-                    .as_str()
-                    .map_or(false, |c| c.contains("次/千字"))
+                && i["context"].as_str().is_some_and(|c| c.contains("次/千字"))
         })
     });
     assert!(

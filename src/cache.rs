@@ -69,10 +69,12 @@ struct CacheEntry {
 }
 
 /// Persistent scan cache backed by a JSON file.
+/// Entries are loaded lazily on first access to avoid upfront I/O
+/// and deserialization cost when all files are new/modified.
 #[derive(Debug)]
 pub struct ScanCache {
     path: PathBuf,
-    entries: HashMap<String, CacheEntry>,
+    entries: Option<HashMap<String, CacheEntry>>,
     ttl_secs: u64,
     dirty: bool,
 }
@@ -108,27 +110,50 @@ impl ScanCache {
     }
 
     /// Open (or create) the scan cache at a specific path.
+    /// Entries are NOT loaded until the first lookup; this avoids
+    /// deserializing 2000 entries when all files are cache-misses.
     pub fn open(path: PathBuf) -> Self {
-        let entries = load_entries(&path, DEFAULT_TTL_SECS);
         ScanCache {
             path,
-            entries,
+            entries: None,
             ttl_secs: DEFAULT_TTL_SECS,
             dirty: false,
         }
     }
 
+    /// Ensure entries are loaded from disk (lazy initialization).
+    fn ensure_loaded(&mut self) {
+        if self.entries.is_none() {
+            self.entries = Some(load_entries(&self.path, self.ttl_secs));
+        }
+    }
+
+    /// Get a reference to entries, loading if necessary.
+    fn entries(&mut self) -> &HashMap<String, CacheEntry> {
+        self.ensure_loaded();
+        self.entries.as_ref().unwrap()
+    }
+
+    /// Get a mutable reference to entries, loading if necessary.
+    fn entries_mut(&mut self) -> &mut HashMap<String, CacheEntry> {
+        self.ensure_loaded();
+        self.entries.as_mut().unwrap()
+    }
+
     /// Fast-path lookup using filesystem metadata (mtime + size).
     /// Avoids reading the file when metadata matches.
     pub fn check_fast(
-        &self,
+        &mut self,
         file_path: &str,
         mtime_secs: u64,
         size: u64,
         params: &ScanParams,
     ) -> CacheResult {
-        if let Some(entry) = self.entries.get(&fast_key(file_path, params)) {
-            if now_secs().saturating_sub(entry.timestamp_secs) <= self.ttl_secs
+        let ttl = self.ttl_secs;
+        self.ensure_loaded();
+        let entries = self.entries.as_ref().unwrap();
+        if let Some(entry) = entries.get(&fast_key(file_path, params)) {
+            if now_secs().saturating_sub(entry.timestamp_secs) <= ttl
                 && entry.file_meta.mtime_secs == mtime_secs
                 && entry.file_meta.size == size
             {
@@ -145,13 +170,14 @@ impl ScanCache {
     /// Returns cached output if content hash matches (mtime changed but
     /// content didn't, e.g. after `touch`).
     pub fn check_content(
-        &self,
+        &mut self,
         file_path: &str,
         content: &[u8],
         params: &ScanParams,
     ) -> Option<CacheHit> {
-        let entry = self.entries.get(&fast_key(file_path, params))?;
-        if now_secs().saturating_sub(entry.timestamp_secs) > self.ttl_secs {
+        let ttl = self.ttl_secs;
+        let entry = self.entries().get(&fast_key(file_path, params))?;
+        if now_secs().saturating_sub(entry.timestamp_secs) > ttl {
             return None;
         }
         (entry.content_hash == blake3_hex(content)).then(|| CacheHit {
@@ -172,7 +198,7 @@ impl ScanCache {
         output: ScanOutput,
         input_was_sc: bool,
     ) {
-        self.entries.insert(
+        self.entries_mut().insert(
             fast_key(file_path, params),
             CacheEntry {
                 file_path: file_path.to_owned(),
@@ -196,23 +222,24 @@ impl ScanCache {
         if !self.dirty {
             return;
         }
+        self.ensure_loaded();
+        let entries = self.entries.as_mut().unwrap();
+
         // Prune expired entries.
         let now = now_secs();
         let ttl = self.ttl_secs;
-        self.entries
-            .retain(|_, e| now.saturating_sub(e.timestamp_secs) <= ttl);
+        entries.retain(|_, e| now.saturating_sub(e.timestamp_secs) <= ttl);
 
         // Evict oldest entries if over the cap.
-        if self.entries.len() > MAX_ENTRIES {
-            let mut by_time: Vec<(String, u64)> = self
-                .entries
+        if entries.len() > MAX_ENTRIES {
+            let mut by_time: Vec<(String, u64)> = entries
                 .iter()
                 .map(|(k, e)| (k.clone(), e.timestamp_secs))
                 .collect();
             by_time.sort_by_key(|(_, ts)| *ts);
-            let to_remove = self.entries.len() - MAX_ENTRIES;
+            let to_remove = entries.len() - MAX_ENTRIES;
             for (k, _) in by_time.into_iter().take(to_remove) {
-                self.entries.remove(&k);
+                entries.remove(&k);
             }
         }
 
@@ -221,7 +248,7 @@ impl ScanCache {
         };
         let _ = std::fs::create_dir_all(parent);
 
-        let entries_vec: Vec<&CacheEntry> = self.entries.values().collect();
+        let entries_vec: Vec<&CacheEntry> = entries.values().collect();
         let Ok(bytes) = serde_json::to_vec(&entries_vec) else {
             return;
         };
@@ -501,7 +528,7 @@ mod tests {
             cache.flush();
         }
 
-        let cache = ScanCache::open(path);
+        let mut cache = ScanCache::open(path);
         assert!(matches!(
             cache.check_fast("f.md", 100, 1, &p),
             CacheResult::Hit(_)
@@ -514,7 +541,7 @@ mod tests {
         let mut cache = ScanCache::open(dir.path().join("c.bin"));
         let p = test_params_plain();
         cache.put("e.md", b"x", 100, 1, &p, empty_output(), false);
-        for entry in cache.entries.values_mut() {
+        for entry in cache.entries_mut().values_mut() {
             entry.timestamp_secs = 0;
         }
         assert!(matches!(
@@ -533,13 +560,13 @@ mod tests {
             let name = format!("file_{i}.md");
             cache.put(&name, b"x", 100, 1, &p, empty_output(), false);
             let key = fast_key(&name, &p);
-            if let Some(e) = cache.entries.get_mut(&key) {
+            if let Some(e) = cache.entries_mut().get_mut(&key) {
                 e.timestamp_secs = i as u64 + 1_700_000_000;
             }
         }
 
-        assert!(cache.entries.len() > MAX_ENTRIES);
+        assert!(cache.entries().len() > MAX_ENTRIES);
         cache.flush();
-        assert!(cache.entries.len() <= MAX_ENTRIES);
+        assert!(cache.entries().len() <= MAX_ENTRIES);
     }
 }

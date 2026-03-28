@@ -65,6 +65,9 @@ pub struct ProfileConfig {
     pub ai_threshold_multiplier: f32,
     /// Political stance sub-profile. Controls which PoliticalColoring rules fire.
     pub political_stance: PoliticalStance,
+    /// When true, skip line/col computation (byte offsets only).
+    /// Used by MCP tool which consumes offsets directly.
+    pub offset_only: bool,
 }
 
 impl ProfileConfig {
@@ -124,6 +127,7 @@ impl Profile {
                 ai_structural_patterns: false,
                 ai_threshold_multiplier: 1.0,
                 political_stance: PoliticalStance::RocCentric,
+                offset_only: false,
             },
             Profile::StrictMoe => ProfileConfig {
                 spelling: true,
@@ -142,6 +146,7 @@ impl Profile {
                 ai_structural_patterns: false,
                 ai_threshold_multiplier: 1.0,
                 political_stance: PoliticalStance::RocCentric,
+                offset_only: false,
             },
             Profile::UiStrings => ProfileConfig {
                 spelling: true,
@@ -160,6 +165,7 @@ impl Profile {
                 ai_structural_patterns: false,
                 ai_threshold_multiplier: 1.0,
                 political_stance: PoliticalStance::RocCentric,
+                offset_only: false,
             },
             // Editorial: base rules + all AI writing artifact detection.
             // Targets discourse-level patterns overrepresented in LLM output.
@@ -180,6 +186,7 @@ impl Profile {
                 ai_structural_patterns: true,
                 ai_threshold_multiplier: 1.0,
                 political_stance: PoliticalStance::RocCentric,
+                offset_only: false,
             },
         }
     }
@@ -490,6 +497,12 @@ pub struct Issue {
     /// `None`: calibration not attempted or API failure (no signal).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor_match: Option<bool>,
+    /// Internal: deferred spelling rule index for lazy issue inflation.
+    /// When Some, suggestions/context/english/context_clues are empty
+    /// placeholders that must be inflated from the compiled DB after
+    /// overlap resolution.
+    #[serde(skip)]
+    pub(crate) spelling_rule_idx: Option<usize>,
 }
 
 impl Issue {
@@ -516,6 +529,7 @@ impl Issue {
             english: None,
             context_clues: None,
             anchor_match: None,
+            spelling_rule_idx: None,
         }
     }
 

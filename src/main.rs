@@ -572,6 +572,104 @@ enum LintFormat {
     Tabular,
 }
 
+// Typed output structs for direct serialization (no Value tree allocation).
+
+#[derive(serde::Serialize)]
+struct CliFileOutput {
+    file: String,
+    detected_script: String,
+    issues: Vec<zhtw_mcp::rules::ruleset::Issue>,
+    total: usize,
+    errors: usize,
+    warnings: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tm_suppressed: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fixes_applied: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fixes_skipped: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ai_signature: Option<zhtw_mcp::engine::ai_score::AiSignatureReport>,
+}
+
+#[derive(serde::Serialize)]
+struct SarifDocument<'a> {
+    #[serde(rename = "$schema")]
+    schema: &'static str,
+    version: &'static str,
+    runs: [SarifRun<'a>; 1],
+}
+
+#[derive(serde::Serialize)]
+struct SarifRun<'a> {
+    tool: SarifTool,
+    results: &'a [SarifResult],
+}
+
+#[derive(serde::Serialize)]
+struct SarifTool {
+    driver: SarifDriver,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifDriver {
+    name: &'static str,
+    version: &'static str,
+    information_uri: &'static str,
+    rules: Vec<SarifRuleDef>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifRuleDef {
+    id: String,
+    short_description: SarifMessage,
+}
+
+#[derive(serde::Serialize)]
+struct SarifMessage {
+    text: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifResult {
+    rule_id: String,
+    level: &'static str,
+    message: SarifMessage,
+    locations: [SarifLocation; 1],
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifLocation {
+    physical_location: SarifPhysicalLocation,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifPhysicalLocation {
+    artifact_location: SarifArtifactLocation,
+    region: SarifRegion,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifArtifactLocation {
+    uri: String,
+    uri_base_id: &'static str,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifRegion {
+    start_line: usize,
+    start_column: usize,
+    byte_offset: usize,
+    byte_length: usize,
+}
+
 struct LintBatchParams<'a> {
     file_args: &'a [String],
     format: LintFormat,
@@ -662,9 +760,9 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
     let multi = resolved.len() > 1;
     let mut total_errors: usize = 0;
     let mut total_warnings: usize = 0;
-    let mut all_file_results: Vec<serde_json::Value> = Vec::new();
-    let mut sarif_results: Vec<serde_json::Value> = Vec::new();
-    let mut sarif_rules: std::collections::BTreeMap<String, serde_json::Value> =
+    let mut all_file_results: Vec<CliFileOutput> = Vec::new();
+    let mut sarif_results: Vec<SarifResult> = Vec::new();
+    let mut sarif_rules: std::collections::BTreeMap<String, SarifRuleDef> =
         std::collections::BTreeMap::new();
 
     // Load baseline if provided.
@@ -732,7 +830,7 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
 
             // Fast-path: check mtime+size before reading the file.
             let fast_hit = scan_cache.as_ref().and_then(|mtx| {
-                let c = mtx.lock().ok()?;
+                let mut c = mtx.lock().ok()?;
                 let mtime = zhtw_mcp::cache::mtime_secs(&meta);
                 c.check_fast(file_arg, mtime, meta.len(), &cache_params)
                     .into_hit()
@@ -760,7 +858,7 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
             // Slow-path cache: check content hash (mtime missed but content
             // may be unchanged, e.g. after `touch`).
             let content_hit = scan_cache.as_ref().and_then(|mtx| {
-                let c = mtx.lock().ok()?;
+                let mut c = mtx.lock().ok()?;
                 c.check_content(file_arg, text.as_bytes(), &cache_params)
             });
             let output = match content_hit {
@@ -1026,24 +1124,22 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
 
         match params.format {
             LintFormat::Json => {
-                let mut output = serde_json::json!({
-                    "file": file_arg,
-                    "detected_script": detected_script,
-                    "issues": report_issues,
-                    "total": report_issues.len(),
-                    "errors": error_count,
-                    "warnings": warning_count,
-                });
-                if tm_suppressed > 0 {
-                    output["tm_suppressed"] = serde_json::json!(tm_suppressed);
-                }
-                if let Some(ref fix) = fix_result {
-                    output["fixes_applied"] = serde_json::json!(fix.applied);
-                    output["fixes_skipped"] = serde_json::json!(fix.skipped);
-                }
-                if let Some(ref sig) = ai_signature {
-                    output["ai_signature"] = serde_json::json!(sig);
-                }
+                let output = CliFileOutput {
+                    file: file_arg.clone(),
+                    detected_script: detected_script.to_string(),
+                    total: report_issues.len(),
+                    issues: report_issues.clone(),
+                    errors: error_count,
+                    warnings: warning_count,
+                    tm_suppressed: if tm_suppressed > 0 {
+                        Some(tm_suppressed)
+                    } else {
+                        None
+                    },
+                    fixes_applied: fix_result.as_ref().map(|f| f.applied),
+                    fixes_skipped: fix_result.as_ref().map(|f| f.skipped),
+                    ai_signature: ai_signature.clone(),
+                };
                 if multi {
                     all_file_results.push(output);
                 } else {
@@ -1305,15 +1401,14 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
                         zhtw_mcp::rules::ruleset::Severity::Info => "note",
                     };
 
-                    // Register rule if not yet seen.
-                    sarif_rules.entry(rule_id.clone()).or_insert_with(|| {
-                        serde_json::json!({
-                            "id": rule_id,
-                            "shortDescription": {
-                                "text": format!("{rule_name} check")
-                            }
-                        })
-                    });
+                    sarif_rules
+                        .entry(rule_id.clone())
+                        .or_insert_with(|| SarifRuleDef {
+                            id: rule_id.clone(),
+                            short_description: SarifMessage {
+                                text: format!("{rule_name} check"),
+                            },
+                        });
 
                     let sugg_text =
                         if issue.suggestions.len() == 1 && issue.suggestions[0].is_empty() {
@@ -1321,27 +1416,28 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
                         } else {
                             issue.suggestions.join(", ")
                         };
-                    let message = format!("'{}' -> {}", issue.found, sugg_text);
 
-                    sarif_results.push(serde_json::json!({
-                        "ruleId": rule_id,
-                        "level": level,
-                        "message": { "text": message },
-                        "locations": [{
-                            "physicalLocation": {
-                                "artifactLocation": {
-                                    "uri": file_arg,
-                                    "uriBaseId": "%SRCROOT%"
+                    sarif_results.push(SarifResult {
+                        rule_id,
+                        level,
+                        message: SarifMessage {
+                            text: format!("'{}' -> {sugg_text}", issue.found),
+                        },
+                        locations: [SarifLocation {
+                            physical_location: SarifPhysicalLocation {
+                                artifact_location: SarifArtifactLocation {
+                                    uri: file_arg.to_string(),
+                                    uri_base_id: "%SRCROOT%",
                                 },
-                                "region": {
-                                    "startLine": issue.line,
-                                    "startColumn": issue.col,
-                                    "byteOffset": issue.offset,
-                                    "byteLength": issue.length
-                                }
-                            }
-                        }]
-                    }));
+                                region: SarifRegion {
+                                    start_line: issue.line,
+                                    start_column: issue.col,
+                                    byte_offset: issue.offset,
+                                    byte_length: issue.length,
+                                },
+                            },
+                        }],
+                    });
                 }
             }
         }
@@ -1377,21 +1473,21 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
 
     // SARIF: emit the complete SARIF v2.1.0 document.
     if matches!(params.format, LintFormat::Sarif) {
-        let sarif = serde_json::json!({
-            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
-            "version": "2.1.0",
-            "runs": [{
-                "tool": {
-                    "driver": {
-                        "name": "zhtw-mcp",
-                        "version": env!("CARGO_PKG_VERSION"),
-                        "informationUri": "https://github.com/aspect-build/zhtw-mcp",
-                        "rules": sarif_rules.values().collect::<Vec<_>>()
-                    }
+        let sarif = SarifDocument {
+            schema: "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+            version: "2.1.0",
+            runs: [SarifRun {
+                tool: SarifTool {
+                    driver: SarifDriver {
+                        name: "zhtw-mcp",
+                        version: env!("CARGO_PKG_VERSION"),
+                        information_uri: "https://github.com/aspect-build/zhtw-mcp",
+                        rules: sarif_rules.into_values().collect(),
+                    },
                 },
-                "results": sarif_results
-            }]
-        });
+                results: &sarif_results,
+            }],
+        };
         println!("{}", serde_json::to_string_pretty(&sarif)?);
     }
 

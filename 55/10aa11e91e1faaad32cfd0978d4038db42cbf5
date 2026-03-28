@@ -1,0 +1,27 @@
+src/engine/scan/rule_ir.rs
+  61bacf9655609faf 758-762,776-788
+src/engine/scan/mod.rs
+  61bacf9655609faf 635-670
+benches/scanner.rs
+  61bacf9655609faf 665-668
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "5510aa11e91e1faaad32cfd0978d4038db42cbf5",
+  "prompts": {
+    "61bacf9655609faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8e930a3c-fb9f-4556-b62b-54cbd5867a37",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 40,
+      "total_deletions": 6,
+      "accepted_lines": 58,
+      "overriden_lines": 0
+    }
+  }
+}

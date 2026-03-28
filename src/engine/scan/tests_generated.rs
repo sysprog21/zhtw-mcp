@@ -37,13 +37,13 @@
         let issues = scanner.scan("這個數據庫很大").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "數據庫");
-        assert_eq!(issues[0].suggestions, vec!["資料庫"]);
+        assert_eq!(issues[0].suggestions[..], vec!["資料庫"]);
 
         // Bare "數據" without "庫" should still match the shorter pattern.
         let issues = scanner.scan("這些數據很重要").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "數據");
-        assert_eq!(issues[0].suggestions, vec!["資料"]);
+        assert_eq!(issues[0].suggestions[..], vec!["資料"]);
     }
 
     #[test]
@@ -122,7 +122,7 @@
         let issues = scanner.scan("這個算法很好用").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "算法");
-        assert_eq!(issues[0].suggestions, vec!["演算法"]);
+        assert_eq!(issues[0].suggestions[..], vec!["演算法"]);
     }
 
     #[test]
@@ -173,9 +173,9 @@
         let issues = scanner.scan("他說\u{201c}你好\u{201d}").issues;
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].found, "\u{201c}");
-        assert_eq!(issues[0].suggestions, vec!["\u{300c}"]);
+        assert_eq!(issues[0].suggestions[..], vec!["\u{300c}"]);
         assert_eq!(issues[1].found, "\u{201d}");
-        assert_eq!(issues[1].suggestions, vec!["\u{300d}"]);
+        assert_eq!(issues[1].suggestions[..], vec!["\u{300d}"]);
     }
 
     #[test]
@@ -185,8 +185,8 @@
         let scanner = Scanner::new(quote_rules(), vec![]);
         let issues = scanner.scan("他說\u{201c}你好\u{201c}").issues;
         assert_eq!(issues.len(), 2);
-        assert_eq!(issues[0].suggestions, vec!["\u{300c}"]);
-        assert_eq!(issues[1].suggestions, vec!["\u{300d}"]);
+        assert_eq!(issues[0].suggestions[..], vec!["\u{300c}"]);
+        assert_eq!(issues[1].suggestions[..], vec!["\u{300d}"]);
     }
 
     #[test]
@@ -196,8 +196,8 @@
         let scanner = Scanner::new(quote_rules(), vec![]);
         let issues = scanner.scan("他說\u{201d}你好\u{201d}").issues;
         assert_eq!(issues.len(), 2);
-        assert_eq!(issues[0].suggestions, vec!["\u{300c}"]);
-        assert_eq!(issues[1].suggestions, vec!["\u{300d}"]);
+        assert_eq!(issues[0].suggestions[..], vec!["\u{300c}"]);
+        assert_eq!(issues[1].suggestions[..], vec!["\u{300d}"]);
     }
 
     #[test]
@@ -206,7 +206,7 @@
         let scanner = Scanner::new(quote_rules(), vec![]);
         let issues = scanner.scan("他說\u{201c}你好").issues;
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].suggestions, vec!["\u{300c}"]);
+        assert_eq!(issues[0].suggestions[..], vec!["\u{300c}"]);
     }
 
     #[test]
@@ -216,8 +216,8 @@
         let scanner = Scanner::new(quote_rules(), vec![]);
         let issues = scanner.scan("他說\u{201d}你好\u{201c}").issues;
         assert_eq!(issues.len(), 2);
-        assert_eq!(issues[0].suggestions, vec!["\u{300c}"]);
-        assert_eq!(issues[1].suggestions, vec!["\u{300d}"]);
+        assert_eq!(issues[0].suggestions[..], vec!["\u{300c}"]);
+        assert_eq!(issues[1].suggestions[..], vec!["\u{300d}"]);
     }
 
     #[test]
@@ -355,7 +355,7 @@
         let issues = scanner.scan("你好, 世界").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, ",");
-        assert_eq!(issues[0].suggestions, vec!["，"]);
+        assert_eq!(issues[0].suggestions[..], vec!["，"]);
         assert_eq!(issues[0].rule_type, IssueType::Punctuation);
     }
 
@@ -395,7 +395,7 @@
         let issues = scanner.scan("這是句子.").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, ".");
-        assert_eq!(issues[0].suggestions, vec!["。"]);
+        assert_eq!(issues[0].suggestions[..], vec!["。"]);
         assert_eq!(issues[0].rule_type, IssueType::Punctuation);
     }
 
@@ -435,7 +435,7 @@
         let issues = scanner.scan("等一下...").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "...");
-        assert_eq!(issues[0].suggestions, vec!["……"]);
+        assert_eq!(issues[0].suggestions[..], vec!["……"]);
         // 2 dots is not enough for ellipsis detection.
         assert!(scanner.scan("等一下..").issues.is_empty());
     }
@@ -487,7 +487,7 @@
         let issues = scanner.scan("他說「你好」.").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, ".");
-        assert_eq!(issues[0].suggestions, vec!["。"]);
+        assert_eq!(issues[0].suggestions[..], vec!["。"]);
     }
 
     #[test]
@@ -551,7 +551,7 @@
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, ",");
         assert_eq!(issues[0].offset, 0);
-        assert_eq!(issues[0].suggestions, vec!["，"]);
+        assert_eq!(issues[0].suggestions[..], vec!["，"]);
     }
 
     #[test]
@@ -574,7 +574,7 @@
         let issues = scanner.scan("你好.").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, ".");
-        assert_eq!(issues[0].suggestions, vec!["。"]);
+        assert_eq!(issues[0].suggestions[..], vec!["。"]);
     }
 
     #[test]
@@ -584,7 +584,7 @@
         let issues = scanner.scan("你好....").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "....");
-        assert_eq!(issues[0].suggestions, vec!["……"]);
+        assert_eq!(issues[0].suggestions[..], vec!["……"]);
     }
 
     #[test]
@@ -596,7 +596,7 @@
         let issues = scanner.scan("你好.(").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, ".");
-        assert_eq!(issues[0].suggestions, vec!["。"]);
+        assert_eq!(issues[0].suggestions[..], vec!["。"]);
     }
 
     #[test]
@@ -624,7 +624,7 @@
         assert_eq!(issues.len(), 3);
         let comma: Vec<_> = issues.iter().filter(|i| i.found == ",").collect();
         assert_eq!(comma.len(), 1);
-        assert_eq!(comma[0].suggestions, vec!["，"]);
+        assert_eq!(comma[0].suggestions[..], vec!["，"]);
     }
 
     #[test]
@@ -650,7 +650,7 @@
         let issues = scanner.scan("，.").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, ".");
-        assert_eq!(issues[0].suggestions, vec!["。"]);
+        assert_eq!(issues[0].suggestions[..], vec!["。"]);
     }
 
     #[test]
@@ -691,7 +691,7 @@
         let issues = scanner.scan("你好.\n再見").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, ".");
-        assert_eq!(issues[0].suggestions, vec!["。"]);
+        assert_eq!(issues[0].suggestions[..], vec!["。"]);
     }
 
     #[test]
@@ -918,7 +918,7 @@
             "half-width ! after CJK should be flagged"
         );
         let exc = issues.iter().find(|i| i.found == "!").unwrap();
-        assert_eq!(exc.suggestions, vec!["！"]);
+        assert_eq!(exc.suggestions[..], vec!["！"]);
     }
 
     #[test]
@@ -937,7 +937,7 @@
         let scanner = Scanner::new(vec![], vec![]);
         let issues = scanner.scan("你好嗎?").issues;
         let q = issues.iter().find(|i| i.found == "?").unwrap();
-        assert_eq!(q.suggestions, vec!["？"]);
+        assert_eq!(q.suggestions[..], vec!["？"]);
     }
 
     #[test]
@@ -955,7 +955,7 @@
         let scanner = Scanner::new(vec![], vec![]);
         let issues = scanner.scan("前者;後者").issues;
         let s = issues.iter().find(|i| i.found == ";").unwrap();
-        assert_eq!(s.suggestions, vec!["；"]);
+        assert_eq!(s.suggestions[..], vec!["；"]);
     }
 
     #[test]
@@ -1024,8 +1024,8 @@
         let issues = scanner.scan("對於核心應該有多\"大\"").issues;
         let quotes: Vec<_> = issues.iter().filter(|i| i.found == "\"").collect();
         assert_eq!(quotes.len(), 2, "ASCII quotes in CJK prose should be flagged");
-        assert_eq!(quotes[0].suggestions, vec!["「"]);
-        assert_eq!(quotes[1].suggestions, vec!["」"]);
+        assert_eq!(quotes[0].suggestions[..], vec!["「"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["」"]);
         assert!(quotes.iter().all(|i| i.rule_type == IssueType::Punctuation));
     }
 
@@ -1067,8 +1067,8 @@
         let issues = scanner.scan("他說\"hello\"").issues;
         let quotes: Vec<_> = issues.iter().filter(|i| i.found == "\"").collect();
         assert_eq!(quotes.len(), 2, "ASCII quotes around English word in CJK should be flagged");
-        assert_eq!(quotes[0].suggestions, vec!["「"]);
-        assert_eq!(quotes[1].suggestions, vec!["」"]);
+        assert_eq!(quotes[0].suggestions[..], vec!["「"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["」"]);
     }
 
     // Full-width colon
@@ -1078,7 +1078,7 @@
         let scanner = Scanner::new(vec![], vec![]);
         let issues = scanner.scan("標題:內容").issues;
         let c = issues.iter().find(|i| i.found == ":").unwrap();
-        assert_eq!(c.suggestions, vec!["："]);
+        assert_eq!(c.suggestions[..], vec!["："]);
     }
 
     #[test]
@@ -1210,8 +1210,8 @@
         let scanner = Scanner::new(rules, vec![]);
         let issues = scanner.scan("他說\u{201c}你好\u{201d}").issues;
         assert_eq!(issues.len(), 2);
-        assert_eq!(issues[0].suggestions, vec!["\u{300c}"]);
-        assert_eq!(issues[1].suggestions, vec!["\u{300d}"]);
+        assert_eq!(issues[0].suggestions[..], vec!["\u{300c}"]);
+        assert_eq!(issues[1].suggestions[..], vec!["\u{300d}"]);
     }
 
     #[test]
@@ -1318,9 +1318,9 @@
         let issues = scanner.scan("他說\u{201c}你好\u{201d}").issues;
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].found, "\u{201c}");
-        assert_eq!(issues[0].suggestions, vec!["\u{300c}"]); // 「
+        assert_eq!(issues[0].suggestions[..], vec!["\u{300c}"]); // 「
         assert_eq!(issues[1].found, "\u{201d}");
-        assert_eq!(issues[1].suggestions, vec!["\u{300d}"]); // 」
+        assert_eq!(issues[1].suggestions[..], vec!["\u{300d}"]); // 」
     }
 
     #[test]
@@ -1330,9 +1330,9 @@
         let issues = scanner.scan("他說\u{2018}你好\u{2019}").issues;
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].found, "\u{2018}");
-        assert_eq!(issues[0].suggestions, vec!["\u{300e}"]); // 『
+        assert_eq!(issues[0].suggestions[..], vec!["\u{300e}"]); // 『
         assert_eq!(issues[1].found, "\u{2019}");
-        assert_eq!(issues[1].suggestions, vec!["\u{300f}"]); // 』
+        assert_eq!(issues[1].suggestions[..], vec!["\u{300f}"]); // 』
     }
 
     #[test]
@@ -1359,9 +1359,9 @@
         // Outer double → 「/」, inner single → 『/』
         assert_eq!(issues[0].found, "\u{201c}");
         assert_eq!(issues[1].found, "\u{2018}");
-        assert_eq!(issues[1].suggestions, vec!["\u{300e}"]); // 『
+        assert_eq!(issues[1].suggestions[..], vec!["\u{300e}"]); // 『
         assert_eq!(issues[2].found, "\u{2019}");
-        assert_eq!(issues[2].suggestions, vec!["\u{300f}"]); // 』
+        assert_eq!(issues[2].suggestions[..], vec!["\u{300f}"]); // 』
         assert_eq!(issues[3].found, "\u{201d}");
     }
 
@@ -1481,7 +1481,7 @@
         let issues = scanner.scan("第一~第五").issues;
         let tilde: Vec<_> = issues.iter().filter(|i| i.found == "~").collect();
         assert!(!tilde.is_empty(), "~ between CJK should be flagged");
-        assert_eq!(tilde[0].suggestions, vec!["～"]); // Default profile → wave dash
+        assert_eq!(tilde[0].suggestions[..], vec!["～"]); // Default profile → wave dash
     }
 
     #[test]
@@ -1502,7 +1502,7 @@
             .issues;
         let tilde: Vec<_> = issues.iter().filter(|i| i.found == "~").collect();
         assert!(!tilde.is_empty(), "~ should still be flagged in UiStrings");
-        assert_eq!(tilde[0].suggestions, vec!["\u{2013}"]); // en dash
+        assert_eq!(tilde[0].suggestions[..], vec!["\u{2013}"]); // en dash
     }
 
     #[test]
@@ -1577,7 +1577,7 @@
         let issues = scanner.scan_profiled(text, Profile::StrictMoe).issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "裏");
-        assert_eq!(issues[0].suggestions, vec!["裡"]);
+        assert_eq!(issues[0].suggestions[..], vec!["裡"]);
         assert_eq!(issues[0].rule_type, IssueType::Variant);
         assert_eq!(issues[0].severity, Severity::Warning);
     }
@@ -1654,9 +1654,9 @@
         let issues = scanner.scan_profiled(text, Profile::StrictMoe).issues;
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].found, "台灣");
-        assert_eq!(issues[0].suggestions, vec!["臺灣"]);
+        assert_eq!(issues[0].suggestions[..], vec!["臺灣"]);
         assert_eq!(issues[1].found, "台北");
-        assert_eq!(issues[1].suggestions, vec!["臺北"]);
+        assert_eq!(issues[1].suggestions[..], vec!["臺北"]);
     }
 
     #[test]
@@ -1759,7 +1759,7 @@
         let issues = scanner.scan_profiled(text, Profile::UiStrings).issues;
         let tilde: Vec<_> = issues.iter().filter(|i| i.found == "~").collect();
         assert!(!tilde.is_empty());
-        assert_eq!(tilde[0].suggestions, vec!["–"]); // en dash
+        assert_eq!(tilde[0].suggestions[..], vec!["–"]); // en dash
     }
 
     #[test]
@@ -1769,7 +1769,7 @@
         let issues = scanner.scan_profiled(text, Profile::Default).issues;
         let tilde: Vec<_> = issues.iter().filter(|i| i.found == "~").collect();
         assert!(!tilde.is_empty());
-        assert_eq!(tilde[0].suggestions, vec!["～"]); // wave dash
+        assert_eq!(tilde[0].suggestions[..], vec!["～"]); // wave dash
     }
 
     #[test]
@@ -1804,7 +1804,7 @@
         let issues = scanner.scan("等一下。。。再說").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "。。。");
-        assert_eq!(issues[0].suggestions, vec!["……"]);
+        assert_eq!(issues[0].suggestions[..], vec!["……"]);
     }
 
     #[test]
@@ -1813,7 +1813,7 @@
         let issues = scanner.scan("等一下…再說").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "\u{2026}");
-        assert_eq!(issues[0].suggestions, vec!["……"]);
+        assert_eq!(issues[0].suggestions[..], vec!["……"]);
         assert_eq!(issues[0].severity, Severity::Info);
     }
 

@@ -166,7 +166,7 @@ fn ir_cross_strait_fires() {
     let out = scanner.scan("這個程序有問題");
     assert_eq!(out.issues.len(), 1, "cross-strait rule should fire");
     assert_eq!(out.issues[0].found, "程序");
-    assert_eq!(out.issues[0].suggestions, vec!["程式"]);
+    assert_eq!(out.issues[0].suggestions[..], vec!["程式"]);
 }
 
 // ---------------------------------------------------------------------------

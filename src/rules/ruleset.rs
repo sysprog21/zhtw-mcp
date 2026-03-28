@@ -474,8 +474,9 @@ pub struct Issue {
     pub col: usize,
     /// The matched (wrong) text.
     pub found: String,
-    /// Suggested replacements.
-    pub suggestions: Vec<String>,
+    /// Suggested replacements.  Arc avoids per-issue allocation during
+    /// inflate — most issues share suggestions with their source rule.
+    pub suggestions: std::sync::Arc<[String]>,
     /// Classification of the triggering rule.
     pub rule_type: IssueType,
     /// Severity level.
@@ -522,7 +523,7 @@ impl Issue {
             line: 0,
             col: 0,
             found: found.into(),
-            suggestions,
+            suggestions: suggestions.into(),
             rule_type,
             severity,
             context: None,

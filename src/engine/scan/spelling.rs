@@ -66,94 +66,86 @@ impl Scanner {
                 let compiled = &self.spelling_db.rules[idx];
 
                 // Fast-reject profile-gated rules.
-                match compiled.rule_type {
-                    crate::rules::ruleset::RuleType::Variant if skip_variant => {}
-                    crate::rules::ruleset::RuleType::AiFiller if skip_ai => {}
-                    crate::rules::ruleset::RuleType::PoliticalColoring
-                        if !cfg
-                            .political_stance
-                            .allows_rule(&self.spelling_db.spelling_rules[idx].from) => {}
-                    _ => {
-                        let class = self.spelling_db.rule_classes[idx];
-                        if !clue_index_built && (class == CLASS_CLUED || class == CLASS_FULL) {
-                            rule_ir::build_clue_index_into(
-                                self.spelling_db.clue_ac.as_ref(),
-                                text,
-                                clue_buf,
-                            );
-                            clue_index_built = true;
+                {
+                    use crate::rules::ruleset::RuleType;
+                    match compiled.rule_type {
+                        RuleType::Variant if skip_variant => continue,
+                        RuleType::AiFiller if skip_ai => continue,
+                        RuleType::PoliticalColoring
+                            if !cfg
+                                .political_stance
+                                .allows_rule(&self.spelling_db.spelling_rules[idx].from) =>
+                        {
+                            continue
                         }
+                        _ => {}
+                    }
+                }
 
-                        if class == CLASS_TRULY_SIMPLE {
-                            // Inline fast path: no MatchContext, no function call.
-                            // CLASS_TRULY_SIMPLE = no superstring, no exception,
-                            // no deletion, no clues, no positional.
-                            let start = $start;
-                            let end = $end;
+                let class = self.spelling_db.rule_classes[idx];
+                if !clue_index_built && (class == CLASS_CLUED || class == CLASS_FULL) {
+                    rule_ir::build_clue_index_into(
+                        self.spelling_db.clue_ac.as_ref(),
+                        text,
+                        clue_buf,
+                    );
+                    clue_index_built = true;
+                }
 
-                            // Exclusion cursor (amortized O(1)).
-                            while excl_cursor < excluded.len() && excluded[excl_cursor].end <= start
-                            {
-                                excl_cursor += 1;
-                            }
-                            if excl_cursor < excluded.len()
-                                && excluded[excl_cursor].start < end
-                                && start < excluded[excl_cursor].end
-                            {
-                            } else {
-                                // Boundary bitmap (authoritative).
-                                let straddle = if boundary_bitmap.is_empty() {
-                                    self.segmenter
-                                        .match_straddles_word_boundary(text, start, end)
-                                } else {
-                                    boundary_bitmap.start_straddles(start)
-                                        || boundary_bitmap.end_straddles(end, start)
-                                };
-                                if !straddle {
-                                    let mut issue = Issue::new(
-                                        start,
-                                        end - start,
-                                        "",
-                                        Vec::new(),
-                                        IssueType::from(compiled.rule_type),
-                                        compiled.rule_type.default_severity(),
-                                    );
-                                    issue.spelling_rule_idx = Some(compiled.rule_idx);
-                                    issues.push(issue);
-                                }
-                            }
-                        } else {
-                            // CLASS_SIMPLE / CLASS_CLUED / CLASS_FULL: full eval path.
-                            let mut ctx = MatchContext {
-                                text,
-                                excluded,
-                                excl_cursor: &mut excl_cursor,
-                                cfg,
-                                zh_type,
-                                start: $start,
-                                end: $end,
-                                clue_index: clue_buf.as_slice(),
-                                boundary_bitmap,
-                            };
-                            let result = if class == CLASS_SIMPLE {
-                                rule_ir::eval_simple(
-                                    &self.spelling_db,
-                                    compiled,
-                                    &mut ctx,
-                                    &self.segmenter,
-                                )
-                            } else {
-                                rule_ir::eval_predicates(
-                                    &self.spelling_db,
-                                    compiled,
-                                    &mut ctx,
-                                    &self.segmenter,
-                                )
-                            };
-                            if let Some(issue) = result {
-                                issues.push(issue);
-                            }
-                        }
+                if class == CLASS_TRULY_SIMPLE {
+                    // Inline fast path: no MatchContext, no function call.
+                    let start = $start;
+                    let end = $end;
+
+                    // Exclusion cursor (amortized O(1)).
+                    while excl_cursor < excluded.len() && excluded[excl_cursor].end <= start {
+                        excl_cursor += 1;
+                    }
+                    let is_excluded = excl_cursor < excluded.len()
+                        && excluded[excl_cursor].start < end
+                        && start < excluded[excl_cursor].end;
+                    if is_excluded {
+                        continue;
+                    }
+
+                    let straddle = if boundary_bitmap.is_empty() {
+                        self.segmenter
+                            .match_straddles_word_boundary(text, start, end)
+                    } else {
+                        boundary_bitmap.start_straddles(start)
+                            || boundary_bitmap.end_straddles(end, start)
+                    };
+                    if !straddle {
+                        let mut issue = Issue::new(
+                            start,
+                            end - start,
+                            "",
+                            Vec::new(),
+                            IssueType::from(compiled.rule_type),
+                            compiled.rule_type.default_severity(),
+                        );
+                        issue.spelling_rule_idx = Some(compiled.rule_idx);
+                        issues.push(issue);
+                    }
+                } else {
+                    let mut ctx = MatchContext {
+                        text,
+                        excluded,
+                        excl_cursor: &mut excl_cursor,
+                        cfg,
+                        zh_type,
+                        start: $start,
+                        end: $end,
+                        clue_index: clue_buf.as_slice(),
+                        boundary_bitmap,
+                    };
+                    if let Some(issue) = rule_ir::eval_predicates(
+                        &self.spelling_db,
+                        compiled,
+                        &mut ctx,
+                        &self.segmenter,
+                    ) {
+                        issues.push(issue);
                     }
                 }
             };

@@ -338,9 +338,6 @@ pub(crate) fn surrounding_window_bounded<'a>(
     &text[cs..ce]
 }
 
-/// Detect Chinese type (SC/TC) and build a LineIndex in a single pass
-/// over the text's characters.  Replaces the two separate O(n) passes of
-/// `detect_chinese_type(text)` + `LineIndex::new(text)`.
 /// Fused single-pass: detect SC/TC type, build LineIndex, and optionally
 /// build BoundaryBitmap.  Shares one `char_indices()` iteration for all three.
 fn detect_type_lineindex_and_bitmap<'a>(
@@ -601,15 +598,123 @@ impl Scanner {
         self.spelling_db.ac_charwise.as_ref()
     }
 
+    /// Build boundary bitmap for the given text (for benchmarking).
+    pub fn build_boundary_bitmap(&self, text: &str) -> BoundaryBitmap {
+        self.segmenter.build_boundary_bitmap(text)
+    }
+
+    /// Run only the spelling scan stage, returning issue count (for benchmarking).
+    /// Includes: clue pre-scan, boundary bitmap, eval.
+    /// Does NOT include sort/overlap/inflation/line-col.
+    pub fn bench_spelling_only_raw(
+        &self,
+        text: &str,
+        excluded: &[ByteRange],
+        cfg: &ProfileConfig,
+    ) -> usize {
+        let zh_type = super::zhtype::detect_chinese_type(text);
+        let bitmap = if text.len() > 4096 {
+            self.segmenter.build_boundary_bitmap(text)
+        } else {
+            BoundaryBitmap::empty()
+        };
+        let mut issues = Vec::new();
+        let mut clue_buf = Vec::new();
+        self.scan_spelling(
+            text,
+            excluded,
+            zh_type,
+            &mut issues,
+            cfg,
+            &mut clue_buf,
+            &bitmap,
+        );
+        issues.len()
+    }
+
+    /// Collect raw issues from all scan passes (spelling, case, punctuation,
+    /// spacing, ellipsis, quotes) WITHOUT sort, overlap, or inflate.
+    /// For benchmarking the sort+overlap stage on realistic pre-sort input.
+    pub fn bench_collect_raw_issues(
+        &self,
+        text: &str,
+        excluded: &[ByteRange],
+        cfg: &ProfileConfig,
+    ) -> Vec<Issue> {
+        let zh_type = super::zhtype::detect_chinese_type(text);
+        let bitmap = if text.len() > 4096 {
+            self.segmenter.build_boundary_bitmap(text)
+        } else {
+            BoundaryBitmap::empty()
+        };
+        let mut issues = Vec::new();
+        let mut clue_buf = Vec::new();
+        if cfg.spelling {
+            self.scan_spelling(
+                text,
+                excluded,
+                zh_type,
+                &mut issues,
+                cfg,
+                &mut clue_buf,
+                &bitmap,
+            );
+        }
+        if cfg.casing {
+            self.scan_case(text, excluded, &mut issues);
+        }
+        if cfg.basic_punctuation {
+            self.scan_punctuation(text, excluded, &mut issues, cfg);
+            self.scan_cn_curly_quotes(text, excluded, &mut issues);
+            self.scan_spacing(text, excluded, &mut issues);
+        }
+        if cfg.ellipsis_normalization {
+            scan_ellipsis(text, excluded, &mut issues);
+        }
+        issues
+    }
+
+    /// Run sort + overlap on a pre-built issue vec (for benchmarking).
+    pub fn bench_sort_and_overlap(issues: &mut Vec<Issue>) {
+        issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(b.length.cmp(&a.length)));
+        let mut order = Vec::new();
+        let mut keep = Vec::new();
+        let mut accepted = Vec::new();
+        overlap::resolve_overlaps_with_scratch(issues, &mut order, &mut keep, &mut accepted);
+    }
+
+    /// Inflate deferred spelling issues (for benchmarking).
+    pub fn bench_inflate(&self, text: &str, issues: &mut [Issue]) {
+        rule_ir::inflate_spelling_issues(&self.spelling_db, text, issues);
+    }
+
     /// Build a scanner from loaded rules.
     ///
     /// The spelling automaton matches literally (Chinese terms don't need
     /// case folding). The case automaton is ASCII-case-insensitive so it
     /// catches e.g. "javascript" when the canonical form is "JavaScript".
     pub fn new(spelling_rules: Vec<SpellingRule>, case_rules: Vec<CaseRule>) -> Self {
+        Self::new_filtered(spelling_rules, case_rules, &rule_ir::ProfileFilter::none())
+    }
+
+    /// Build a scanner with profile-aware rule filtering.
+    ///
+    /// Rules whose types are excluded by `filter` are omitted from the AC
+    /// automaton entirely, shrinking it by ~5% under the default profile.
+    /// Use this when the target profile is known at construction time.
+    pub fn new_filtered(
+        spelling_rules: Vec<SpellingRule>,
+        case_rules: Vec<CaseRule>,
+        filter: &rule_ir::ProfileFilter,
+    ) -> Self {
         let case_rules: Vec<CaseRule> = case_rules.into_iter().filter(|r| !r.disabled).collect();
 
-        let spelling_db = match rule_ir::compile_spelling_rules(spelling_rules) {
+        // Build segmenter from the FULL rule set (before profile filtering)
+        // so word-boundary vocabulary is not lost when variant/ai_filler rules
+        // are excluded from the AC automaton.
+        let segmenter = Segmenter::from_rules(&spelling_rules);
+
+        let spelling_db = match rule_ir::compile_spelling_rules_filtered(spelling_rules, filter) {
             Ok(db) => db,
             Err(e) => {
                 eprintln!("[zhtw-mcp] spelling rule compilation failed: {e}");
@@ -629,10 +734,6 @@ impl Scanner {
                 }
             }
         };
-
-        // Build segmenter from the deduped rules (post-compilation) so it
-        // sees exactly the same rule set as the IR evaluator.
-        let segmenter = Segmenter::from_rules(&spelling_db.spelling_rules);
 
         let case_patterns: Vec<String> = case_rules.iter().map(|r| r.term.to_lowercase()).collect();
 
@@ -915,8 +1016,15 @@ impl Scanner {
             self.scan_cn_curly_quotes(text, excluded, issues);
             self.scan_spacing(text, excluded, issues);
         }
-        // Sort by offset, then by length (longer match first for same offset).
-        issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(b.length.cmp(&a.length)));
+        // All scanners (AC, punctuation, spacing, ellipsis, quotes) emit
+        // issues in offset order.  Skip the O(n log n) sort when already sorted
+        // (common case), falling back to sort only if the invariant breaks.
+        let already_sorted = issues.windows(2).all(|w| {
+            w[0].offset < w[1].offset || (w[0].offset == w[1].offset && w[0].length >= w[1].length)
+        });
+        if !already_sorted {
+            issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(b.length.cmp(&a.length)));
+        }
 
         // Remove overlapping issues: longer match wins; on tie, higher severity
         // wins. Handles both same-offset and cross-offset overlaps.
@@ -929,7 +1037,8 @@ impl Scanner {
 
         // Inflate deferred spelling issues: fill in suggestions, context,
         // english, context_clues from the compiled DB.  Only survivors
-        // of overlap resolution get the full clone cost.
+        // of overlap resolution get the full clone cost.  Must run before
+        // fix_quote_pairing which overwrites suggestions on CN quote issues.
         rule_ir::inflate_spelling_issues(&self.spelling_db, text, issues);
 
         // Grammar checks run AFTER overlap resolution so broad grammar spans
@@ -1062,7 +1171,7 @@ mod tests {
         let issues = scanner.scan("這個軟件很好用").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "軟件");
-        assert_eq!(issues[0].suggestions, vec!["軟體"]);
+        assert_eq!(issues[0].suggestions[..], vec!["軟體"]);
         assert_eq!(issues[0].rule_type, IssueType::CrossStrait);
     }
 
@@ -1102,7 +1211,7 @@ mod tests {
         let issues = scanner.scan("I use Javascript for work").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "Javascript");
-        assert_eq!(issues[0].suggestions, vec!["JavaScript"]);
+        assert_eq!(issues[0].suggestions[..], vec!["JavaScript"]);
         assert_eq!(issues[0].rule_type, IssueType::Case);
     }
 
@@ -1163,7 +1272,7 @@ mod tests {
         let issues = scanner.scan("This aPi is slow").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "aPi");
-        assert_eq!(issues[0].suggestions, vec!["API"]);
+        assert_eq!(issues[0].suggestions[..], vec!["API"]);
     }
 
     #[test]
@@ -1225,7 +1334,7 @@ mod tests {
         let issues = scanner.scan("這個數據庫很大").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "數據庫");
-        assert_eq!(issues[0].suggestions, vec!["資料庫"]);
+        assert_eq!(issues[0].suggestions[..], vec!["資料庫"]);
     }
 
     #[test]
@@ -1244,7 +1353,7 @@ mod tests {
             .issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "裏");
-        assert_eq!(issues[0].suggestions, vec!["裡"]);
+        assert_eq!(issues[0].suggestions[..], vec!["裡"]);
     }
 
     #[test]
@@ -1396,7 +1505,7 @@ mod tests {
         let issues = scanner.scan("學習數據結構").issues;
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "數據結構");
-        assert_eq!(issues[0].suggestions, vec!["資料結構"]);
+        assert_eq!(issues[0].suggestions[..], vec!["資料結構"]);
 
         // When only "數據" present, the shorter match wins.
         let issues = scanner.scan("處理數據").issues;

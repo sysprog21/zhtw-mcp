@@ -152,7 +152,7 @@ fn markdown_link_text_checked() {
         .issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "錯誤");
-    assert_eq!(issues[0].suggestions, vec!["正確"]);
+    assert_eq!(issues[0].suggestions[..], vec!["正確"]);
 }
 
 #[test]
@@ -218,7 +218,7 @@ fn case_error_outside_code_block_detected() {
     let issues = scanner.scan("這是 javascript 的文字").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "javascript");
-    assert_eq!(issues[0].suggestions, vec!["JavaScript"]);
+    assert_eq!(issues[0].suggestions[..], vec!["JavaScript"]);
 }
 
 #[test]
@@ -230,7 +230,7 @@ fn case_error_in_markdown_link_text_detected() {
         .issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "javascript");
-    assert_eq!(issues[0].suggestions, vec!["JavaScript"]);
+    assert_eq!(issues[0].suggestions[..], vec!["JavaScript"]);
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn http_case_outside_code_block_detected() {
     let issues = scanner.scan("這是 http example.com 的文字").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "http");
-    assert_eq!(issues[0].suggestions, vec!["HTTP"]);
+    assert_eq!(issues[0].suggestions[..], vec!["HTTP"]);
 }
 
 #[test]
@@ -357,7 +357,7 @@ fn text_outside_url_still_checked() {
         .issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "javascript");
-    assert_eq!(issues[0].suggestions, vec!["JavaScript"]);
+    assert_eq!(issues[0].suggestions[..], vec!["JavaScript"]);
 }
 
 #[test]
@@ -469,7 +469,7 @@ fn form_not_in_alternatives_flagged() {
     let issues = scanner.scan("使用 JavaScript 和 JavaScrIPT 開發").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "JavaScrIPT");
-    assert_eq!(issues[0].suggestions, vec!["JavaScript"]);
+    assert_eq!(issues[0].suggestions[..], vec!["JavaScript"]);
 }
 
 #[test]
@@ -486,7 +486,7 @@ fn empty_alternatives_same_as_none() {
     let issues = scanner.scan("使用 TypeScript 和 typescript 開發").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "typescript");
-    assert_eq!(issues[0].suggestions, vec!["TypeScript"]);
+    assert_eq!(issues[0].suggestions[..], vec!["TypeScript"]);
 }
 
 #[test]
@@ -496,7 +496,7 @@ fn none_alternatives_same_as_no_field() {
     let issues = scanner.scan("使用 Python 和 python 開發").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "python");
-    assert_eq!(issues[0].suggestions, vec!["Python"]);
+    assert_eq!(issues[0].suggestions[..], vec!["Python"]);
 }
 
 #[test]
@@ -506,7 +506,7 @@ fn undefined_alternatives_same_as_no_field() {
     let issues = scanner.scan("使用 React 和 react 開發").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "react");
-    assert_eq!(issues[0].suggestions, vec!["React"]);
+    assert_eq!(issues[0].suggestions[..], vec!["React"]);
 }
 
 #[test]
@@ -527,7 +527,7 @@ fn form_not_in_multiple_alternatives_flagged() {
     let issues = scanner.scan("使用 API, Api, api, ApI 開發").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "ApI");
-    assert_eq!(issues[0].suggestions, vec!["API"]);
+    assert_eq!(issues[0].suggestions[..], vec!["API"]);
 }
 
 #[test]
@@ -545,7 +545,7 @@ fn alternatives_outside_code_block_flagged() {
     let issues = scanner.scan("這是 JAVASCRIPT 的文字").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "JAVASCRIPT");
-    assert_eq!(issues[0].suggestions, vec!["JavaScript"]);
+    assert_eq!(issues[0].suggestions[..], vec!["JavaScript"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -571,7 +571,7 @@ fn multiple_rules_each_respect_own_alternatives() {
         .issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "typescript");
-    assert_eq!(issues[0].suggestions, vec!["TypeScript"]);
+    assert_eq!(issues[0].suggestions[..], vec!["TypeScript"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -625,7 +625,7 @@ fn empty_double_backtick_not_excluded() {
     let issues = scanner.scan("這是 `` 然後這裡有 test 錯誤").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, "test");
-    assert_eq!(issues[0].suggestions, vec!["測試"]);
+    assert_eq!(issues[0].suggestions[..], vec!["測試"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -638,7 +638,7 @@ fn punct_comma_in_chinese_text() {
     let issues = scanner.scan("蘋果, 香蕉, 和橘子").issues;
     assert_eq!(issues.len(), 2);
     assert!(issues.iter().all(|i| i.found == ","));
-    assert!(issues.iter().all(|i| i.suggestions == vec!["，"]));
+    assert!(issues.iter().all(|i| i.suggestions[..] == vec!["，"]));
 }
 
 #[test]
@@ -647,7 +647,7 @@ fn punct_period_at_sentence_end() {
     let issues = scanner.scan("這是一段文字.").issues;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].found, ".");
-    assert_eq!(issues[0].suggestions, vec!["。"]);
+    assert_eq!(issues[0].suggestions[..], vec!["。"]);
 }
 
 #[test]

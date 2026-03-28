@@ -504,7 +504,7 @@ impl Server {
                         severity: i.severity,
                         anchor_match: i.anchor_match,
                         context: i.context.clone(),
-                        suggestions: i.suggestions.clone(),
+                        suggestions: i.suggestions.to_vec(),
                     })
                     .collect();
 
@@ -573,7 +573,7 @@ impl Server {
                             issue.severity = state.severity;
                             issue.anchor_match = state.anchor_match;
                             issue.context = state.context.clone();
-                            issue.suggestions = state.suggestions.clone();
+                            issue.suggestions = state.suggestions.clone().into();
                         }
                     }
                 }
@@ -1671,7 +1671,7 @@ fn build_compact_groups(issues: &[Issue], explain: bool) -> Vec<CompactGroup> {
 
         let group = groups.entry(key).or_insert_with(|| CompactGroup {
             found: issue.found.clone(),
-            suggestions: issue.suggestions.clone(),
+            suggestions: issue.suggestions.to_vec(),
             rule_type: rt.to_string(),
             severity: issue.severity.name().to_string(),
             context: issue.context.clone(),
@@ -1753,7 +1753,7 @@ pub fn group_issues<'a>(
         let sev = issue.severity.name();
         let key: IssueGroupKey<'a> = (issue.found.as_str(), rt, sug_key, sev);
         let entry = groups.entry(key).or_insert_with(|| IssueGroup {
-            suggestions: issue.suggestions.clone(),
+            suggestions: issue.suggestions.to_vec(),
             count: 0,
             locs: Vec::new(),
             explanation: if explain {

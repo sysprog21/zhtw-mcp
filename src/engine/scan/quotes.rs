@@ -87,7 +87,7 @@ pub(crate) fn fix_quote_pairing(text: &str, issues: &mut [Issue]) {
             } else {
                 "\u{300e}" // 『 (secondary)
             };
-            issues[issue_idx].suggestions = vec![bracket.to_string()];
+            issues[issue_idx].suggestions = vec![bracket.to_string()].into();
             depth += 1;
         } else {
             depth = depth.saturating_sub(1);
@@ -96,7 +96,7 @@ pub(crate) fn fix_quote_pairing(text: &str, issues: &mut [Issue]) {
             } else {
                 "\u{300f}" // 』 (secondary)
             };
-            issues[issue_idx].suggestions = vec![bracket.to_string()];
+            issues[issue_idx].suggestions = vec![bracket.to_string()].into();
         }
 
         prev_end = offset + issues[issue_idx].length;

@@ -90,10 +90,6 @@ pub enum MatchPredicate {
 }
 
 // ---------------------------------------------------------------------------
-// Emit template
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Compiled rule
 // ---------------------------------------------------------------------------
 
@@ -110,6 +106,8 @@ pub struct CompiledRule {
     /// Cached rule type (avoids pointer chase through spelling_rules).
     pub rule_type: RuleType,
     /// Cached filter flags (avoids pointer chase through rule_filter_flags).
+    /// Used by eval_simple; retained for test assertions after 50.4 consolidation.
+    #[allow(dead_code)]
     pub filter_flags: u8,
 }
 
@@ -138,8 +136,9 @@ pub struct CompiledSpellingDb {
     // filter_vecs_aligned, rule_classes_match_filter_flags).
     /// The spelling rules themselves (filtered and deduplicated).
     pub spelling_rules: Vec<SpellingRule>,
-    /// Precomputed suggestions per rule (avoids per-match allocation).
-    pub spelling_suggestions: Vec<Vec<String>>,
+    /// Precomputed suggestions per rule.  Arc avoids per-issue clone
+    /// during inflation — only a reference count bump per survivor.
+    pub spelling_suggestions: Vec<std::sync::Arc<[String]>>,
     /// Per-rule positive clue IDs into the clue AC pattern list.
     #[allow(dead_code)]
     pub rule_pos_clue_ids: Vec<Option<Vec<u16>>>,
@@ -310,26 +309,25 @@ pub fn compile_rule_predicates(
 
     // -- Context clues BEFORE boundary (clue window scan is cheaper than
     //    segmenter and has high reject rate for clue-gated rules) --
-    {
-        let pos = pos_clue_ids
-            .filter(|ids| !ids.is_empty())
-            .map(|ids| ids.to_vec())
-            .unwrap_or_default();
-        let neg = neg_clue_ids
-            .filter(|ids| !ids.is_empty())
-            .map(|ids| ids.to_vec())
-            .unwrap_or_default();
-        if !pos.is_empty() || !neg.is_empty() {
-            preds.push(MatchPredicate::CheckClues {
-                pos_ids: pos,
-                neg_ids: neg,
-                min_pos_matches: if pos_clue_ids.is_some_and(|ids| !ids.is_empty()) {
-                    super::MIN_SCAN_CLUE_MATCHES as u32
-                } else {
-                    0
-                },
-            });
-        }
+    let pos = pos_clue_ids
+        .filter(|ids| !ids.is_empty())
+        .map(|ids| ids.to_vec())
+        .unwrap_or_default();
+    let neg = neg_clue_ids
+        .filter(|ids| !ids.is_empty())
+        .map(|ids| ids.to_vec())
+        .unwrap_or_default();
+    if !pos.is_empty() || !neg.is_empty() {
+        let min_pos_matches = if pos.is_empty() {
+            0
+        } else {
+            super::MIN_SCAN_CLUE_MATCHES as u32
+        };
+        preds.push(MatchPredicate::CheckClues {
+            pos_ids: pos,
+            neg_ids: neg,
+            min_pos_matches,
+        });
     }
 
     // -- Word boundary straddle (expensive: segmenter call) --
@@ -373,12 +371,11 @@ pub fn compile_rule_predicates(
 // eval_simple() -- fast path for CLASS_SIMPLE (no clues, no positional)
 // ---------------------------------------------------------------------------
 
-/// Inlined fast path for CLASS_SIMPLE rules (83% of all rules).
-///
-/// Evaluates the fixed predicate sequence without Vec iteration or enum
-/// matching.  Predicates: config gate → excluded → superstring → boundary →
-/// exception → deletion.  No clue or positional checks.
+/// Simplified eval path for CLASS_SIMPLE rules (no clues, no positional).
+/// Consolidated into eval_predicates (50.4) -- kept for potential restoration
+/// if profiling shows the predicate-chain overhead matters for CLASS_SIMPLE.
 #[inline]
+#[allow(dead_code)]
 pub fn eval_simple(
     db: &CompiledSpellingDb,
     rule: &CompiledRule,
@@ -463,17 +460,14 @@ pub fn eval_simple(
     }
 
     // Word boundary straddle.
-    if ctx.boundary_bitmap.is_empty() {
-        if segmenter.match_straddles_word_boundary(ctx.text, ctx.start, end) {
-            return None;
-        }
+    let straddles = if ctx.boundary_bitmap.is_empty() {
+        segmenter.match_straddles_word_boundary(ctx.text, ctx.start, end)
     } else {
-        if ctx.boundary_bitmap.start_straddles(ctx.start) {
-            return None;
-        }
-        if ctx.boundary_bitmap.end_straddles(end, ctx.start) {
-            return None;
-        }
+        ctx.boundary_bitmap.start_straddles(ctx.start)
+            || ctx.boundary_bitmap.end_straddles(end, ctx.start)
+    };
+    if straddles {
+        return None;
     }
 
     // Deletion span extension (cursor-aware: excl_cursor is already positioned
@@ -575,17 +569,14 @@ pub fn eval_predicates(
                 }
             }
             MatchPredicate::RejectIfWordBoundaryStraddles => {
-                if ctx.boundary_bitmap.is_empty() {
-                    if segmenter.match_straddles_word_boundary(ctx.text, ctx.start, end) {
-                        return None;
-                    }
+                let straddles = if ctx.boundary_bitmap.is_empty() {
+                    segmenter.match_straddles_word_boundary(ctx.text, ctx.start, end)
                 } else {
-                    if ctx.boundary_bitmap.start_straddles(ctx.start) {
-                        return None;
-                    }
-                    if ctx.boundary_bitmap.end_straddles(end, ctx.start) {
-                        return None;
-                    }
+                    ctx.boundary_bitmap.start_straddles(ctx.start)
+                        || ctx.boundary_bitmap.end_straddles(end, ctx.start)
+                };
+                if straddles {
+                    return None;
                 }
             }
             MatchPredicate::RejectIfInExceptionPhrase { exceptions } => {
@@ -713,14 +704,60 @@ pub fn inflate_spelling_issues(db: &CompiledSpellingDb, text: &str, issues: &mut
 // compile_spelling_rules()
 // ---------------------------------------------------------------------------
 
+/// Rule types to exclude from the compiled AC automaton.
+///
+/// When the target profile is known at Scanner construction time, rule types
+/// that the profile would always fast-reject can be excluded entirely from
+/// the DAAC, shrinking it by ~5% under the default profile.
+pub struct ProfileFilter {
+    pub exclude_variant: bool,
+    pub exclude_ai_filler: bool,
+}
+
+impl ProfileFilter {
+    /// No filtering — include all rule types.
+    pub fn none() -> Self {
+        Self {
+            exclude_variant: false,
+            exclude_ai_filler: false,
+        }
+    }
+
+    /// Build a filter from a ProfileConfig: exclude rule types that the
+    /// profile would always fast-reject in the scan loop.
+    #[allow(dead_code)]
+    pub fn from_config(cfg: &crate::rules::ruleset::ProfileConfig) -> Self {
+        Self {
+            exclude_variant: !cfg.variant_normalization,
+            exclude_ai_filler: !cfg.ai_filler_detection,
+        }
+    }
+}
+
 /// Compile a set of spelling rules into a `CompiledSpellingDb`.
 ///
 /// Filters disabled rules, deduplicates by `from` key (last wins),
 /// builds AC automata (charwise primary, bytewise fallback), interns
 /// context clues, and computes per-rule filter flags and dispatch classes.
+///
+/// `profile_filter` optionally excludes rule types that the target profile
+/// would always reject, shrinking the DAAC by ~5% under the default profile.
+#[allow(dead_code)]
 pub fn compile_spelling_rules(
     spelling_rules: Vec<SpellingRule>,
 ) -> anyhow::Result<CompiledSpellingDb> {
+    compile_spelling_rules_filtered(spelling_rules, &ProfileFilter::none())
+}
+
+/// Like `compile_spelling_rules` but applies a profile filter to exclude
+/// always-rejected rule types from the AC automaton.
+pub fn compile_spelling_rules_filtered(
+    spelling_rules: Vec<SpellingRule>,
+    filter: &ProfileFilter,
+) -> anyhow::Result<CompiledSpellingDb> {
+    // Filter disabled first, then deduplicate (last-wins), THEN apply
+    // profile filter.  Profile filtering must run after dedup so it cannot
+    // change which duplicate survives for the same `from` key.
     let mut spelling_rules: Vec<SpellingRule> =
         spelling_rules.into_iter().filter(|r| !r.disabled).collect();
 
@@ -736,6 +773,21 @@ pub fn compile_spelling_rules(
         }
     }
 
+    // Profile-aware filtering: exclude rule types that the target profile
+    // would always fast-reject.  Runs after dedup to preserve last-wins
+    // semantics.
+    if filter.exclude_variant || filter.exclude_ai_filler {
+        spelling_rules.retain(|r| {
+            if filter.exclude_variant && r.rule_type == RuleType::Variant {
+                return false;
+            }
+            if filter.exclude_ai_filler && r.rule_type == RuleType::AiFiller {
+                return false;
+            }
+            true
+        });
+    }
+
     // Deduplicate context clues within each rule.
     for rule in &mut spelling_rules {
         if let Some(ref mut clues) = rule.context_clues {
@@ -748,9 +800,10 @@ pub fn compile_spelling_rules(
         }
     }
 
-    let spelling_suggestions: Vec<Vec<String>> = spelling_rules
+    let spelling_suggestions: Vec<std::sync::Arc<[String]>> = spelling_rules
         .iter()
         .map(super::effective_suggestions)
+        .map(std::sync::Arc::from)
         .collect();
 
     // Build clue AC: intern all unique clue strings, map per-rule clue

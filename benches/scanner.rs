@@ -635,6 +635,90 @@ fn bench_cpu_attribution_100kb(c: &mut Criterion) {
     group.finish();
 }
 
+// 10. Pipeline breakdown: isolate each post-AC stage on 100KB.
+
+fn bench_pipeline_breakdown(c: &mut Criterion) {
+    let ruleset = load_embedded_ruleset().expect("load embedded ruleset");
+    let scanner = Scanner::new(ruleset.spelling_rules, ruleset.case_rules);
+    let text = generate_text(102_400);
+    let excluded = &[];
+    let cfg = Profile::Default.config();
+
+    let mut group = c.benchmark_group("pipeline_100kb");
+
+    // Stage A: boundary bitmap construction only.
+    group.bench_function("bitmap_construction", |b| {
+        b.iter(|| {
+            let bitmap = scanner.build_boundary_bitmap(black_box(&text));
+            black_box(&bitmap);
+        });
+    });
+
+    // Stage B: spelling eval only (includes bitmap + clue pre-scan + eval, NO sort/overlap/inflate).
+    group.bench_function("spelling_eval_raw", |b| {
+        b.iter(|| {
+            let n = scanner.bench_spelling_only_raw(black_box(&text), excluded, &cfg);
+            black_box(n);
+        });
+    });
+
+    // Stage C: sort + overlap resolution on pre-sort raw issues.
+    // Uses bench_collect_raw_issues to get issues BEFORE sort/overlap/inflate,
+    // so this benchmark measures the actual sort+overlap cost on realistic input.
+    let raw_issues = scanner.bench_collect_raw_issues(&text, excluded, &cfg);
+    group.bench_function("sort_and_overlap", |b| {
+        b.iter_batched(
+            || raw_issues.clone(),
+            |mut issues| {
+                Scanner::bench_sort_and_overlap(&mut issues);
+                black_box(&issues);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    // Stage D: inflate cost proxy -- measures the clone cost of suggestions/found
+    // by cloning the inflated issue vec (similar allocation pattern).
+    group.bench_function("issue_clone_cost", |b| {
+        b.iter_batched(
+            || raw_issues.clone(),
+            |issues| {
+                let cloned = issues.clone();
+                black_box(cloned.len());
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    // Stage E: line/col fill on sorted issues.
+    let line_index = zhtw_mcp::engine::lineindex::LineIndex::new(&text);
+    group.bench_function("fill_line_col", |b| {
+        b.iter_batched(
+            || raw_issues.clone(),
+            |mut issues| {
+                line_index.fill_line_col_sorted(
+                    &mut issues,
+                    zhtw_mcp::engine::lineindex::ColumnEncoding::Utf16,
+                );
+                black_box(&issues);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    // Stage F: detect_type + build_line_index (fused pass).
+    group.bench_function("detect_and_lineindex", |b| {
+        b.iter(|| {
+            let zh = zhtw_mcp::engine::zhtype::detect_chinese_type(black_box(&text));
+            let idx = zhtw_mcp::engine::lineindex::LineIndex::new(black_box(&text));
+            black_box(zh);
+            black_box(&idx);
+        });
+    });
+
+    group.finish();
+}
+
 // Criterion harness
 
 criterion_group!(
@@ -649,5 +733,6 @@ criterion_group!(
     bench_segmenter,
     bench_post_scan_transforms,
     bench_cpu_attribution_100kb,
+    bench_pipeline_breakdown,
 );
 criterion_main!(benches);

@@ -18,7 +18,7 @@ async-transport = ["dep:tokio"]
 translate = ["dep:ureq", "dep:urlencoding"]
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 aho-corasick = "1"
 daachorse = "1"

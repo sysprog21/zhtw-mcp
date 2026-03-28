@@ -681,7 +681,9 @@ pub(crate) fn refine_issues_with_sampling(
 fn apply_disambiguation(issue: &mut Issue, matched_term: &Option<String>, detail: &str) {
     if let Some(term) = matched_term {
         if let Some(pos) = issue.suggestions.iter().position(|s| s == term) {
-            issue.suggestions.swap(0, pos);
+            let mut sugs = issue.suggestions.to_vec();
+            sugs.swap(0, pos);
+            issue.suggestions = sugs.into();
         }
         issue.context = Some(format!("LLM disambiguation: '{term}' ({detail})",));
     } else {

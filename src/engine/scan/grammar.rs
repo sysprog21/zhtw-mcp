@@ -3076,7 +3076,7 @@ mod tests {
             .collect();
         assert_eq!(dui.len(), 1);
         assert_eq!(dui[0].found, "對資料進行分析");
-        assert_eq!(dui[0].suggestions, vec!["分析資料"]);
+        assert_eq!(dui[0].suggestions[..], vec!["分析資料"]);
         assert_eq!(dui[0].severity, Severity::Info);
     }
 
@@ -3088,7 +3088,7 @@ mod tests {
             .filter(|i| i.found.starts_with("對"))
             .collect();
         assert_eq!(dui.len(), 1);
-        assert_eq!(dui[0].suggestions, vec!["測試整個系統"]);
+        assert_eq!(dui[0].suggestions[..], vec!["測試整個系統"]);
     }
 
     #[test]
@@ -3355,7 +3355,7 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].rule_type, IssueType::AiStyle);
         assert_eq!(issues[0].found, "意味著");
-        assert_eq!(issues[0].suggestions, vec!["表示"]);
+        assert_eq!(issues[0].suggestions[..], vec!["表示"]);
     }
 
     #[test]
@@ -3363,7 +3363,7 @@ mod tests {
         let text = "如果記憶體不足，這意味著系統將會崩潰";
         let issues = scan_ai(text);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].suggestions, vec!["代表"]);
+        assert_eq!(issues[0].suggestions[..], vec!["代表"]);
     }
 
     #[test]
@@ -3371,7 +3371,7 @@ mod tests {
         let text = "換言之，這意味著我們需要重新設計";
         let issues = scan_ai(text);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].suggestions, vec!["也就是說"]);
+        assert_eq!(issues[0].suggestions[..], vec!["也就是說"]);
     }
 
     #[test]
@@ -3431,7 +3431,7 @@ mod tests {
         let issues = scan_ai(text);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].found, "被廣泛使用");
-        assert_eq!(issues[0].suggestions, vec!["廣泛使用"]);
+        assert_eq!(issues[0].suggestions[..], vec!["廣泛使用"]);
         assert_eq!(issues[0].rule_type, IssueType::AiStyle);
     }
 

@@ -1,0 +1,37 @@
+TODO.md
+  33688cce20e4f24a 140-143,145-148,150-237,572-573,1101-1102,1104-1125,1143-1144,1146-1148
+  c816894e5e8b05f0 1-139,144,149,238-571,574-1100,1103,1126-1142,1145,1149-1174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.20",
+  "base_commit_sha": "ed3911788427486105a04004b8b9e9b2e97f6cc7",
+  "prompts": {
+    "33688cce20e4f24a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c4f92b1-833f-4cf7-a5b1-38f964ce7377",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 373,
+      "total_deletions": 369,
+      "accepted_lines": 127,
+      "overriden_lines": 0
+    },
+    "c816894e5e8b05f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d3239-15f8-7de0-ac3a-2f16e70acd13",
+        "model": "gpt-5.4"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 20150,
+      "overriden_lines": 0
+    }
+  }
+}

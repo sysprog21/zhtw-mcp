@@ -1,0 +1,103 @@
+benches/scanner.rs
+  f241276d2a0e06cb 6,162,170,172,178,183,201,231,267,292,511,643,727
+src/mcp/types.rs
+  f241276d2a0e06cb 678
+src/engine/scan/punctuation.rs
+  f241276d2a0e06cb 16
+src/main.rs
+  f241276d2a0e06cb 80,159-161,455-456,510,699,708-712,714,716-718,1599,1639
+tests/exclusion-remap.rs
+  f241276d2a0e06cb 172
+docs/mcp.md
+  f241276d2a0e06cb 15-16,125
+docs/internals.md
+  f241276d2a0e06cb 16
+src/engine/scan/mod.rs
+  f241276d2a0e06cb 114,787,793,875,1351,1401,1892,1902,1932
+src/mcp/setup.rs
+  f241276d2a0e06cb 22,58,196-201,214,243,279-280
+tests/ir-parity.rs
+  f241276d2a0e06cb 179,186,202,204,206-212,214,234,374-377,397-400,458,480,483-486,488-489,499,558,563
+README.md
+  f241276d2a0e06cb 50,54-62,155-156,160
+docs/rules.md
+  f241276d2a0e06cb 46,89
+tests/corpus/cn-to-tw-conversion.json
+  f241276d2a0e06cb 4
+src/cache.rs
+  f241276d2a0e06cb 384,395
+src/mcp/tools.rs
+  f241276d2a0e06cb 359-364,366-368,765,785,958,2024-2029
+src/engine/scan/tests_generated.rs
+  f241276d2a0e06cb 1105,1107,1109,1113,1118,1120,1123,1485,1499,1501,1503,1506,1574,1579,1592,1595,1600,1604-1607,1610,1624,1639,1655,1659,1675,1686,1697,1707,1728-1729,1735,1740,1744-1748,1750-1754,1756-1760,1764,1767-1770,1777,1780,1789,1796,1802-1808,2069,2176
+tests/cli-lint.rs
+  f241276d2a0e06cb 69-71,77,779-780,784,790,794,824,837
+tests/scanner-integration.rs
+  f241276d2a0e06cb 80,713,732,800,805-806,812,817,822,828,838,911,915-916,932,947,960,987-992,1003,1008,1019
+tests/corpus/native-zh-tw.json
+  f241276d2a0e06cb 4
+docs/cli.md
+  f241276d2a0e06cb 16,72
+src/rules/ruleset.rs
+  f241276d2a0e06cb 3,5-15,19-20,26,79-89,94,99-100,107-108,115,134,159-160
+src/mcp/resources.rs
+  f241276d2a0e06cb 101-107
+tests/vocabulary-expansion.rs
+  f241276d2a0e06cb 158,312,327,338,354,368,385
+tests/corpus-evaluation.rs
+  f241276d2a0e06cb 6,13-14,80-90,204,228,257,264
+src/config.rs
+  f241276d2a0e06cb 19,90,94,105,112,133,144
+src/mcp/prompts.rs
+  f241276d2a0e06cb 137-138
+tests/e2e-mcp.rs
+  f241276d2a0e06cb 363,376,384,386,388,1564-1565,1568-1569
+tests/corpus/ai-generated.json
+  f241276d2a0e06cb 4-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "044293088176ef17333525acaf08d6b8fedf2399",
+  "prompts": {
+    "5548e3e2350b74fa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e77e3736-2659-4375-9c44-6a0edacc95f8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 82,
+      "total_deletions": 325,
+      "accepted_lines": 72,
+      "overriden_lines": 0
+    },
+    "61bacf9655609faf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8e930a3c-fb9f-4556-b62b-54cbd5867a37",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 62,
+      "total_deletions": 124,
+      "accepted_lines": 61,
+      "overriden_lines": 0
+    },
+    "f241276d2a0e06cb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5025bf2b-60fb-4f30-95d3-fb8e6a2bcc4a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 352,
+      "total_deletions": 319,
+      "accepted_lines": 322,
+      "overriden_lines": 0
+    }
+  }
+}

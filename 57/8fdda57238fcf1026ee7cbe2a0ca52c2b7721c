@@ -1,0 +1,72 @@
+src/mcp/tools.rs
+  02186826ca476eb6 6-7,595,598,1981-1982,1990
+src/rules/ruleset.rs
+  02186826ca476eb6 1-2,485,492,494,496,498,501,503,559-592,595,601,607
+src/engine/scan/rule_ir.rs
+  02186826ca476eb6 15,139-144,155,163-186,240-244,272,282,406,548,553-554,568-584,601-607,621,718-730,816-823,1018-1020
+src/engine/scan/mod.rs
+  02186826ca476eb6 27-28,598-601,723-726,743,766,967-976,1062-1067
+src/main.rs
+  02186826ca476eb6 771-773,1318-1319
+src/engine/disambig.rs
+  02186826ca476eb6 14-15,913-917,1130,1184,1188
+src/engine/scan/spacing.rs
+  02186826ca476eb6 245
+src/mcp/sampling.rs
+  02186826ca476eb6 605,745-748,769,772,780,783-784,821
+benches/scanner.rs
+  02186826ca476eb6 370-371
+src/engine/scan/spelling.rs
+  02186826ca476eb6 95-104,129,134-135,137-157,161,501-503
+src/fixer.rs
+  02186826ca476eb6 22-23,407,951
+src/engine/segment.rs
+  20ec9b9adb98a988 144,352
+  02186826ca476eb6 55-56,60,66,74,125-143,145-200,208-211,245-250,265,273,276-281,288,301,319-326,332,345,347-351,353-356,362,365,370,375,382-383,385-387,391-392,394-396,404,570,673-674,700-701,711,1100-1102,1236,1238,1343-1346,1348,1428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "578fdda57238fcf1026ee7cbe2a0ca52c2b7721c",
+  "prompts": {
+    "02186826ca476eb6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d67735bd-bfde-40c6-bc87-2d5bb7c39fb9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 494,
+      "total_deletions": 364,
+      "accepted_lines": 402,
+      "overriden_lines": 0
+    },
+    "20ec9b9adb98a988": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d3f2f-25a8-7642-baab-553e8f831aae",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 8,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "5f9a2c6e00a4fc5f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39ad9c22-26dd-4d1f-bc4c-2b31fb348211",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
+      "messages": [],
+      "total_additions": 32,
+      "total_deletions": 26,
+      "accepted_lines": 32,
+      "overriden_lines": 0
+    }
+  }
+}

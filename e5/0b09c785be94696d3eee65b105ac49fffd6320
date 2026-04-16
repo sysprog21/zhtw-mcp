@@ -1,0 +1,85 @@
+src/engine/translationese_score.rs
+  bf59c9fed7f75c0c 144-155,402-406,408-433,585-599
+benches/scanner.rs
+  bf59c9fed7f75c0c 474-475,480
+src/engine/sentence.rs
+  bf59c9fed7f75c0c 197,199-201,205-211,391-407
+src/engine/scan/tests_generated.rs
+  bf59c9fed7f75c0c 864-898
+src/engine/scan/grammar.rs
+  bf59c9fed7f75c0c 2283-2287,2300-2301,2303,3062-3083,3306-3337
+src/engine/scan/mod.rs
+  bf59c9fed7f75c0c 466-471,478,483-486,489,1019-1030
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "e50b09c785be94696d3eee65b105ac49fffd6320",
+  "prompts": {
+    "1f50a943239b39c8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd75db76-fe95-416d-88f5-e03545b21172",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 43,
+      "overriden_lines": 0
+    },
+    "365000a62158b56d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94222479-4479-4c87-ad82-ae248e9a6b15",
+        "model": "<synthetic>"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 55,
+      "overriden_lines": 0
+    },
+    "bf59c9fed7f75c0c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19ebf452-e5d0-4b79-a3d3-c589a230b94c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 221,
+      "total_deletions": 33,
+      "accepted_lines": 211,
+      "overriden_lines": 0
+    },
+    "ef0615f6376048bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "76b436c0-e212-422a-be29-fb576b1e3a4b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 300,
+      "overriden_lines": 0
+    },
+    "f1e2fe21180ced58": {
+      "agent_id": {
+        "tool": "gemini",
+        "id": "a9de98dd-e89c-42d6-9f01-82dc92ac6db0",
+        "model": "gemini-3-flash-preview"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}

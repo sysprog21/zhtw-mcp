@@ -1,0 +1,145 @@
+tests/fixtures/calque/calque_premodifier_zy5_good_002.txt
+  911ce13b60d8a33a 1
+src/engine/translationese_score.rs
+  911ce13b60d8a33a 96-99,110-117,127-130,134,140-143,150-154,162-171
+src/engine/style_score.rs
+  31240bd55ff4ef68 81,91-92,198,208
+  911ce13b60d8a33a 1-80,82-90,93-197,199-207,209-224
+src/engine/markdown.rs
+  911ce13b60d8a33a 41-46,214-215,217-218,220-222,224-232,269-274,277
+tests/fixtures/calque/calque_premodifier_zy5_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_nominalization_zy3b_good_001.txt
+  911ce13b60d8a33a 1
+tests/e2e-mcp.rs
+  911ce13b60d8a33a 154-157,964-1016
+tests/fixtures/calque/README.md
+  911ce13b60d8a33a 1-68
+tests/fixtures/calque/calque_superlative_zy1b_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_falsefriend_zy4_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_nominalization_zy3_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_superlative_zy1b_bad_001.txt
+  911ce13b60d8a33a 1
+assets/ruleset.json
+  911ce13b60d8a33a 6338-6343
+tests/fixtures/calque/calque_connective_zy2_bad_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_superlative_zy1_bad_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_connective_zy2_good_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_connective_zy2_bad_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_falsefriend_zy4_solo_003.txt
+  911ce13b60d8a33a 1
+tests/ir-parity.rs
+  911ce13b60d8a33a 202,475
+src/engine/scan/mod.rs
+  911ce13b60d8a33a 203-251,1325,1346-1356,1358-1361,1544-1546,1623-1635,2435-2461
+src/mcp/tools.rs
+  911ce13b60d8a33a 391-392,395-401,441-449,458-462,483-487,585-595,620,815-825,850,1008,1032,1737-1741,1778-1782,1807-1811,1874-1877,1933-1954,2043,2073,2104,2503,2607-2610,2907,3016-3032,3065
+src/mcp/transport.rs
+  911ce13b60d8a33a 158-160
+tests/fixtures/calque/calque_superlative_zy1_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_falsefriend_zy4_bad_004.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_falsefriend_zy4_bad_005.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_superlative_zy1_good_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_nominalization_zy3_good_002.txt
+  911ce13b60d8a33a 1
+src/engine/scan/grammar.rs
+  911ce13b60d8a33a 2151-2152,2154-2156,3020-3514,3559-3582,3584-3589,3593-3594,3596-3648,3651-3654,3658,3660-3720,3723-3729,3733-4079,4092-4110,4196-4197,6286-6940
+tests/fixtures/calque/calque_connective_zy2_good_002.txt
+  911ce13b60d8a33a 1
+tests/cli-lint.rs
+  911ce13b60d8a33a 891-949,951-995,1042,1045-1092
+  31240bd55ff4ef68 950,996-1041,1043-1044
+tests/fixtures/calque/calque_falsefriend_zy4_bad_003.txt
+  911ce13b60d8a33a 1
+src/main.rs
+  31240bd55ff4ef68 920,975-981,997,1019,1037,1056,1059,1084,1293,1296,1298,1324
+  911ce13b60d8a33a 83-85,276,577-580,603,696-700,803-807,1065-1075,1294-1295,1297,1299,1319-1323,1325-1328
+tests/fixtures/calque/calque_superlative_zy1_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_connective_zy2_bad_004.txt
+  911ce13b60d8a33a 1
+tests/calque_fixtures.rs
+  911ce13b60d8a33a 1-287
+tests/fixtures/calque/calque_nominalization_zy3_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_connective_zy2b_good_001.txt
+  911ce13b60d8a33a 1
+tests/scanner-integration.rs
+  911ce13b60d8a33a 915
+tests/fix-tier-benchmark.rs
+  911ce13b60d8a33a 1,95
+tests/fixtures/calque/calque_superlative_zy1_bad_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_falsefriend_zy4_solo_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_falsefriend_zy4_solo_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_superlative_zy1_good_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_nominalization_zy3_bad_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_premodifier_zy5_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_falsefriend_zy4_bad_002.txt
+  911ce13b60d8a33a 1
+src/engine/mod.rs
+  911ce13b60d8a33a 11
+tests/fixtures/calque/calque_nominalization_zy3_bad_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_connective_zy2_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_nominalization_zy3b_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_connective_zy2_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/calque/calque_connective_zy2b_bad_001.txt
+  911ce13b60d8a33a 1
+tests/anchor-benchmark.rs
+  911ce13b60d8a33a 1,160
+src/cache.rs
+  31240bd55ff4ef68 77-78,97,171,176,197-199,203,218,229,445,482,511,550,575,592,608,626,637-679
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "417e11d39abde192ca722fdc42a71c25a3a14402",
+  "prompts": {
+    "31240bd55ff4ef68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019de373-1c67-7bf3-903d-7a9bb7e334f0",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 136,
+      "total_deletions": 42,
+      "accepted_lines": 134,
+      "overriden_lines": 0
+    },
+    "911ce13b60d8a33a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a5f9cee9-a09c-447c-bcac-394506aa6ff7",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 90400,
+      "total_deletions": 1105,
+      "accepted_lines": 45780,
+      "overriden_lines": 0
+    }
+  }
+}

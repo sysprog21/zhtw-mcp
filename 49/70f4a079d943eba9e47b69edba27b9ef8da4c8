@@ -1,0 +1,225 @@
+assets/packs/translation_aid/business_terms.json
+  911ce13b60d8a33a 1-109
+tests/fixtures/cuimao/cuimao_ff_zy4_bad_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf3_zy5_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf4_zy1b_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf4_zy1_good_002.txt
+  911ce13b60d8a33a 1
+tests/cuimao_phase1a.rs
+  911ce13b60d8a33a 1-266
+tests/fixtures/cuimao/cuimao_ff_zy4_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_ff_zy4_bad_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf3_zy5_good_002.txt
+  911ce13b60d8a33a 1
+assets/packs/translation_aid/narrative_terms.json
+  911ce13b60d8a33a 1-101
+assets/packs/translation_aid/ai_terms.json
+  911ce13b60d8a33a 1-109
+tests/fix-tier-benchmark.rs
+  911ce13b60d8a33a 1,95
+tests/fixtures/cuimao/cuimao_ff_zy4_solo_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf4_zy1_good_001.txt
+  911ce13b60d8a33a 1
+src/engine/scan/grammar.rs
+  b85286f133bd191a 3883-3886,3918-3929,6368-6373,6457-6462,6891-6910
+  d59a0576167a1b23 3659-3666,3675,3693,3697,6700-6713
+  911ce13b60d8a33a 2151-2152,2154-2156,3020-3052,3073-3098,3100-3225,3230-3231,3236-3248,3250-3259,3264-3280,3285-3301,3304-3308,3322-3335,3337-3513,3558-3581,3583-3588,3592-3593,3595-3647,3650-3653,3657,3667-3674,3676-3692,3694-3696,3698-3719,3722-3728,3732-3882,3887-3890,3892-3894,3899-3900,3959-3960,3963,3965,3967-3969,3971-4078,4091-4109,4195-4196,6285-6367,6374-6456,6463-6699,6714-6890,6911-6939
+tests/fixtures/cuimao/cuimao_rf2_zy2_bad_004.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf4_zy1_bad_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf6_zy3b_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf2_zy2_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf6_zy3_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf2_zy2b_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf2_zy2b_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf6_zy3_bad_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf6_zy3_good_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf4_zy1_good_003.txt
+  911ce13b60d8a33a 1
+src/engine/mod.rs
+  911ce13b60d8a33a 11
+tests/fixtures/cuimao/cuimao_ff_zy4_bad_004.txt
+  911ce13b60d8a33a 1
+tests/cli-lint.rs
+  b85286f133bd191a 1002-1047
+  0fc4d62f1adcbbc2 948-1001
+  911ce13b60d8a33a 891-947
+tests/fixtures/cuimao/cuimao_rf4_zy1b_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_ff_zy4_bad_005.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf4_zy1_bad_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf2_zy2_bad_003.txt
+  911ce13b60d8a33a 1
+assets/packs/translation_aid/philosophy_terms.json
+  911ce13b60d8a33a 1-93
+tests/ir-parity.rs
+  911ce13b60d8a33a 202,475
+tests/fixtures/cuimao/cuimao_rf2_zy2_bad_002.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_ff_zy4_solo_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_ff_zy4_solo_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf6_zy3_good_001.txt
+  911ce13b60d8a33a 1
+assets/packs/translation_aid/provenance.tsv
+  911ce13b60d8a33a 1-46
+src/engine/scan/mod.rs
+  d59a0576167a1b23 203-244,1354,1618-1630,2430-2456
+  911ce13b60d8a33a 1318,1339-1349,1351-1353
+src/engine/style_score.rs
+  0fc4d62f1adcbbc2 81-84,94-99,107-116,212-225
+  911ce13b60d8a33a 1-80,85-93,100-106,117-211,226-241
+tests/anchor-benchmark.rs
+  911ce13b60d8a33a 1,160
+src/main.rs
+  911ce13b60d8a33a 83-85,276,603,696-700,803-807,1306-1310,1312-1315
+  b85286f133bd191a 577-580,1280-1286,1311
+tests/translation_aid_pack.rs
+  911ce13b60d8a33a 1-136
+tests/scanner-integration.rs
+  911ce13b60d8a33a 915
+src/engine/translationese_score.rs
+  911ce13b60d8a33a 96-99,110-117,127-130,134,140-143,150-154,162-171
+tests/fixtures/cuimao/README.md
+  911ce13b60d8a33a 1-87
+tests/fixtures/cuimao/cuimao_rf3_zy5_good_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf4_zy1_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf2_zy2_bad_001.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf2_zy2_good_002.txt
+  911ce13b60d8a33a 1
+src/mcp/tools.rs
+  0fc4d62f1adcbbc2 458-462,483-487
+  911ce13b60d8a33a 391-392,395-401,585-595,620,815-825,850,1008,1032,1737-1741,1778-1782,1807-1811,1874-1877,1933-1954,2043,2073,2104,2607-2610,2907,3065
+  b85286f133bd191a 441-449,3016-3030
+tests/e2e-mcp.rs
+  0fc4d62f1adcbbc2 964-1018
+  911ce13b60d8a33a 154-157
+tests/fixtures/cuimao/cuimao_rf2_zy2_good_003.txt
+  911ce13b60d8a33a 1
+tests/fixtures/cuimao/cuimao_rf6_zy3_bad_003.txt
+  911ce13b60d8a33a 1
+assets/packs/translation_aid/thresholds.json
+  911ce13b60d8a33a 1-23
+assets/packs/translation_aid/README.md
+  911ce13b60d8a33a 1-77
+tests/fixtures/cuimao/cuimao_rf6_zy3b_bad_001.txt
+  911ce13b60d8a33a 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "4970f4a079d943eba9e47b69edba27b9ef8da4c8",
+  "prompts": {
+    "0fc4d62f1adcbbc2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019de2a9-d68f-7ef1-a469-1483b2b6b3f8",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 156,
+      "total_deletions": 9,
+      "accepted_lines": 153,
+      "overriden_lines": 0
+    },
+    "4a5463c112059ed8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d9766-66d7-7e42-8914-5904bdf2afbe",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 42750,
+      "total_deletions": 182,
+      "accepted_lines": 42549,
+      "overriden_lines": 0
+    },
+    "911ce13b60d8a33a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a5f9cee9-a09c-447c-bcac-394506aa6ff7",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 3931,
+      "total_deletions": 945,
+      "accepted_lines": 3190,
+      "overriden_lines": 49
+    },
+    "b85286f133bd191a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019de2f3-b314-7482-afa9-b2cbe6ad94f3",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 136,
+      "total_deletions": 5,
+      "accepted_lines": 132,
+      "overriden_lines": 0
+    },
+    "c5a1a4c5b5379375": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019de2a9-e057-7511-8827-7b3e37871821",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 1211,
+      "total_deletions": 0,
+      "accepted_lines": 1195,
+      "overriden_lines": 13
+    },
+    "d59a0576167a1b23": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019de2c6-d72d-7f90-9c81-08fbfa123736",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 140,
+      "total_deletions": 38,
+      "accepted_lines": 111,
+      "overriden_lines": 0
+    },
+    "ebb33a072b927f82": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5e33f7d9-f056-4b71-a73f-4e28c2afcc1c",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 380,
+      "total_deletions": 129,
+      "accepted_lines": 18,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 
 use super::ruleset::Ruleset;
-use crate::audit::hash_hex;
 
 /// Load the embedded ruleset from pre-serialized postcard binary.
 /// The binary is generated at build time from assets/ruleset.json by build.rs.
@@ -23,7 +22,7 @@ pub fn compute_ruleset_hash(
         "case": case_rules,
     });
     let bytes = serde_json::to_vec(&canonical).expect("Value serialization is infallible");
-    hash_hex(&bytes)
+    blake3::hash(&bytes).to_hex().to_string()
 }
 
 #[cfg(test)]

@@ -1,0 +1,10 @@
+{
+  "name": "zhtw-mcp-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "icons": "sh scripts/generate-icons.sh",
+    "test": "node --test test/*.test.js"
+  }
+}

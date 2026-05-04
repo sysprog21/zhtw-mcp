@@ -1,8 +1,16 @@
+#[cfg(feature = "native")]
 pub mod audit;
+#[cfg(feature = "native")]
 pub mod baseline;
+#[cfg(feature = "native")]
 pub mod cache;
+#[cfg(feature = "native")]
 pub mod config;
 pub mod engine;
+#[cfg(feature = "native")]
 pub mod fixer;
+#[cfg(feature = "native")]
 pub mod mcp;
 pub mod rules;
+#[cfg(feature = "browser-wasm")]
+pub mod wasm;

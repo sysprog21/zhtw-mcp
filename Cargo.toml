@@ -13,9 +13,26 @@ readme = "README.md"
 include = ["src/**/*", "assets/ruleset.json", "Cargo.toml", "LICENSE", "README.md", "rust-toolchain.toml"]
 
 [features]
-default = ["translate"]
-async-transport = ["dep:tokio"]
+default = ["native", "translate"]
+native = [
+    "dep:dirs",
+    "dep:env_logger",
+    "dep:fs2",
+    "dep:rayon",
+    "dep:tempfile",
+    "dep:toml",
+]
+async-transport = ["native", "dep:tokio"]
+browser-wasm = ["dep:console_error_panic_hook", "dep:wasm-bindgen"]
 translate = ["dep:ureq", "dep:urlencoding"]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "zhtw-mcp"
+path = "src/main.rs"
+required-features = ["native"]
 
 [dependencies]
 serde = { version = "1", features = ["derive", "rc"] }
@@ -24,21 +41,23 @@ aho-corasick = "1"
 daachorse = "1"
 regex = "1"
 blake3 = "1"
-rayon = "1"
+rayon = { version = "1", optional = true }
 anyhow = "1"
 unicode-normalization = "0.1"
 pulldown-cmark = { version = "0.13", default-features = false }
 log = "0.4"
-env_logger = { version = "0.11", default-features = false }
-dirs = "5.0"
-tempfile = "3.0"
-toml = "0.8"
+env_logger = { version = "0.11", default-features = false, optional = true }
+dirs = { version = "5.0", optional = true }
+tempfile = { version = "3.0", optional = true }
+toml = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt", "io-util", "time", "sync", "macros", "io-std"], optional = true }
 ureq = { version = "3", optional = true }
 urlencoding = { version = "2", optional = true }
 rustc-hash = "2"
-fs2 = "0.4"
+fs2 = { version = "0.4", optional = true }
 postcard = { version = "1", features = ["alloc"] }
+console_error_panic_hook = { version = "0.1", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
 
 [build-dependencies]
 serde = { version = "1", features = ["derive"] }

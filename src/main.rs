@@ -865,11 +865,16 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
     // Scan cache: skip re-scanning unchanged files (lint-only, no fix).
     // Disabled when --verify is active (calibrate_issues needs the full text).
     // Wrapped in Mutex for rayon parallel scanning.
-    let mut use_cache = params.fix_mode == zhtw_mcp::fixer::FixMode::None;
-    #[cfg(feature = "translate")]
-    if params.verify {
-        use_cache = false;
-    }
+    let use_cache = params.fix_mode == zhtw_mcp::fixer::FixMode::None && {
+        #[cfg(feature = "translate")]
+        {
+            !params.verify
+        }
+        #[cfg(not(feature = "translate"))]
+        {
+            true
+        }
+    };
     let scan_cache =
         use_cache.then(|| std::sync::Mutex::new(zhtw_mcp::cache::ScanCache::open_default()));
 
@@ -1025,11 +1030,16 @@ fn run_lint_batch(params: &LintBatchParams<'_>) -> Result<()> {
 
             // Drop text eagerly when not needed for fix/write-back/verify
             // to avoid accumulating all files' text in parallel scans.
-            let mut need_text = input_was_sc || params.fix_mode != zhtw_mcp::fixer::FixMode::None;
-            #[cfg(feature = "translate")]
-            if params.verify {
-                need_text = true;
-            }
+            let need_text = input_was_sc || params.fix_mode != zhtw_mcp::fixer::FixMode::None || {
+                #[cfg(feature = "translate")]
+                {
+                    params.verify
+                }
+                #[cfg(not(feature = "translate"))]
+                {
+                    false
+                }
+            };
             if !need_text {
                 text = String::new();
             }

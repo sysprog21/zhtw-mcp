@@ -11,3 +11,8 @@ __pycache__/
 src/engine/s2t_data.rs
 # Downloaded OpenCC dictionary cache
 data/opencc/
+extension/dist/*
+!extension/dist/README.md
+.DS_Store
+
+AGENTS.md

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>zhtw-mcp Page Checker</title>
+    <link rel="stylesheet" href="styles/popup.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <section class="hero" aria-label="掃描摘要">
+        <p class="eyebrow">zhtw-mcp</p>
+        <h1>正體用語檢查</h1>
+        <div class="meter">
+          <span id="count" class="meter__count">—</span>
+          <span class="meter__label">警告 / 錯誤</span>
+        </div>
+        <p id="status" class="status" data-tone="idle">尚未掃描</p>
+        <p id="meta" class="meta">按下檢查後，只會讀取目前分頁可見文字。</p>
+      </section>
+
+      <form id="scan-form" class="controls">
+        <label class="field">
+          <span>檢查強度</span>
+          <select id="profile">
+            <option value="base">Base：用語、標點、文法</option>
+            <option value="strict">Strict：加入字形標準</option>
+          </select>
+        </label>
+        <label class="toggle">
+          <input id="relaxed" type="checkbox" />
+          <span>UI 文案模式：放寬部分標點與文法規則</span>
+        </label>
+        <button id="scan-button" type="submit">檢查目前分頁</button>
+      </form>
+
+      <ol id="issue-list" class="issues" aria-label="掃描結果"></ol>
+    </main>
+    <script type="module" src="src/popup.js"></script>
+  </body>
+</html>

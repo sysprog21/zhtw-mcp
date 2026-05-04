@@ -342,6 +342,7 @@ fn split_paragraphs(text: &str) -> Vec<(usize, &str)> {
 ///
 /// Returns the substring spanning CONTEXT_WINDOW_CHARS characters before
 /// the match start and after the match end, including the match itself.
+#[cfg_attr(feature = "browser-wasm", allow(dead_code))]
 pub(crate) fn surrounding_window(text: &str, start: usize, end: usize) -> &str {
     if text.is_empty() {
         return &text[0..0];
@@ -421,6 +422,7 @@ fn clamp_at_excluded(
 /// Like surrounding_window but clamps the window at excluded-range
 /// boundaries so that context clues inside a code block (or other excluded
 /// region) cannot influence rules that fire outside it.
+#[cfg_attr(feature = "browser-wasm", allow(dead_code))]
 pub(crate) fn surrounding_window_bounded<'a>(
     text: &'a str,
     start: usize,

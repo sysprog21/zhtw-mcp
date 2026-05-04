@@ -1,0 +1,25 @@
+mark.zhtw-mcp-highlight {
+  border-radius: 0.18em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: inherit;
+  padding: 0.03em 0.16em;
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.13em;
+  text-underline-offset: 0.12em;
+}
+
+mark.zhtw-mcp-highlight--error {
+  background: rgba(179, 38, 30, 0.16);
+  text-decoration-color: #b3261e;
+}
+
+mark.zhtw-mcp-highlight--warning {
+  background: rgba(180, 119, 18, 0.18);
+  text-decoration-color: #b47712;
+}
+
+mark.zhtw-mcp-highlight--info {
+  background: rgba(55, 93, 129, 0.14);
+  text-decoration-color: #375d81;
+}

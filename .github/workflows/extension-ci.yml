@@ -1,0 +1,84 @@
+name: Extension CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  EXTENSION_PACKAGE_DIR: extension-package/zhtw-mcp-extension
+  EXTENSION_ZIP: zhtw-mcp-extension.zip
+
+concurrency:
+  group: "extension-ci-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  package-extension:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install Rust toolchain
+      run: |
+        rustup toolchain install stable --profile minimal --component rustfmt
+        rustup target add wasm32-unknown-unknown
+
+    - name: Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: "v1-extension-rust"
+        shared-key: "ubuntu-24.04"
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: Install wasm-pack
+      run: cargo install wasm-pack --locked
+
+    - name: Build scanner WASM
+      run: sh extension/build-wasm.sh
+
+    - name: Test extension helpers
+      run: npm test --prefix extension
+
+    - name: Assemble distributable extension
+      run: |
+        rm -rf extension-package "$EXTENSION_ZIP"
+        mkdir -p "$EXTENSION_PACKAGE_DIR"/{dist,icons}
+        cp -R \
+          extension/src \
+          extension/styles \
+          extension/manifest.json \
+          extension/popup.html \
+          "$EXTENSION_PACKAGE_DIR"/
+        cp extension/dist/*.js extension/dist/*.wasm "$EXTENSION_PACKAGE_DIR"/dist/
+        if [ -d extension/dist/snippets ]; then
+          cp -R extension/dist/snippets "$EXTENSION_PACKAGE_DIR"/dist/
+        fi
+        cp extension/icons/icon-{16,32,48,128}.png "$EXTENSION_PACKAGE_DIR"/icons/
+        (cd extension-package && zip -r "../$EXTENSION_ZIP" zhtw-mcp-extension)
+
+    - name: Upload unpacked extension artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: zhtw-mcp-extension-unpacked
+        path: ${{ env.EXTENSION_PACKAGE_DIR }}
+        if-no-files-found: error
+
+    - name: Upload zipped extension artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: zhtw-mcp-extension-zip
+        path: ${{ env.EXTENSION_ZIP }}
+        if-no-files-found: error

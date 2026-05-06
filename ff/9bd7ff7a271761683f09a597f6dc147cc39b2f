@@ -1,19 +1,17 @@
-assets/ruleset.json
-  86f6b5af6a1e45f5 2271-2273
+src/mcp/tools.rs
+  86f6b5af6a1e45f5 47-48,83,207,311,686-688,691-692,699-736,1048,1051,1053,1056,1059,1064
 tests/e2e_mcp.rs
   86f6b5af6a1e45f5 554-683,690-817
-src/mcp/tools.rs
-  86f6b5af6a1e45f5 47-48,83,207,311,686-688,691-692,699-740,1052,1055,1057,1060,1063,1068
+tests/cli_lint.rs
+  86f6b5af6a1e45f5 522-558,560-615
 src/main.rs
-  86f6b5af6a1e45f5 56,120,122,416,762-764,766-825,829-845,847-849
+  86f6b5af6a1e45f5 56,120,122,416,762-816,819-820,822,825,829,831-832,836-843,845
 src/rules/ruleset.rs
   86f6b5af6a1e45f5 254-262,462-501
-tests/cli_lint.rs
-  86f6b5af6a1e45f5 522-559,561-620
 ---
 {
   "schema_version": "authorship/3.0.0",
-  "git_ai_version": "1.1.10",
+  "git_ai_version": "1.3.4",
   "base_commit_sha": "ff9bd7ff7a271761683f09a597f6dc147cc39b2f",
   "prompts": {
     "86f6b5af6a1e45f5": {
@@ -24,9 +22,9 @@ tests/cli_lint.rs
       },
       "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>",
       "messages": [],
-      "total_additions": 3,
-      "total_deletions": 1,
-      "accepted_lines": 553,
+      "total_additions": 560,
+      "total_deletions": 64,
+      "accepted_lines": 523,
       "overriden_lines": 0
     }
   }

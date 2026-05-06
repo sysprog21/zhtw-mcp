@@ -1,0 +1,125 @@
+src/main.rs
+  081a1fa32dbd5e4e 957-989,1194,1292,1442-1448,1450,1452
+  e290e1dbd99426ff 81-82,171-176,551-556,591-600,625,632-633,728-731,832,843-851,869-871,1110-1125,1188-1193,1195,1321-1322,1335-1341,1439-1441,1449,1451,1453-1455
+tests/markdown_blockquote_yaml.rs
+  e290e1dbd99426ff 1-152
+tests/ir-parity.rs
+  e290e1dbd99426ff 44,61,78,95,112,130,147,170,360,649
+scripts/check-ruleset.py
+  e290e1dbd99426ff 81,97
+benches/scanner.rs
+  e290e1dbd99426ff 483
+src/rules/glossary.rs
+  e290e1dbd99426ff 1-82,86-87,89-169,187-218
+  3547224b27ac1dc7 83-85,88,170-186
+src/engine/mod.rs
+  e290e1dbd99426ff 2
+tests/scanner-integration.rs
+  e290e1dbd99426ff 28,45,909
+src/rules/ruleset.rs
+  e290e1dbd99426ff 85-89,109-116,164,188,462-489,514,601-605,644,680
+src/config.rs
+  e290e1dbd99426ff 29-60
+tests/consistency_cli.rs
+  081a1fa32dbd5e4e 98,106-109,114-130,144-152
+  e290e1dbd99426ff 1-97,99-105,110-113,131-143
+src/engine/markdown.rs
+  e290e1dbd99426ff 17-46,48-72,76-78,85-86,89-90,94-96,108-123,333-336,357-368
+tests/exclusion-remap.rs
+  e290e1dbd99426ff 33
+assets/ruleset.json
+  e290e1dbd99426ff 1270-1271,1306,1323-1329,3500-3501,7428-7430,9110-9111
+src/rules/mod.rs
+  e290e1dbd99426ff 1
+src/rules/store.rs
+  e290e1dbd99426ff 198,1069,1084,1132,1155,1239,1274
+tests/realworld_calques.rs
+  e290e1dbd99426ff 1-262
+src/mcp/tools.rs
+  081a1fa32dbd5e4e 26,522-541,543-545,604,608-612,685-696,747,853-854,859-868,934,1078,1082-1083,1106,1110-1111,3462,3466-3467,3640-3722
+  e290e1dbd99426ff 411-422,465-467,599-603,605-607,613-614,679,1610-1632,1764-1893,1912-1916,1989-1993,2136-2139,2298,2419-2423,2428,2909-3054
+src/mcp/resources.rs
+  e290e1dbd99426ff 185,200
+tests/glossary_cli.rs
+  e290e1dbd99426ff 1-106
+  081a1fa32dbd5e4e 107-162
+src/engine/style_score.rs
+  e290e1dbd99426ff 160
+tests/fixtures/realworld_calques.md
+  e290e1dbd99426ff 1-48
+src/engine/scan/tests_generated.rs
+  e290e1dbd99426ff 19,34,68,83,111,157,172,253,681,791,1265,1280,1307,1322,1353,1368,1630,1647,1800,2306,2342
+src/engine/segment.rs
+  e290e1dbd99426ff 1097,1234,1342,1372,1397,1429
+src/rules/loader.rs
+  e290e1dbd99426ff 48,77,92
+build.rs
+  e290e1dbd99426ff 36-45
+src/engine/consistency.rs
+  081a1fa32dbd5e4e 16,61-64,68-72,126-131,133-138,149-158,183,191,209,219,235,246,255-267
+  3547224b27ac1dc7 90,93-94,132,139-148,268-287
+  e290e1dbd99426ff 1-15,17-60,65-67,73-89,91-92,95-125,159-182,184-190,192-208,210-218,220-234,236-245,247-254,288-289
+src/engine/scan/mod.rs
+  e290e1dbd99426ff 36,712-722,725-727,729-733,1005-1013,1072-1075,1079-1083,1926,1954,1987,2096,2128,2159,2202,2233,2264,2306,2347,2370,2401,2428,2470
+src/engine/scan/rule_ir.rs
+  e290e1dbd99426ff 149-151,185,617,756-761,1050
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "021911dc78a7e4e41df6ca68359aad392f8553d7",
+  "prompts": {
+    "081a1fa32dbd5e4e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dfb1f-1107-7cc1-98b7-4f4b1b78cd98",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 343,
+      "total_deletions": 85,
+      "accepted_lines": 330,
+      "overriden_lines": 1
+    },
+    "3547224b27ac1dc7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dfb99-0459-7480-b160-4261f24cb0d4",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 65,
+      "total_deletions": 15,
+      "accepted_lines": 55,
+      "overriden_lines": 0
+    },
+    "911ce13b60d8a33a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a5f9cee9-a09c-447c-bcac-394506aa6ff7",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 42847,
+      "total_deletions": 0,
+      "accepted_lines": 42919,
+      "overriden_lines": 0
+    },
+    "e290e1dbd99426ff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5b0c640-672d-4c11-94f0-83a096a04aba",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jim Huang",
+      "messages": [],
+      "total_additions": 2500,
+      "total_deletions": 473,
+      "accepted_lines": 2031,
+      "overriden_lines": 0
+    }
+  }
+}

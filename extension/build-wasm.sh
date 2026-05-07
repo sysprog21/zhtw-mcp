@@ -4,7 +4,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 if ! command -v wasm-pack >/dev/null 2>&1; then
-  echo "wasm-pack is required. Install it from https://rustwasm.github.io/wasm-pack/installer/" >&2
+  echo "wasm-pack is required. Install it with: cargo install wasm-pack" >&2
   exit 1
 fi
 

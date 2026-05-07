@@ -67,7 +67,16 @@ jobs:
           cp -R extension/dist/snippets "$EXTENSION_PACKAGE_DIR"/dist/
         fi
         cp extension/icons/icon-{16,32,48,128}.png "$EXTENSION_PACKAGE_DIR"/icons/
-        (cd extension-package && zip -r "../$EXTENSION_ZIP" zhtw-mcp-extension)
+        (cd "$EXTENSION_PACKAGE_DIR" && zip -r "../../$EXTENSION_ZIP" .)
+
+    - name: Validate distributable extension
+      run: |
+        test -f "$EXTENSION_PACKAGE_DIR/manifest.json"
+        test -f "$EXTENSION_PACKAGE_DIR/dist/zhtw_mcp_wasm.js"
+        test -f "$EXTENSION_PACKAGE_DIR/dist/zhtw_mcp_wasm_bg.wasm"
+        unzip -l "$EXTENSION_ZIP" manifest.json
+        unzip -l "$EXTENSION_ZIP" dist/zhtw_mcp_wasm.js
+        unzip -l "$EXTENSION_ZIP" dist/zhtw_mcp_wasm_bg.wasm
 
     - name: Upload unpacked extension artifact
       uses: actions/upload-artifact@v4

@@ -24,6 +24,8 @@ The generated files are written to `extension/dist/`.
 
 The extension uses `activeTab`, so it scans only after a user gesture and only for the current active tab. Badge counts include warning and error issues; info-level findings appear in the popup but do not increase the badge.
 
+The extension applies browser-only result filtering for common page markup patterns such as `...` and `:::`. These filters do not change the Rust CLI, MCP server, or WASM scanner rules.
+
 ## Test JavaScript helpers
 
 ```sh

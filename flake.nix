@@ -28,7 +28,7 @@
             pkgs = import inputs.nixpkgs {
               inherit system;
               overlays = [
-                inputs.self.overlays.default
+                self.overlays.default
               ];
             };
           }
@@ -37,7 +37,7 @@
     {
       overlays.default = final: prev: {
         rustToolchain =
-          with inputs.fenix.packages.${prev.stdenv.hostPlatform.system};
+          with inputs.fenix.packages.${final.stdenv.hostPlatform.system};
           combine (
             with stable;
             [
@@ -84,7 +84,7 @@
           in
           rustPlatform.buildRustPackage (finalAttrs: {
             pname = "zhtw-mcp";
-            version = "0.1.0";
+            version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
 
             src = final.lib.cleanSource ./.;
 
@@ -92,6 +92,7 @@
 
             nativeBuildInputs = [
               final.python3
+              final.rustToolchain
             ];
 
             preBuild = ''
@@ -100,7 +101,7 @@
               cp ${openccDicts}/STCharacters.txt data/opencc/STCharacters.txt
               cp ${openccDicts}/TWVariants.txt data/opencc/TWVariants.txt
               python3 scripts/gen-s2t-tables.py
-              ${final.rustToolchain}/bin/rustfmt src/engine/s2t_data.rs
+              rustfmt src/engine/s2t_data.rs
             '';
 
             cargoTestFlags = [
@@ -108,12 +109,12 @@
               "--bins"
             ];
 
-            meta = {
+            meta = with final.lib; {
               description = "MCP server for Traditional Chinese (zh-TW) text linting and normalization";
               homepage = "https://github.com/sysprog21/zhtw-mcp";
-              license = final.lib.licenses.mit;
+              license = licenses.mit;
               mainProgram = "zhtw-mcp";
-              maintainers = [ ];
+              platforms = platforms.unix;
             };
           });
       };

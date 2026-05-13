@@ -1,4 +1,5 @@
 /target
+/result
 externals/
 rules.sled/
 *.sled/

@@ -109,11 +109,7 @@ nix run github:sysprog21/zhtw-mcp -- lint README.md
 To register the MCP server without installing the binary globally:
 
 ```bash
-# Claude Code
 claude mcp add zhtw-mcp -- nix run github:sysprog21/zhtw-mcp --
-
-# OpenCode
-opencode mcp add zhtw-mcp nix run github:sysprog21/zhtw-mcp --
 ```
 
 Codex CLI or other MCP clients can use `nix run` as the server command:

@@ -98,6 +98,46 @@ make
 
 The binary is at `target/release/zhtw-mcp`.
 
+### Nix
+
+With Nix flakes enabled, run the package directly:
+
+```bash
+nix run github:sysprog21/zhtw-mcp -- lint README.md
+```
+
+To register the MCP server without installing the binary globally:
+
+```bash
+# Claude Code
+claude mcp add zhtw-mcp -- nix run github:sysprog21/zhtw-mcp --
+
+# OpenCode
+opencode mcp add zhtw-mcp nix run github:sysprog21/zhtw-mcp --
+```
+
+Codex CLI or other MCP clients can use `nix run` as the server command:
+
+```json
+{
+  "mcpServers": {
+    "zhtw-mcp": {
+      "command": "nix",
+      "args": ["run", "github:sysprog21/zhtw-mcp", "--"]
+    }
+  }
+}
+```
+
+If you prefer a persistent command on `PATH`, install the flake package:
+
+```bash
+nix profile install github:sysprog21/zhtw-mcp
+claude mcp add zhtw-mcp -- zhtw-mcp
+```
+
+From a local checkout, replace `github:sysprog21/zhtw-mcp` with `.`.
+
 ### Installing
 
 The quickest way to build, install to `~/.local/bin`, and register with Claude Code:

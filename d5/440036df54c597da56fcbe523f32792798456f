@@ -1,0 +1,43 @@
+src/engine/scan/mod.rs
+  s_f3f86ed5b1010d::t_636cce10960b5e 2489-2498,2552-2555
+  s_af455103a5c770::t_6446db36fb1700 2486-2488,2499,2542,2548
+  s_f3f86ed5b1010d::t_45dcf0e793374e 2522-2538,2549-2551
+  s_af455103a5c770::t_745155d2768236 2500-2521,2539-2541,2543-2547,2556-2557
+assets/ruleset.json
+  s_13c096e7a794fb::t_2cab2fbc5371d8 9729-9730
+  s_f3f86ed5b1010d::t_636cce10960b5e 3772-3773,3775-3777,9696-9697,9699-9700,9710-9711,9713-9714,9727,9734,9738-9739,9741-9742
+  s_f3f86ed5b1010d::t_45dcf0e793374e 3774,9736-9737,9740
+  s_af455103a5c770::t_6446db36fb1700 9703-9709,9712,9723-9726
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "d5440036df54c597da56fcbe523f32792798456f",
+  "prompts": {},
+  "sessions": {
+    "s_13c096e7a794fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e689f6ed-2788-4bba-aa5d-c30cb6c16b09",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>"
+    },
+    "s_af455103a5c770": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e493e-7794-7a32-9a7e-56ac3136cba8",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>"
+    },
+    "s_f3f86ed5b1010d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e4966-0ab1-7011-a92c-bdc527add3c4",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>"
+    }
+  }
+}

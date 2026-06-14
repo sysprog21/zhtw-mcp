@@ -1,0 +1,34 @@
+assets/ruleset.json
+  s_d2ac1198cd60d5::t_2604098933deec 9230,11626
+  s_d2ac1198cd60d5::t_07dea9efa8b4e4 2011,11171
+  s_d6a153ad805078::t_9c1cc5e81b46eb 3107-3114,3753-3754,3756-3758,3760-3761,5188-5193,5195-5196,7685-7690,7692-7694,8465-8466,8468-8471,8525-8531,10138-10144,10146-10148,10827-10836,10868-10874,12644-12645,12647-12651
+  s_d6a153ad805078::t_f11480f50dcf38 3759,7691
+  s_d2ac1198cd60d5::t_eba525bed063b5 5194
+  s_d6a153ad805078::t_3c4ceb83eb46a6 3755,8467,8524,9842-9850,10145,12646
+src/engine/scan/grammar.rs
+  s_d6a153ad805078::t_96df772c6abcef 3111-3112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "ec4001798f104212e946a5c1511475973f0d49e1",
+  "prompts": {},
+  "sessions": {
+    "s_d2ac1198cd60d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e66b9-8141-7c41-ab03-338db23fdfe5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>"
+    },
+    "s_d6a153ad805078": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "91b7c82d-5e77-4d9a-b135-438ccd0ddb26",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>"
+    }
+  }
+}

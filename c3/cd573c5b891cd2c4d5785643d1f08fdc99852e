@@ -1,0 +1,46 @@
+scripts/deploy.sh
+  s_f235f50564ebec::t_e1f7e7bdfcd684 277-281
+  s_7942bb9f9c77bb::t_4660c77e63dfdd 384-387,389,404-408,414-415
+  s_7942bb9f9c77bb::t_8c39547c85a961 393
+  s_7942bb9f9c77bb::t_3c54ec0622748a 437-440,449
+  s_f235f50564ebec::t_d7fd4e20ae30a1 217-218,226-230
+  s_7942bb9f9c77bb::t_14ade2525d46a1 21-27
+  s_7942bb9f9c77bb::t_9506c967fa206a 311-312,315-316,323-324,329,335-339,347-348
+  s_7942bb9f9c77bb::t_934935d12efd32 100-101,104,106,110,112,117-119
+  s_f235f50564ebec::t_db44d01a56d89d 4,16,85-94,147,157,159-161,163-176,178,186-191,216,219-225,231-239,310,313-314,317-322,325-328,330-331,343,345,388,390-392,412,456-470,488-489
+  s_7942bb9f9c77bb::t_8f05d105d42864 177,179-185,192-197
+  s_7942bb9f9c77bb::t_83e4323c3d700e 127-128,139-146,148,150,154-156
+  s_f235f50564ebec::t_67757b0ca418a6 268-276,282-289,429-430
+src/mcp/setup.rs
+  s_f235f50564ebec::t_bb0a94e8daf4e8 3,5,126,140,155,170,180-207,362-367
+  s_f235f50564ebec::t_b2243a29715ab8 546-552,576-577
+README.md
+  s_f235f50564ebec::t_7cdac2d3084af5 108-110,119-121,126
+  s_7942bb9f9c77bb::t_beb6dacccfe5da 103-105
+docs/cli.md
+  s_f235f50564ebec::t_b9749049b14158 125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "c3cd573c5b891cd2c4d5785643d1f08fdc99852e",
+  "prompts": {},
+  "sessions": {
+    "s_7942bb9f9c77bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "396fdacd-8766-4186-8e60-4bb420498e14",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>"
+    },
+    "s_f235f50564ebec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ec78c-26e0-74e0-9cb4-0d58b0b229e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>"
+    }
+  }
+}

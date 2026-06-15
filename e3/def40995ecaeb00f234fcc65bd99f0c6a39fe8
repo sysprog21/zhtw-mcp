@@ -1,0 +1,60 @@
+src/mcp/setup.rs
+  s_f235f50564ebec::t_bb0a94e8daf4e8 3,5,126,140,155,170,180-207,362-367
+  s_f235f50564ebec::t_b2243a29715ab8 546-552,576-577
+docs/cli.md
+  s_f235f50564ebec::t_b9749049b14158 125
+scripts/deploy.sh
+  s_7942bb9f9c77bb::t_934935d12efd32 100-101,104,106,110,112,117-119
+  s_7942bb9f9c77bb::t_14ade2525d46a1 21-27
+  s_7942bb9f9c77bb::t_0e1632866aaa7b 200-221
+  s_7942bb9f9c77bb::t_c0c7cd7d5e40e9 265-273,278-279
+  s_7942bb9f9c77bb::t_8c39547c85a961 440
+  s_f235f50564ebec::t_e1f7e7bdfcd684 324-328
+  s_7942bb9f9c77bb::t_058fa576579099 166-173,176-187,189-193
+  s_f235f50564ebec::t_67757b0ca418a6 315-323,329-336,476-477
+  s_a01485933ac893::t_e0db0ecb963cbc 39
+  s_7942bb9f9c77bb::t_83e4323c3d700e 127-128,139-146,148,150,154-156
+  s_7942bb9f9c77bb::t_9506c967fa206a 358-359,362-363,370-371,376,382-386,394-395
+  s_7942bb9f9c77bb::t_8f05d105d42864 228,230-233
+  s_f235f50564ebec::t_db44d01a56d89d 4,16,85-94,147,157,159-165,174-175,194-199,222-227,252,255-261,280-286,357,360-361,364-369,372-375,377-378,390,392,435,437-439,459,503-505,521-526,544-545
+  s_7942bb9f9c77bb::t_4660c77e63dfdd 431-434,436,451-455,461-462
+  s_7942bb9f9c77bb::t_3c54ec0622748a 484-487,496
+  s_7942bb9f9c77bb::t_6179c4ff32f37b 506-520
+  s_f235f50564ebec::t_d7fd4e20ae30a1 253-254,262-264
+  s_a01485933ac893::t_a9fd13a5451e6c 274-277
+README.md
+  s_7942bb9f9c77bb::t_beb6dacccfe5da 103-105
+  s_f235f50564ebec::t_7cdac2d3084af5 108-110,119-121,126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "e3def40995ecaeb00f234fcc65bd99f0c6a39fe8",
+  "prompts": {},
+  "sessions": {
+    "s_7942bb9f9c77bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "396fdacd-8766-4186-8e60-4bb420498e14",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": null
+    },
+    "s_a01485933ac893": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ec98e-31a3-7200-8140-4fd5b18aa137",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_f235f50564ebec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ec78c-26e0-74e0-9cb4-0d58b0b229e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Jim Huang <jserv@ccns.ncku.edu.tw>"
+    }
+  }
+}

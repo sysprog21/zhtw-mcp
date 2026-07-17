@@ -549,11 +549,10 @@ pub fn parse_jsonrpc_line(line: &str) -> Result<JsonRpcRequest, TransportError> 
     // Step 3: handle messages without a method field.
     if obj.is_object() && obj.get("method").is_none() {
         let is_response = obj.get("result").is_some() || obj.get("error").is_some();
-        if is_response {
-            // Response-shaped (has result/error, no method): silently discard.
+        if is_response && !id_present {
+            // Response-shaped (has result/error, no method, no id): silently discard.
             // JSON-RPC 2.0: "The Server MUST NOT reply to a Response."
-            // Covers late sampling responses (with id) and orphaned responses
-            // (without id).
+            // Covers orphaned responses (without id).
             return Err(TransportError::StaleResponse);
         }
         if id_present {
@@ -819,15 +818,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_response_shaped_with_id_returns_stale() {
-        // JSON-RPC 2.0: "The Server MUST NOT reply to a Response."
-        // Response-shaped messages (has result/error, no method) are silently
-        // discarded regardless of whether they carry an id.
+    fn parse_response_shaped_with_id_without_method_returns_invalid_request() {
         let line = r#"{"jsonrpc":"2.0","id":1,"result":"ok"}"#;
         let err = parse_jsonrpc_line(line).unwrap_err();
-        assert!(matches!(err, TransportError::StaleResponse));
-        assert_eq!(err.error_code(), None);
-        assert!(err.into_response(None).is_none());
+        assert!(matches!(err, TransportError::InvalidRequest(..)));
+        assert_eq!(err.error_code(), Some(INVALID_REQUEST));
+        let resp = err.into_response(None).expect("should produce response");
+        match &resp.id {
+            Some(RequestId::Int(1)) => {}
+            other => panic!("expected id=1, got {other:?}"),
+        }
     }
 
     #[test]

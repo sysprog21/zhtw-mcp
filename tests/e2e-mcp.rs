@@ -1446,29 +1446,18 @@ fn e2e_not_json_returns_parse_error() {
 }
 
 #[test]
-fn e2e_response_shaped_with_id_discarded() {
+fn e2e_response_shaped_with_id_rejected() {
     let (mut stdin, mut stdout, mut child, _tmp) = spawn_initialized_child();
 
-    // Response-shaped message WITH id: silently discarded per JSON-RPC 2.0
-    // ("The Server MUST NOT reply to a Response").
+    // Reject response-shaped messages with an ID but no method with INVALID_REQUEST (-32600)
     let response_msg = r#"{"jsonrpc":"2.0","id":999,"result":"stale"}"#;
     writeln!(stdin, "{response_msg}").unwrap();
     stdin.flush().unwrap();
 
-    // No error response expected — verify the server is still alive by
-    // sending a real request and getting a valid response.
-    let resp = send_recv(
-        &mut stdin,
-        &mut stdout,
-        &json!({
-            "jsonrpc": "2.0",
-            "method": "tools/list",
-            "id": 105,
-            "params": {}
-        }),
-    );
-    assert_eq!(resp["id"], 105);
-    assert!(resp["result"].is_object(), "server should still be alive");
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let resp: Value = serde_json::from_str(line.trim()).unwrap();
+    assert_eq!(resp["error"]["code"].as_i64().unwrap(), -32600);
 
     drop(stdin);
     let status = child.wait().unwrap();

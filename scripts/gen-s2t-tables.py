@@ -33,6 +33,10 @@ OUTPUT = REPO / "src" / "engine" / "s2t_data.rs"
 # To bump: change OPENCC_COMMIT, run this script, and paste the printed
 # source hash into EXPECTED_SOURCE_HASH.  The check below refuses to
 # generate if only one of the two moved, so a bump cannot be half-applied.
+#
+# Re-pin flake.nix and flake.lock to the same commit, because the Nix build
+# fills this cache from that input instead of downloading:
+#   nix flake lock --override-input opencc-src github:BYVoid/OpenCC/<commit>
 OPENCC_COMMIT = "5249273a3e5606852f088c9a8b23522145d94f78"
 EXPECTED_SOURCE_HASH = "959b88f60c9dcc0d"
 

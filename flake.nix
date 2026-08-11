@@ -7,8 +7,10 @@
       url = "https://flakehub.com/f/nix-community/fenix/0.1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Must match OPENCC_COMMIT in scripts/gen-s2t-tables.py; pinned in the URL
+    # so `nix flake update` cannot move the conversion tables.
     opencc-src = {
-      url = "github:BYVoid/OpenCC";
+      url = "github:BYVoid/OpenCC/5249273a3e5606852f088c9a8b23522145d94f78";
       flake = false;
     };
   };
@@ -78,11 +80,26 @@
               final.rustToolchain
             ];
 
+            # The sandbox has no network, so seed the generator's cache from
+            # the pinned input.  Its path is keyed by OPENCC_COMMIT, read from
+            # the script rather than hardcoded: a copy landing anywhere else is
+            # ignored and the build falls through to a download that must fail.
             preBuild = ''
-              mkdir -p data/opencc
-              cp ${opencc-src}/data/dictionary/STPhrases.txt data/opencc/STPhrases.txt
-              cp ${opencc-src}/data/dictionary/STCharacters.txt data/opencc/STCharacters.txt
-              cp ${opencc-src}/data/dictionary/TWVariants.txt data/opencc/TWVariants.txt
+              pinned=$(sed -n 's/^OPENCC_COMMIT = "\(.*\)"$/\1/p' scripts/gen-s2t-tables.py)
+              if [ "$pinned" != "${opencc-src.rev}" ]; then
+                echo "error: flake.lock pins OpenCC ${opencc-src.rev}, but" >&2
+                echo "  scripts/gen-s2t-tables.py pins $pinned." >&2
+                echo "  Re-pin inputs.opencc-src.url in flake.nix, then run:" >&2
+                echo "    nix flake lock --override-input opencc-src github:BYVoid/OpenCC/$pinned" >&2
+                exit 1
+              fi
+
+              cache=data/opencc/''${pinned:0:12}
+              mkdir -p "$cache"
+              for dict in STPhrases STCharacters TWVariants; do
+                cp ${opencc-src}/data/dictionary/$dict.txt "$cache/$dict.txt"
+              done
+
               python3 scripts/gen-s2t-tables.py
               rustfmt src/engine/s2t_data.rs
             '';

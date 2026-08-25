@@ -76,16 +76,25 @@ Throughout the codebase, `cn` and `tw` denote regional writing conventions, not 
 
 ### Pre-built binaries
 
+Every successful push to `main` replaces the rolling [`latest`](https://github.com/sysprog21/zhtw-mcp/releases/tag/latest) release. Choose the archive for your platform:
+
+| Platform | Asset |
+| --- | --- |
+| Linux x86_64 | `zhtw-mcp-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS arm64 | `zhtw-mcp-aarch64-apple-darwin.tar.gz` |
+| Windows x86_64 | `zhtw-mcp-x86_64-pc-windows-msvc.tar.gz` |
+
 #### macOS / Linux
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/sysprog21/zhtw-mcp/releases/latest/download/zhtw-mcp-installer.sh | sh
+curl -fsSL https://github.com/sysprog21/zhtw-mcp/releases/latest/download/zhtw-mcp-x86_64-unknown-linux-gnu.tar.gz | tar xz
 ```
 
 #### Windows (PowerShell)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/sysprog21/zhtw-mcp/releases/latest/download/zhtw-mcp-installer.ps1 | iex"
+irm https://github.com/sysprog21/zhtw-mcp/releases/latest/download/zhtw-mcp-x86_64-pc-windows-msvc.tar.gz -OutFile zhtw-mcp.tar.gz
+tar -xzf zhtw-mcp.tar.gz
 ```
 
 ### Nix

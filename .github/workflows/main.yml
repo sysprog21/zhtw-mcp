@@ -87,3 +87,123 @@ jobs:
 
     - name: make check-size
       run: make check-size
+
+  build-prerelease:
+    name: build (${{ matrix.name }})
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - name: macOS arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+          - name: Windows x86_64
+            os: windows-2025
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install Rust toolchain
+      run: rustup toolchain install stable --profile minimal
+
+    - name: Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: "v1-rust"
+        shared-key: ${{ matrix.os }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.x"
+
+    - name: Build and package
+      shell: bash
+      run: |
+        python3 scripts/gen-s2t-tables.py
+        cargo build --locked --release
+        tar czf zhtw-mcp-${{ matrix.target }}.tar.gz \
+          -C target/release \
+          zhtw-mcp${{ runner.os == 'Windows' && '.exe' || '' }}
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: zhtw-mcp-${{ matrix.target }}
+        path: zhtw-mcp-${{ matrix.target }}.tar.gz
+
+  prerelease:
+    needs: [check, audit, check-size, build-prerelease]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: prerelease-latest
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        pattern: zhtw-mcp-*
+        path: dist
+        merge-multiple: true
+
+    - name: Stage assets
+      shell: bash
+      run: |
+        expected=(
+          zhtw-mcp-x86_64-unknown-linux-gnu.tar.gz
+          zhtw-mcp-aarch64-apple-darwin.tar.gz
+          zhtw-mcp-x86_64-pc-windows-msvc.tar.gz
+        )
+        shopt -s nullglob
+        found=(dist/*.tar.gz)
+        missing=()
+        for name in "${expected[@]}"; do
+          [ -f "dist/$name" ] || missing+=("$name")
+        done
+        if [ ${#missing[@]} -ne 0 ] || [ ${#found[@]} -ne ${#expected[@]} ]; then
+          echo "release assets do not match the expected set" >&2
+          exit 1
+        fi
+        printf 'dist/%s\n' "${expected[@]}" > assets.txt
+
+    - name: Replace the latest release
+      shell: bash
+      run: |
+        status_of() {
+          gh api "$1" --silent -i 2>/dev/null | head -1 | awk '{print $2}'
+        }
+        require_answer() {
+          case "$1" in 200|404) return 0 ;; esac
+          echo "unexpected status '${1:-none}' querying $2" >&2
+          exit 1
+        }
+
+        release_status=$(status_of "repos/$GH_REPO/releases/tags/latest")
+        require_answer "$release_status" "the latest release"
+        if [ "$release_status" = 200 ]; then
+          gh release delete latest --yes --cleanup-tag
+        fi
+
+        tag_status=$(status_of "repos/$GH_REPO/git/ref/tags/latest")
+        require_answer "$tag_status" "the latest tag"
+        if [ "$tag_status" = 200 ]; then
+          gh api -X DELETE "repos/$GH_REPO/git/refs/tags/latest" >/dev/null
+        fi
+
+        mapfile -t assets < assets.txt
+        gh release create latest "${assets[@]}" \
+          --target "$GITHUB_SHA" \
+          --title "latest" \
+          --notes "Automated build of ${GITHUB_SHA:0:7} on $(date -u +%Y-%m-%d)."

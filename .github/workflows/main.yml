@@ -182,7 +182,9 @@ jobs:
       shell: bash
       run: |
         status_of() {
-          gh api "$1" --silent -i 2>/dev/null | head -1 | awk '{print $2}'
+          curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/$1"
         }
         require_answer() {
           case "$1" in 200|404) return 0 ;; esac

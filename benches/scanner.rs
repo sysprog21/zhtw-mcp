@@ -590,25 +590,32 @@ fn bench_cpu_attribution_100kb(c: &mut Criterion) {
         });
     });
 
-    // Post-scan overhead: LineIndex construction + line/col lookups. This cost
-    // is hidden inside spelling_only (which produces issues) but absent from
-    // baseline_no_checks (which early-returns on 0 issues).
+    // Post-scan overhead: LineIndex construction plus the batch line/col fill.
+    // This cost is hidden inside spelling_only (which produces issues) but
+    // absent from baseline_no_checks (which early-returns on 0 issues).
+    //
+    // Measured through fill_line_col_sorted because that is what the scanner
+    // calls. This used to loop a per-offset lookup instead, which binary
+    // searches the line table once per issue; the batch call walks it once for
+    // the whole document, so the old figure was timing a path that does not
+    // ship.
     group.bench_function("lineindex_100kb", |b| {
         use zhtw_mcp::engine::lineindex::{ColumnEncoding, LineIndex};
-        // Pre-collect valid char-boundary offsets for lookup simulation.
-        let offsets: Vec<usize> = text
+        use zhtw_mcp::rules::ruleset::{Issue, IssueType, Severity};
+
+        // Ascending char-boundary offsets, which is the shape the scanner hands
+        // over. Built once and refilled in place: the call only writes line and
+        // col, so reusing the batch keeps an allocation per iteration out of
+        // the measurement.
+        let mut issues: Vec<Issue> = text
             .char_indices()
             .step_by(text.chars().count() / 200)
-            .map(|(i, _)| i)
+            .map(|(i, _)| Issue::new(i, 0, "", Vec::new(), IssueType::Grammar, Severity::Warning))
             .collect();
         b.iter(|| {
             let idx = LineIndex::new(black_box(&text));
-            let mut sum = 0usize;
-            for &off in &offsets {
-                let (line, col) = idx.line_col(off, ColumnEncoding::Utf16);
-                sum += line + col;
-            }
-            black_box(sum);
+            idx.fill_line_col_sorted(&mut issues, ColumnEncoding::Utf16);
+            black_box(&issues);
         });
     });
 

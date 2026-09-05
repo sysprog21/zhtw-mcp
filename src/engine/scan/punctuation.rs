@@ -4,9 +4,8 @@
 use crate::engine::excluded::{is_excluded, ByteRange};
 use crate::rules::ruleset::{Issue, ProfileConfig, Severity};
 
-use super::{
-    adjacent_cjk, adjacent_cjk_inner, has_paragraph_break, immediate_cjk, punct_issue, Scanner,
-};
+use super::quotes::{plan_quote_conversions, QuoteKind, QuoteMark};
+use super::{adjacent_cjk, immediate_cjk, punct_issue, Scanner};
 
 impl Scanner {
     /// Punctuation scan: detect half-width punctuation that should be
@@ -24,8 +23,13 @@ impl Scanner {
     ) {
         let bytes = text.as_bytes();
         let len = bytes.len();
-        let mut ascii_quote_prev_end = 0usize;
-        let mut ascii_quote_pos_in_para = 0usize;
+
+        // Straight double quotes are decided as pairs over the raw text, ahead
+        // of the walk below, so that a quotation gets both halves converted or
+        // neither. The plan ascends, and so does the walk, so one cursor keeps
+        // the lookup at O(1) per mark.
+        let ascii_quotes = plan_quote_conversions(text, excluded, QuoteKind::AsciiDouble);
+        let mut ascii_cursor = 0usize;
 
         for (i, &b) in bytes.iter().enumerate() {
             // Cheap prefilter so the exclusion range check below runs only for
@@ -195,21 +199,15 @@ impl Scanner {
                     ));
                 }
                 b'"' => {
-                    if i > ascii_quote_prev_end
-                        && has_paragraph_break(text, ascii_quote_prev_end, i)
+                    while ascii_cursor < ascii_quotes.len() && ascii_quotes[ascii_cursor].offset < i
                     {
-                        ascii_quote_pos_in_para = 0;
+                        ascii_cursor += 1;
                     }
-
-                    let left_cjk = adjacent_cjk_inner(text, i, true, 3);
-                    let right_cjk = adjacent_cjk_inner(text, i + 1, false, 3);
-                    let is_closing = !ascii_quote_pos_in_para.is_multiple_of(2);
-
-                    if !left_cjk && !right_cjk && !is_closing {
+                    let Some(mark) = ascii_quotes.get(ascii_cursor).filter(|m| m.offset == i)
+                    else {
                         continue;
-                    }
-
-                    let suggestion = if ascii_quote_pos_in_para.is_multiple_of(2) {
+                    };
+                    let suggestion = if mark.opening {
                         "\u{300c}" // 「
                     } else {
                         "\u{300d}" // 」
@@ -220,8 +218,7 @@ impl Scanner {
                         suggestion,
                         "繁體中文應使用「」引號而非半形雙引號「\"」",
                     ));
-                    ascii_quote_prev_end = i + 1;
-                    ascii_quote_pos_in_para += 1;
+                    ascii_cursor += 1;
                 }
 
                 // Not a candidate byte: the prefilter above already skipped it.
@@ -303,12 +300,13 @@ impl Scanner {
     /// quotes \u{2018}/\u{2019}.  These are multi-byte UTF-8 characters that
     /// the byte-level ASCII scan in scan_punctuation() cannot detect.
     ///
-    /// Requires CJK adjacency on at least one side to avoid false positives on
-    /// English typographic smart quotes and apostrophes (e.g., "Hello" or
-    /// it's).
-    /// \u{2019} is the standard typographic apostrophe in English: without
-    /// this
-    /// guard, words like "don't" would be destroyed.
+    /// The conversion decision belongs to the pair, not the mark:
+    /// [`plan_quote_conversions`] pairs over the raw text and converts a pair
+    /// only when both its span and its surrounding prose establish CJK context.
+    /// English typography, including smart quotes around a Chinese phrase,
+    /// stays intact and a quotation is never half-rewritten. An unpaired mark
+    /// has no span, so it keeps the older rule: convert when CJK sits within
+    /// three spaces.
     ///
     /// Double quotes are emitted as issues; `fix_quote_pairing()` in quotes.rs
     /// then reassigns their suggestions with depth-based nesting (「」/『』).
@@ -319,75 +317,46 @@ impl Scanner {
         excluded: &[ByteRange],
         issues: &mut Vec<Issue>,
     ) {
-        for (byte_offset, ch) in text.char_indices() {
-            let ch_len = ch.len_utf8();
-            match ch {
-                '\u{201c}' | '\u{201d}' => {
-                    if is_excluded(byte_offset, byte_offset + ch_len, excluded) {
-                        continue;
-                    }
+        let doubles = plan_quote_conversions(text, excluded, QuoteKind::CurlyDouble);
+        let singles = plan_quote_conversions(text, excluded, QuoteKind::CurlySingle);
+        if doubles.is_empty() && singles.is_empty() {
+            return;
+        }
 
-                    // Require CJK context on at least one side to avoid
-                    // flagging English smart quotes (e.g., "Hello," she said.).
-                    let left_cjk = adjacent_cjk_inner(text, byte_offset, true, 3);
-                    let right_cjk = adjacent_cjk_inner(text, byte_offset + ch_len, false, 3);
-                    if !left_cjk && !right_cjk {
-                        continue;
-                    }
+        // The pipeline skips its own sort when the issues already ascend, so
+        // the two plans have to be merged rather than concatenated.
+        let mut marks: Vec<(QuoteMark, QuoteKind)> = doubles
+            .into_iter()
+            .map(|m| (m, QuoteKind::CurlyDouble))
+            .chain(singles.into_iter().map(|m| (m, QuoteKind::CurlySingle)))
+            .collect();
+        marks.sort_by_key(|(m, _)| m.offset);
 
-                    // Placeholder suggestion; fix_quote_pairing() overwrites
-                    // with depth-aware nesting.
-                    let suggestion = if ch == '\u{201c}' {
-                        "\u{300c}" // 「
-                    } else {
-                        "\u{300d}" // 」
-                    };
-                    issues.push(punct_issue(
-                        byte_offset,
-                        &text[byte_offset..byte_offset + ch_len],
-                        suggestion,
-                        "繁體中文應使用「」引號而非中國大陸式「\u{201c}\u{201d}」",
-                    ));
-                }
-                '\u{2018}' | '\u{2019}' => {
-                    if is_excluded(byte_offset, byte_offset + ch_len, excluded) {
-                        continue;
-                    }
-
-                    // Guard: ASCII letter immediately adjacent means English
-                    // apostrophe/contraction (it's, don't, 's, 'll), not a CN
-                    // quote. This catches "中文's" and "中文 'twas" that would
-                    // otherwise false-positive due to nearby CJK context.
-                    let ascii_before =
-                        byte_offset > 0 && text.as_bytes()[byte_offset - 1].is_ascii_alphabetic();
-                    let ascii_after = byte_offset + ch_len < text.len()
-                        && text.as_bytes()[byte_offset + ch_len].is_ascii_alphabetic();
-                    if ascii_before || ascii_after {
-                        continue;
-                    }
-
-                    // Require CJK context on at least one side to avoid
-                    // flagging English typographic apostrophes in pure-English
-                    // text.
-                    let left_cjk = adjacent_cjk_inner(text, byte_offset, true, 3);
-                    let right_cjk = adjacent_cjk_inner(text, byte_offset + ch_len, false, 3);
-                    if !left_cjk && !right_cjk {
-                        continue;
-                    }
-                    let suggestion = if ch == '\u{2018}' {
-                        "\u{300e}" // 『
-                    } else {
-                        "\u{300f}" // 』
-                    };
-                    issues.push(punct_issue(
-                        byte_offset,
-                        &text[byte_offset..byte_offset + ch_len],
-                        suggestion,
-                        "繁體中文應使用『』引號而非中國大陸式「\u{2018}\u{2019}」",
-                    ));
-                }
-                _ => {}
-            }
+        for (mark, kind) in marks {
+            let (suggestion, context) = match (kind, mark.opening) {
+                (QuoteKind::CurlyDouble, true) => (
+                    "\u{300c}", // 「
+                    "繁體中文應使用「」引號而非中國大陸式「\u{201c}\u{201d}」",
+                ),
+                (QuoteKind::CurlyDouble, false) => (
+                    "\u{300d}", // 」
+                    "繁體中文應使用「」引號而非中國大陸式「\u{201c}\u{201d}」",
+                ),
+                (_, true) => (
+                    "\u{300e}", // 『
+                    "繁體中文應使用『』引號而非中國大陸式「\u{2018}\u{2019}」",
+                ),
+                (_, false) => (
+                    "\u{300f}", // 』
+                    "繁體中文應使用『』引號而非中國大陸式「\u{2018}\u{2019}」",
+                ),
+            };
+            issues.push(punct_issue(
+                mark.offset,
+                &text[mark.offset..mark.offset + mark.len],
+                suggestion,
+                context,
+            ));
         }
     }
 

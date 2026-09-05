@@ -17,9 +17,6 @@ Regional terminology differences between zh-CN and zh-TW. Each rule has an `engl
 | 操作系統 | 作業系統 | operating system |
 | 默認 | 預設 | default |
 | 代碼 | 程式碼 | code |
-| \u201c / \u201d | 「 / 」 | quotation marks |
-
-Quotation mark conversion includes a pairing fix: when CN curly quotes are unbalanced or misordered, the scanner reassigns them by alternating position (open, close, open, close).
 
 Some cross-strait rules involve false friends (假朋友), where the `from` term is also a valid zh-TW word with a different meaning. For example, 文件 means "file" in zh-CN but "document" in zh-TW. These rules are disabled to prevent false positives.
 
@@ -47,8 +44,32 @@ Context-sensitive half-width to full-width punctuation normalization for Chinese
 | `;` | `；` | Adjacent CJK character |
 | `:` | `：` | Adjacent CJK character (exempted with `relaxed` flag) |
 | `(` / `)` | `（` / `）` | Adjacent CJK character |
+| `\u201c` / `\u201d`, `\u2018` / `\u2019`, `"` | `「` / `」`, `『` / `』` | Chinese prose owns the marks, and the span is Chinese or a single token (see below) |
 
-Also detects: CN curly quotation marks (`\u201c`/`\u201d` double, `\u2018`/`\u2019` single) with CJK adjacency guards to avoid false positives on English smart quotes and contractions (it's, don't); enumeration comma misuse (`，` where `、` is appropriate for coordinate lists); quotation mark hierarchy violations; extraneous space after full-width punctuation; and range indicator style (`～` vs `–`).
+Quotation marks are the one entry above that is not a single-character test. A quotation the scanner can pair converts as a unit, never one half at a time. It pairs the marks over the raw text first, then asks two questions of the pair.
+
+The first is whether Chinese prose owns the marks, which is answered by the paragraph around the pair rather than by the span inside it: Chinese standing outside the pair, or no Latin letter standing outside it. So `He said “你好” then left.` keeps its English typography even though the quoted phrase is Chinese, while a heading or a pull-quote that is nothing but the quotation still converts, having no competing prose either side.
+
+The second is whether the span itself is Chinese: it holds a CJK character, or it is a single token with no whitespace in it. A quotation is running text and running text has spaces, so the space is what separates an English quotation carrying its own typography from a Chinese sentence quoting one term:
+
+```
+他引用了原句：“Do one thing, and do it well.”，這是 Unix 哲學。   # unchanged
+He said “你好” then left.                                     # unchanged
+他說“你好”，然後離開。                                        # 他說「你好」，然後離開。
+“這是一段獨立引文”                                            # 「這是一段獨立引文」
+請按“Enter”鍵                                                 # 請按「Enter」鍵
+設定“font-size”屬性                                           # 設定「font-size」屬性
+```
+
+The single-token case still needs CJK next to the pair, or `He pressed “Enter” then left.` would convert in prose that is English throughout.
+
+A mark the scanner cannot pair has no span to judge, so it keeps the older rule: convert when the nearest non-whitespace character within three spaces is CJK. That covers a mark whose partner is missing from its paragraph, and every single curly quote in a paragraph that does not spell both halves.
+
+The span test asks for a CJK character, which covers Han, bopomofo, and the CJK and full-width punctuation blocks, so 他說“Ａ” converts on its full-width Latin letter. Text inside an excluded range (inline code, a code block, a URL, a path) does not count towards it, because it is not prose. Pairing is per paragraph, so an unclosed quote cannot pull the next block into its span.
+
+Pairing is directional when the paragraph spells both halves and never closes a quote it did not open (`\u201c` opens, `\u201d` closes). A paragraph that writes both halves with one character, or that closes before it opens, carries no direction; there the marks pair and convert by alternating position (open, close, open, close) instead. Single curly quotes have no positional fallback, because `\u2019` is also the English apostrophe.
+
+Also detects: enumeration comma misuse (`，` where `、` is appropriate for coordinate lists); quotation mark hierarchy violations; extraneous space after full-width punctuation; and range indicator style (`～` vs `–`).
 
 English-only contexts, thousand separators (1,000), and decimal numbers (3.14) are left untouched.
 

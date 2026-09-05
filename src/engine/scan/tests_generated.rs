@@ -1011,13 +1011,81 @@
     }
 
     #[test]
-    fn ascii_double_quotes_english_word_in_cjk() {
+    fn ascii_double_quotes_english_term_in_cjk_flagged() {
+        // One token with no space in it is a term, not a quotation, so the
+        // Chinese sentence around it gets 「」. The multi-word cases below are
+        // what issue #132 leaves alone.
         let scanner = Scanner::new(vec![], vec![]);
         let issues = scanner.scan("他說\"hello\"").issues;
         let quotes: Vec<_> = issues.iter().filter(|i| i.found == "\"").collect();
-        assert_eq!(quotes.len(), 2, "ASCII quotes around English word in CJK should be flagged");
+        assert_eq!(quotes.len(), 2, "{quotes:?}");
         assert_eq!(quotes[0].suggestions[..], vec!["「"]);
         assert_eq!(quotes[1].suggestions[..], vec!["」"]);
+    }
+
+    #[test]
+    fn ascii_double_quotes_term_needs_cjk_beside_it() {
+        // Same single token, but the prose around it is English throughout.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("He pressed \"Enter\" then left.").issues;
+        assert!(
+            !issues.iter().any(|i| i.found == "\""),
+            "a term in English prose is not a zh-TW quotation"
+        );
+    }
+
+    #[test]
+    fn ascii_double_quotes_chinese_phrase_in_english_prose_not_flagged() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("He said \"你好\" then left.").issues;
+        assert!(
+            !issues.iter().any(|i| i.found == "\""),
+            "Chinese inside English smart-quote typography is not zh-TW prose"
+        );
+    }
+
+    #[test]
+    fn curly_double_quotes_chinese_phrase_in_english_prose_not_flagged() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("He said “你好” then left.").issues;
+        assert!(
+            !issues.iter().any(|i| i.found == "“" || i.found == "”"),
+            "Chinese inside English smart-quote typography is not zh-TW prose"
+        );
+    }
+
+    #[test]
+    fn ascii_double_quotes_english_sentence_in_cjk_not_flagged() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner
+            .scan("他引用了原句：\"Do one thing, and do it well.\"，這是 Unix 哲學。")
+            .issues;
+        assert!(
+            !issues.iter().any(|i| i.found == "\""),
+            "an English sentence quoted in CJK prose should not be converted"
+        );
+    }
+
+    #[test]
+    fn ascii_double_quotes_never_half_converted() {
+        // Only the opening mark has CJK beside it. Before pairing, that half
+        // alone was rewritten and the quotation came out unbalanced.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他引用了原句：\"Do one thing.\"").issues;
+        assert!(
+            !issues.iter().any(|i| i.found == "\""),
+            "a pair converts on both halves or on neither"
+        );
+    }
+
+    #[test]
+    fn ascii_double_quotes_unpaired_keeps_adjacency() {
+        // An unpaired mark has no span to judge, so it keeps the older rule.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\"你好").issues;
+        let quotes: Vec<_> = issues.iter().filter(|i| i.found == "\"").collect();
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].suggestions[..], vec!["「"]);
     }
 
     // Full-width colon
@@ -1280,6 +1348,451 @@
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].found, "\u{201c}");
         assert_eq!(issues[1].found, "\u{201d}");
+    }
+
+    #[test]
+    fn cn_curly_quotes_skip_english_quotation_in_cjk() {
+        // The pair encloses no Chinese, so neither half converts even though
+        // the sentence around it is Chinese. Issue #132.
+        let scanner = Scanner::new(vec![], vec![]);
+        let text = "他引用了原句：\u{201c}Do one thing, and do it well.\u{201d}，這是 Unix 哲學。";
+        let issues = scanner.scan(text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert!(
+            quotes.is_empty(),
+            "English quotation should be left alone: {quotes:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_never_half_converted() {
+        // Sentence-final quotation: only the opening mark has CJK beside it.
+        // Judging each mark alone converted that half and left 「...\u{201d}.
+        let scanner = Scanner::new(vec![], vec![]);
+        let text = "他引用了原句：\u{201c}Do one thing, and do it well.\u{201d}";
+        let issues = scanner.scan(text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert!(
+            quotes.is_empty(),
+            "a pair converts on both halves or on neither: {quotes:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_chinese_quotation_still_converted() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let text = "他引用了原句：\u{201c}讀書百遍，其義自見\u{201d}，這是古訓。";
+        let issues = scanner.scan(text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 2);
+        assert_eq!(quotes[0].suggestions[..], vec!["\u{300c}"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["\u{300d}"]);
+    }
+
+    #[test]
+    fn cn_curly_quotes_mixed_span_converted() {
+        // A span mixing Latin and Chinese is a Chinese quotation.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\u{201c}Unix 哲學\u{201d}").issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 2);
+    }
+
+    #[test]
+    fn cn_curly_quotes_english_inside_chinese_quotation() {
+        // Outer pair holds Chinese and converts; the nested English pair does
+        // not, so the two decisions are independent.
+        let scanner = Scanner::new(vec![], vec![]);
+        let text = "他說\u{201c}原句是 \u{201c}do one thing\u{201d} 沒錯\u{201d}";
+        let issues = scanner.scan(text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 2, "only the outer pair converts: {quotes:?}");
+        assert_eq!(quotes[0].suggestions[..], vec!["\u{300c}"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["\u{300d}"]);
+    }
+
+    #[test]
+    fn cn_curly_single_quotes_skip_english_quotation_in_cjk() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他引用了 \u{2018}do one thing\u{2019} 這句話").issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{2018}" || i.found == "\u{2019}")
+            .collect();
+        assert!(
+            quotes.is_empty(),
+            "English single-quoted span should be left alone: {quotes:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_unbalanced_pair_and_stray_mark() {
+        // Three marks: the first two pair over a Chinese span and convert; the
+        // stray third is unpaired and falls back to adjacency.
+        let scanner = Scanner::new(vec![], vec![]);
+        let text = "他說\u{201c}你好\u{201d}，她說\u{201c}再見";
+        let issues = scanner.scan(text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 3);
+        assert_eq!(quotes[2].suggestions[..], vec!["\u{300c}"]);
+    }
+
+    #[test]
+    fn cn_curly_quotes_pair_across_paragraphs_not_formed() {
+        // Pairing is per paragraph, so an unclosed quote cannot swallow the
+        // next block into its span. Were these two paired, the span would hold
+        // 你好 and both would convert; unpaired, each is judged on adjacency
+        // and only the first one qualifies.
+        let scanner = Scanner::new(vec![], vec![]);
+        let text = "他說\u{201c}你好\n\nhe said hello\u{201d}";
+        let issues = scanner.scan(text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 1, "{quotes:?}");
+        assert_eq!(quotes[0].found, "\u{201c}");
+    }
+
+    #[test]
+    fn cn_curly_quotes_ignore_cjk_inside_excluded_span() {
+        // The only Chinese in the span sits in inline code, which is not prose.
+        // Reading it would convert an English quotation.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\u{201c}English `中文` text\u{201d}").issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert!(quotes.is_empty(), "{quotes:?}");
+    }
+
+    #[test]
+    fn cn_curly_quotes_read_prose_around_an_excluded_span() {
+        // Same shape, but Chinese also stands outside the code span, so the
+        // pair converts. Pins that the exclusion skip does not swallow the gap.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner
+            .scan("他說\u{201c}English `中文` 真的 text\u{201d}")
+            .issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 2, "{quotes:?}");
+    }
+
+    #[test]
+    fn cn_curly_quotes_convert_when_chinese_is_deep_in_the_span() {
+        // The span test reads all of the span, not a bounded prefix of it: a
+        // long Latin run before the Chinese must not hide it.
+        let scanner = Scanner::new(vec![], vec![]);
+        // Spaced, so the term rule cannot be what converts it.
+        let text = format!("他說\u{201c}{}你好\u{201d}", "a ".repeat(2500));
+        let issues = scanner.scan(&text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 2, "{quotes:?}");
+    }
+
+    #[test]
+    fn ascii_double_quotes_ignore_cjk_inside_excluded_span() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\"English `中文` text\"").issues;
+        assert!(
+            !issues.iter().any(|i| i.found == "\""),
+            "inline code inside the span must not make it a Chinese quotation"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_span_test_ignores_a_nested_other_kind() {
+        // A single-quote pair inside the double-quote span partitions the text
+        // the span test reads. The Chinese between the single quotes still has
+        // to count towards the outer pair.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\u{201c}He said \u{2018}你好\u{2019} ok\u{201d}").issues;
+        let doubles: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(doubles.len(), 2, "{doubles:?}");
+        let singles: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{2018}" || i.found == "\u{2019}")
+            .collect();
+        assert_eq!(singles.len(), 2, "{singles:?}");
+    }
+
+    #[test]
+    fn cn_curly_quotes_english_pair_inside_a_chinese_pair() {
+        // Mirror image: the outer span holds Chinese and converts, the nested
+        // single-quote pair holds none and does not.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner
+            .scan("他說\u{201c}原句是 \u{2018} do it \u{2019} 沒錯\u{201d}")
+            .issues;
+        let doubles: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(doubles.len(), 2, "{doubles:?}");
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.found == "\u{2018}" || i.found == "\u{2019}"),
+            "the nested English pair should be left alone"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_direction_is_decided_per_paragraph() {
+        // The first paragraph spells both halves, the second writes two
+        // openers. Deciding direction once for the document let the first vouch
+        // for the second, and the fix came out as 「再見『.
+        let scanner = Scanner::new(vec![], vec![]);
+        let text = "他說\u{201c}你好\u{201d}\n\n她說\u{201c}再見\u{201c}";
+        let issues = scanner.scan(text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 4, "{quotes:?}");
+        assert_eq!(quotes[2].suggestions[..], vec!["\u{300c}"]);
+        assert_eq!(quotes[3].suggestions[..], vec!["\u{300d}"]);
+    }
+
+    #[test]
+    fn cn_curly_quotes_span_test_takes_any_cjk_context_character() {
+        // The span test asks for a CJK context character, not a Han ideograph,
+        // so a full-width Latin letter counts. Pinned because it is the visible
+        // edge of that choice.
+        let scanner = Scanner::new(vec![], vec![]);
+        let wide = scanner.scan("他說\u{201c}\u{FF21}\u{201d}").issues;
+        assert_eq!(
+            wide.iter()
+                .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+                .count(),
+            2,
+            "a full-width letter is CJK context: {wide:?}"
+        );
+
+        // Half-width Latin is not CJK context. Spelled as two words so the term
+        // rule does not convert it for the other reason.
+        let narrow = scanner.scan("他說\u{201c}A B\u{201d}").issues;
+        assert!(
+            !narrow
+                .iter()
+                .any(|i| i.found == "\u{201c}" || i.found == "\u{201d}"),
+            "a half-width letter is not: {narrow:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_single_quotes_without_direction_stay_unpaired() {
+        // Two U+2018 in one paragraph carry no direction, and single quotes get
+        // no positional fallback because U+2019 is also the apostrophe. Each
+        // mark falls back to adjacency, so only the one with CJK beside it
+        // converts.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\u{2018} hello \u{2018}").issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{2018}" || i.found == "\u{2019}")
+            .collect();
+        assert_eq!(quotes.len(), 1, "{quotes:?}");
+        assert_eq!(quotes[0].offset, 6);
+    }
+
+    #[test]
+    fn ascii_double_quotes_direction_is_decided_per_paragraph() {
+        // ASCII quotes are always positional, so the second paragraph's pair
+        // has to restart at an opener rather than continue the first's parity.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\"你好\"\n\n她說\"再見\"").issues;
+        let quotes: Vec<_> = issues.iter().filter(|i| i.found == "\"").collect();
+        assert_eq!(quotes.len(), 4, "{quotes:?}");
+        assert_eq!(quotes[2].suggestions[..], vec!["「"]);
+        assert_eq!(quotes[3].suggestions[..], vec!["」"]);
+    }
+
+    #[test]
+    fn cn_curly_quotes_lone_closer_keeps_its_own_direction() {
+        // One U+201D on its own carries no usable direction, but positional
+        // alternation takes marks two at a time and this one has no partner.
+        // Relabelling it as an opener suggested 「 for a closing quote.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說你好\u{201d}").issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 1, "{quotes:?}");
+        assert_eq!(quotes[0].suggestions[..], vec!["\u{300d}"]);
+    }
+
+    #[test]
+    fn cn_curly_quotes_lone_closer_keeps_direction_beside_a_pair() {
+        // Same leftover, but with a well formed paragraph ahead of it so that
+        // fix_quote_pairing runs instead of returning early on a single issue.
+        let scanner = Scanner::new(vec![], vec![]);
+        let text = "他說\u{201c}你好\u{201d}\n\n結束\u{201d}";
+        let issues = scanner.scan(text).issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 3, "{quotes:?}");
+        assert_eq!(quotes[2].suggestions[..], vec!["\u{300d}"]);
+    }
+
+    #[test]
+    fn cn_curly_quotes_standalone_chinese_quotation_converts() {
+        // Nothing stands outside the pair, so no foreign prose competes for the
+        // marks. Requiring CJK outside left a pull-quote unconverted.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("\u{201c}這是一段獨立引文\u{201d}").issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+            .collect();
+        assert_eq!(quotes.len(), 2, "{quotes:?}");
+        assert_eq!(quotes[0].suggestions[..], vec!["\u{300c}"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["\u{300d}"]);
+    }
+
+    #[test]
+    fn cn_curly_quotes_heading_that_is_a_quotation_converts() {
+        // Same shape behind Markdown structure: the marker is not prose.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("# \u{201c}敏捷開發\u{201d}").issues;
+        assert_eq!(
+            issues
+                .iter()
+                .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+                .count(),
+            2,
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_blockquote_that_is_a_quotation_converts() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("> \u{201c}軟體工程是一門學問\u{201d}").issues;
+        assert_eq!(
+            issues
+                .iter()
+                .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
+                .count(),
+            2,
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_latin_prose_outside_keeps_the_marks() {
+        // The mirror of the three above: Latin prose outside the pair claims
+        // the marks even though the pair holds Chinese.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("Tom said \u{201c}你好\u{201d} once.").issues;
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.found == "\u{201c}" || i.found == "\u{201d}"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_single_quotes_contraction_inside_a_pair_stays_whole() {
+        // The opening mark is an apostrophe by the ASCII-letter test, so it is
+        // passed over. Converting the surviving closer on its own adjacency
+        // left 他說‘it’s 好』.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\u{2018}it\u{2019}s 好\u{2019}").issues;
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.found == "\u{2018}" || i.found == "\u{2019}"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_single_quotes_pair_around_an_inner_contraction() {
+        // Same shape with the marks clear of any letter: the pair forms, the
+        // contraction inside it is passed over, and the pair still converts.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\u{2018}我 don\u{2019}t 知道\u{2019}").issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{2018}" || i.found == "\u{2019}")
+            .collect();
+        assert_eq!(quotes.len(), 2, "{quotes:?}");
+        assert_eq!(quotes[0].suggestions[..], vec!["\u{300e}"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["\u{300f}"]);
+    }
+
+    #[test]
+    fn ascii_double_quotes_excluded_partner_stays_whole() {
+        // The URL pattern swallows the closing mark, so only the opener is
+        // visible. Converting it alone left 他說「https://example.com".
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\"https://example.com\"").issues;
+        assert!(
+            !issues.iter().any(|i| i.found == "\""),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_excluded_partner_stays_whole() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner
+            .scan("他說\u{201c}https://example.com\u{201d}")
+            .issues;
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.found == "\u{201c}" || i.found == "\u{201d}"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn ascii_double_quotes_pair_across_an_excluded_pair() {
+        // Two marks passed over inside inline code, and the prose pair around
+        // them still converts: passing a mark over blocks only the leftover
+        // fallback, not pairing.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner
+            .scan("他說\"你好，程式碼是 `printf(\"a\")`\"")
+            .issues;
+        let quotes: Vec<_> = issues.iter().filter(|i| i.found == "\"").collect();
+        assert_eq!(quotes.len(), 2, "{quotes:?}");
+        assert_eq!(quotes[0].suggestions[..], vec!["「"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["」"]);
     }
 
     #[test]

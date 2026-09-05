@@ -28,20 +28,36 @@ Four answers, in order of how much they cost the reader:
 - `editorial_confidence` for the milder case, and `context_suggestions` when
   the correction itself differs by domain.
 
+The two terms above took different answers, which is the point of having four.
+文件 to 檔案 is `disabled`, because a sentence holding it reads correctly under
+either meaning. 字體 to 字型 ships enabled behind `context_clues`, because the
+typeface sense travels with words the rule can look for.
+
 A rule that needs none of these is a rule where the zh-CN form has no zh-TW
 reading, which is most of the vocabulary list and none of the hard cases.
 
 ## The corpus is the argument, not the opinion
 
-`make corpus` is what settles whether a rule pays for itself, and the
-assertions in `tests/corpus-evaluation.rs` are the gate. There are six, not
-three: precision at 90% or better; two native zh-TW false-positive rates, per
-fixture and repeat-weighted, each at 5% or less, because each is blind to what
-the other catches; and three safe-fix rates, 85% on the AI-generated corpus,
-which is the figure `CLAUDE.md` records as the contract, and 99% on both the
-zh-CN conversion and the native corpora. A rule that drops a false-positive gate
-is a rule that fires on `native-zh-tw.json`, which is exactly the prose it is
-supposed to leave alone.
+The assertions in `tests/corpus-evaluation.rs` are what settles whether a rule
+pays for itself. `make corpus` prints their table, but it does not gate: cargo
+autodiscovers that target, so `make check` has already run every one of them.
+There are ten, not the three the printed table draws the eye to:
+
+- Aggregate precision at 90% or better.
+- Two native zh-TW false-positive rates, per fixture and repeat-weighted, each
+  at 5% or less, because each is blind to what the other catches.
+- Three safe-fix rates: 85% on the AI-generated corpus, which is the figure
+  `CLAUDE.md` records as the contract, and 99% on both the zh-CN conversion and
+  the native corpora.
+- Four per-corpus floors, added after the other six because recall was printed
+  on every run and asserted nowhere, which let two commits rework AI detection
+  unnoticed: AI-generated recall 94% and precision 91%, zh-CN conversion recall
+  98% and precision 96%. Per corpus rather than aggregate, because zh-CN carries
+  roughly twice the true positives and would mask an AI detector going quiet.
+
+Three more assert each corpus is still big enough to mean anything. A rule that
+drops a false-positive gate is a rule that fires on `native-zh-tw.json`, which
+is exactly the prose it is supposed to leave alone.
 
 `expected_issues` and `expected_fixed` in a corpus fixture are deliberately
 independent: the scanner reports confusable and clue-gated rules that the
@@ -76,8 +92,14 @@ reading the sentence, and a rule whose correction depends on context belongs in
 ```text
 src/engine/scan/spelling.rs      Vocabulary rules out of the ruleset
 src/engine/scan/case_rule.rs     Casing of Latin technical terms
-src/engine/scan/punctuation.rs   Half-width to full-width, context sensitive
-src/engine/scan/quotes.rs        CN curly quotes, including the pairing fix
+src/engine/scan/punctuation.rs   Half-width to full-width, context sensitive;
+                                 emits the quote issues quotes.rs decided on
+src/engine/scan/quotes.rs        Which quotation marks convert at all, the
+                                 depth-based pairing fix, hierarchy validation
+src/engine/scan/spacing.rs       CJK to Latin and CJK to digit spacing
+src/engine/scan/ellipsis.rs      Non-standard ellipsis to the MoE …… form
+src/engine/scan/repetition.rs    Consecutive duplicates, an ASR and paste tell
+src/engine/scan/acronym.rs       Rejoins a spaced acronym, C P U to CPU
 src/engine/scan/grammar.rs       A-not-A, bare 是, nominalization, prepositions
 src/engine/scan/rule_ir.rs       The matcher spelling.rs drives; the 臺/台 family
                                  is variant rules behind variant_normalization

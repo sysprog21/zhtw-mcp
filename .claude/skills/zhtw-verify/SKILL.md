@@ -79,16 +79,23 @@ it would write.
 
 ## The corpus thresholds
 
-`make corpus` prints precision, recall, false-positive rate and safe-fix rate
-over the synthetic corpora in `tests/corpus/`. The assertions in
-`tests/corpus-evaluation.rs` are the gate, and there are ten. Aggregate
+`tests/corpus-evaluation.rs` has no `[[test]]` stanza, so cargo autodiscovers it
+and the `cargo test` inside `make check` already runs every assertion in it.
+`make corpus` is the same suite with `--nocapture`, and the only thing it adds is
+the printed table of precision, recall, false-positive rate and safe-fix rate
+over the synthetic corpora in `tests/corpus/`. Run it to read the numbers, not to
+gate on them; a green `make check` has already cleared them.
+
+Those assertions are the gate, and there are ten. Aggregate
 precision at 90% or better; two native zh-TW false-positive rates, per fixture
 and repeat-weighted, each at 5% or less; three safe-fix rates, 85% on the
 AI-generated corpus and 99% on the zh-CN conversion and native ones; and a
 per-corpus loop at the end gating recall and precision on each positive corpus,
-94% and 91% for AI-generated, 98% and 96% for the zh-CN conversion. A rule that is a false friend,
-valid zh-TW with a different meaning, stays `disabled` or gets gated by
-`context_clues`, `negative_context_clues` or `exceptions`. See zhtw-rules.
+94% and 91% for AI-generated, 98% and 96% for the zh-CN conversion.
+
+A rule that is a false friend, valid zh-TW with a different meaning, stays
+`disabled` or gets gated by `context_clues`, `negative_context_clues` or
+`exceptions`. See zhtw-rules.
 
 ## The git hooks
 

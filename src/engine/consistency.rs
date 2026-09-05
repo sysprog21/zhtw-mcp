@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::engine::excluded::{is_excluded, merge_ranges_pub, ByteRange};
 use crate::rules::glossary::ProjectGlossary;
 use crate::rules::ruleset::{Issue, IssueType, Severity};
 
@@ -59,11 +60,11 @@ impl ConsistencyReport {
 ///      land at Info; they are user-approved and should not count.
 ///   3. Group by `english`.  For each group, choose the TW-preferred
 ///      canonical form from `glossary.preferred` when that preferred
-///      form is already present in the document; otherwise fall back to
-///      the first suggestion.
+///      form appears outside the group's flagged spans; otherwise fall back
+///      to the first suggestion.
 ///   4. Check whether that canonical form ALSO appears as a substring
-///      anywhere in `text`.  If yes (and the calque is also present),
-///      both regional variants coexist → emit a group.
+///      outside those spans. If yes, both regional variants coexist → emit
+///      a group.
 pub fn compute_consistency_report(
     text: &str,
     issues: &[Issue],
@@ -88,17 +89,25 @@ pub fn compute_consistency_report(
     let mut report = ConsistencyReport::default();
 
     for (english, issues_in_group) in grouped {
-        let canonical = preferred_canonical_for_group(text, &issues_in_group, glossary);
+        // Normalize once per group so repeated source forms do not require a
+        // full issue scan for every candidate occurrence. Public callers may
+        // supply overlapping spans or an unsorted issue list.
+        let flagged_spans = merge_ranges_pub(
+            issues_in_group
+                .iter()
+                .filter(|issue| issue.length > 0)
+                .map(|issue| ByteRange {
+                    start: issue.offset,
+                    end: issue.offset.saturating_add(issue.length),
+                })
+                .collect(),
+        );
+        let canonical =
+            preferred_canonical_for_group(text, &issues_in_group, &flagged_spans, glossary);
         let Some(canonical) = canonical else { continue };
 
-        // Mixed usage: the canonical TW form must appear independently
-        // somewhere in the document (i.e. NOT as a substring of an
-        // already-flagged calque region). Cheap proxy: the canonical form is
-        // found at an offset that is not covered by any from-span issue. For
-        // the typical case where canonical and calque differ in characters,
-        // plain text.contains is sufficient because the calque span doesn't
-        // contain the canonical form as a substring.
-        if !text.contains(canonical.as_str()) {
+        // 厄瓜多 inside 厄瓜多爾 is one usage, not two regional variants.
+        if !has_independent_occurrence(text, &canonical, &flagged_spans) {
             continue;
         }
 
@@ -122,9 +131,29 @@ pub fn compute_consistency_report(
     report
 }
 
+fn has_independent_occurrence(text: &str, canonical: &str, flagged_spans: &[ByteRange]) -> bool {
+    if canonical.is_empty() {
+        return false;
+    }
+    let mut search_from = 0;
+    while let Some(relative) = text[search_from..].find(canonical) {
+        let start = search_from + relative;
+        let end = start + canonical.len();
+        if !is_excluded(start, end, flagged_spans) {
+            return true;
+        }
+
+        // Advance one character so a rejected match cannot hide an overlapping
+        // match whose full span lies outside the calque.
+        search_from = text.ceil_char_boundary(start + 1);
+    }
+    false
+}
+
 fn preferred_canonical_for_group(
     text: &str,
     issues_in_group: &[&Issue],
+    flagged_spans: &[ByteRange],
     glossary: &ProjectGlossary,
 ) -> Option<String> {
     // Prefer project glossary house terms when they also appear in the
@@ -136,10 +165,9 @@ fn preferred_canonical_for_group(
             if preferred.is_empty() {
                 continue;
             }
-            if !text.contains(preferred) {
-                continue;
-            }
-            if glossary_preferred_matches_group(preferred, issues_in_group) {
+            if glossary_preferred_matches_group(preferred, issues_in_group)
+                && has_independent_occurrence(text, preferred, flagged_spans)
+            {
                 return Some(preferred.clone());
             }
         }
@@ -185,6 +213,82 @@ mod tests {
         let issues = vec![cross_strait(3, "線程", "執行緒", "thread")];
         let report = compute_consistency_report(text, &issues, &ProjectGlossary::default());
         assert!(report.is_empty(), "no canonical 執行緒 in text → no group");
+    }
+
+    #[test]
+    fn canonical_inside_calque_does_not_count_as_mixed_usage() {
+        for text in ["厄瓜多爾", "厄瓜多爾和厄瓜多爾"] {
+            let issues: Vec<Issue> = text
+                .match_indices("厄瓜多爾")
+                .map(|(offset, found)| cross_strait(offset, found, "厄瓜多", "Ecuador"))
+                .collect();
+            let report = compute_consistency_report(text, &issues, &ProjectGlossary::default());
+            assert!(
+                report.is_empty(),
+                "only one regional form is present: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn repeated_calques_with_unsorted_overlapping_spans_stay_unmixed() {
+        let text = "厄瓜多爾 ".repeat(1000);
+        let mut issues: Vec<Issue> = text
+            .match_indices("厄瓜多爾")
+            .map(|(offset, found)| cross_strait(offset, found, "厄瓜多", "Ecuador"))
+            .collect();
+        issues.push(cross_strait(0, "厄瓜多爾 厄瓜多爾", "厄瓜多", "Ecuador"));
+        issues.reverse();
+        let report = compute_consistency_report(&text, &issues, &ProjectGlossary::default());
+        assert!(report.is_empty());
+    }
+
+    #[test]
+    fn canonical_outside_calque_counts_before_or_after_it() {
+        for text in ["厄瓜多和厄瓜多爾", "厄瓜多爾和厄瓜多"] {
+            let offset = text.find("厄瓜多爾").unwrap();
+            let issues = vec![cross_strait(offset, "厄瓜多爾", "厄瓜多", "Ecuador")];
+            let report = compute_consistency_report(text, &issues, &ProjectGlossary::default());
+            assert_eq!(report.groups.len(), 1, "both regional forms occur: {text}");
+            assert_eq!(report.groups[0].preferred, "厄瓜多");
+        }
+    }
+
+    #[test]
+    fn canonical_overlapping_calque_edge_does_not_count() {
+        let text = "甲乙丙";
+        let issues = vec![cross_strait(0, "甲乙", "乙丙", "example")];
+        let report = compute_consistency_report(text, &issues, &ProjectGlossary::default());
+        assert!(
+            report.is_empty(),
+            "a partial overlap is not independent usage"
+        );
+    }
+
+    #[test]
+    fn independent_canonical_can_overlap_an_earlier_rejected_match() {
+        let text = "哈哈哈";
+        let issues = vec![cross_strait(0, "哈", "哈哈", "example")];
+        let report = compute_consistency_report(text, &issues, &ProjectGlossary::default());
+        assert_eq!(
+            report.groups.len(),
+            1,
+            "the final two characters are independent"
+        );
+    }
+
+    #[test]
+    fn glossary_substring_does_not_displace_independent_default() {
+        let text = "大實話和真心話";
+        let mut issue = cross_strait(0, "大實話", "真心話", "blunt truth");
+        issue.suggestions = vec!["真心話".into(), "實話".into()].into();
+        let glossary = ProjectGlossary {
+            preferred: vec!["實話".into()],
+            ..ProjectGlossary::default()
+        };
+        let report = compute_consistency_report(text, &[issue], &glossary);
+        assert_eq!(report.groups.len(), 1);
+        assert_eq!(report.groups[0].preferred, "真心話");
     }
 
     #[test]

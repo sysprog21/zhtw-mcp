@@ -55,10 +55,17 @@ pub(crate) struct QuoteMark {
     pub(crate) offset: usize,
     pub(crate) len: usize,
     pub(crate) opening: bool,
-    /// Whether this mark is a quotation mark at all. An English apostrophe is
-    /// not, and cannot convert, but it still pairs: dropping it outright left
-    /// its partner looking unpaired, and that partner then converted alone.
-    eligible: bool,
+}
+
+/// One paragraph's marks of one kind, and how many characters of that shape
+/// were passed over.
+struct ParagraphMarks {
+    marks: Vec<QuoteMark>,
+    /// Marks the scan will not touch: inside an exclusion range, or an English
+    /// apostrophe. They are not pair members, but a paragraph holding one
+    /// cannot trust that a leftover mark is really unpaired, because the
+    /// partner may be the one passed over.
+    passed_over: usize,
 }
 
 /// How the marks of one paragraph pair off.
@@ -161,33 +168,40 @@ fn collect_marks(
     para: &str,
     excluded: &[ByteRange],
     kind: QuoteKind,
-) -> Vec<QuoteMark> {
+) -> ParagraphMarks {
     let (open, close) = (kind.open(), kind.close());
-    let mut marks = Vec::new();
+    let mut found = ParagraphMarks {
+        marks: Vec::new(),
+        passed_over: 0,
+    };
     for (rel, ch) in para.char_indices() {
         if ch != open && ch != close {
             continue;
         }
         let offset = para_start + rel;
         let len = ch.len_utf8();
-        if is_excluded(offset, offset + len, excluded) {
+
+        // Two reasons to pass a mark over. Inside an exclusion range it is not
+        // prose, and an ASCII letter against a U+2018 or U+2019 makes it an
+        // English apostrophe (it's, don't, 's, Python's 語法) rather than a
+        // quote. Neither converts and neither pairs, but both are counted:
+        // 他說"https://example.com" and 他說‘it's 好’ each leave one visible
+        // mark whose real partner was passed over, and converting that survivor
+        // on its own adjacency is how a quotation ends up with one half
+        // rewritten.
+        if is_excluded(offset, offset + len, excluded)
+            || (kind == QuoteKind::CurlySingle && ascii_letter_adjacent(text, offset, len))
+        {
+            found.passed_over += 1;
             continue;
         }
-
-        // An ASCII letter against the mark makes a U+2018/U+2019 an English
-        // apostrophe (it's, don't, 's, Python's 語法), not a quote. It is kept
-        // in the list all the same, unable to convert but able to pair:
-        // dropping it made ‘Unix 哲學’ a lone closer, which then converted on
-        // its own adjacency and left ‘Unix 哲學』.
-        let eligible = kind != QuoteKind::CurlySingle || !ascii_letter_adjacent(text, offset, len);
-        marks.push(QuoteMark {
+        found.marks.push(QuoteMark {
             offset,
             len,
             opening: ch == open,
-            eligible,
         });
     }
-    marks
+    found
 }
 
 /// Decide which quotation marks of one kind convert, over the raw text, before
@@ -224,7 +238,10 @@ pub(crate) fn plan_quote_conversions(
 
     let mut plan = Vec::new();
     for &(para_start, para) in &split_paragraphs(text) {
-        let mut marks = collect_marks(text, para_start, para, excluded, kind);
+        let ParagraphMarks {
+            mut marks,
+            passed_over,
+        } = collect_marks(text, para_start, para, excluded, kind);
         if marks.is_empty() {
             continue;
         }
@@ -251,9 +268,7 @@ pub(crate) fn plan_quote_conversions(
         if !pairs.is_empty() {
             let gaps = cjk_gap_prefix(text, para_start, para_start + para.len(), &marks, excluded);
             for &(opener, closer) in &pairs {
-                if marks[opener].eligible
-                    && marks[closer].eligible
-                    && pair_is_chinese_owned(&gaps, opener, closer)
+                if pair_is_chinese_owned(&gaps, opener, closer)
                     && (gaps.span_holds_cjk(opener, closer)
                         || quoted_term(text, &marks[opener], &marks[closer]))
                 {
@@ -262,8 +277,12 @@ pub(crate) fn plan_quote_conversions(
                 }
             }
         }
+
+        // A leftover mark keeps the adjacency rule only when the paragraph
+        // passed nothing over. Otherwise it may be half of a pair whose other
+        // half was, and converting it alone splits the quotation.
         for &i in &unpaired {
-            convert[i] = marks[i].eligible && unpaired_mark_converts(text, &marks[i]);
+            convert[i] = passed_over == 0 && unpaired_mark_converts(text, &marks[i]);
         }
 
         plan.extend(

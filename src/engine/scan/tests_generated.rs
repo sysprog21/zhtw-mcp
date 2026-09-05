@@ -1549,7 +1549,9 @@
         // Mirror image: the outer span holds Chinese and converts, the nested
         // single-quote pair holds none and does not.
         let scanner = Scanner::new(vec![], vec![]);
-        let issues = scanner.scan("他說\u{201c}原句是 \u{2018}do it\u{2019} 沒錯\u{201d}").issues;
+        let issues = scanner
+            .scan("他說\u{201c}原句是 \u{2018} do it \u{2019} 沒錯\u{201d}")
+            .issues;
         let doubles: Vec<_> = issues
             .iter()
             .filter(|i| i.found == "\u{201c}" || i.found == "\u{201d}")
@@ -1720,6 +1722,77 @@
                 .any(|i| i.found == "\u{201c}" || i.found == "\u{201d}"),
             "{issues:?}"
         );
+    }
+
+    #[test]
+    fn cn_curly_single_quotes_contraction_inside_a_pair_stays_whole() {
+        // The opening mark is an apostrophe by the ASCII-letter test, so it is
+        // passed over. Converting the surviving closer on its own adjacency
+        // left 他說‘it’s 好』.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\u{2018}it\u{2019}s 好\u{2019}").issues;
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.found == "\u{2018}" || i.found == "\u{2019}"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_single_quotes_pair_around_an_inner_contraction() {
+        // Same shape with the marks clear of any letter: the pair forms, the
+        // contraction inside it is passed over, and the pair still converts.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\u{2018}我 don\u{2019}t 知道\u{2019}").issues;
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.found == "\u{2018}" || i.found == "\u{2019}")
+            .collect();
+        assert_eq!(quotes.len(), 2, "{quotes:?}");
+        assert_eq!(quotes[0].suggestions[..], vec!["\u{300e}"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["\u{300f}"]);
+    }
+
+    #[test]
+    fn ascii_double_quotes_excluded_partner_stays_whole() {
+        // The URL pattern swallows the closing mark, so only the opener is
+        // visible. Converting it alone left 他說「https://example.com".
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("他說\"https://example.com\"").issues;
+        assert!(
+            !issues.iter().any(|i| i.found == "\""),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn cn_curly_quotes_excluded_partner_stays_whole() {
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner
+            .scan("他說\u{201c}https://example.com\u{201d}")
+            .issues;
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.found == "\u{201c}" || i.found == "\u{201d}"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn ascii_double_quotes_pair_across_an_excluded_pair() {
+        // Two marks passed over inside inline code, and the prose pair around
+        // them still converts: passing a mark over blocks only the leftover
+        // fallback, not pairing.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner
+            .scan("他說\"你好，程式碼是 `printf(\"a\")`\"")
+            .issues;
+        let quotes: Vec<_> = issues.iter().filter(|i| i.found == "\"").collect();
+        assert_eq!(quotes.len(), 2, "{quotes:?}");
+        assert_eq!(quotes[0].suggestions[..], vec!["「"]);
+        assert_eq!(quotes[1].suggestions[..], vec!["」"]);
     }
 
     #[test]

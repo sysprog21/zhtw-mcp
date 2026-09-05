@@ -67,10 +67,9 @@ pub struct Lifecycle {
     log_level: AtomicU8,
     /// The outbound queue, for waiting on it before the process goes.
     ///
-    /// Held here because both exit paths need it and only one of them is the
-    /// transport: the pre-handshake one is the framing layer's own, the other
-    /// is the SDK's notification handler, which owns the judgment cache and so
-    /// has to be the one that terminates.
+    /// Held here rather than on the transport because the termination reads it
+    /// from a spawned task, which outlives the read future it was spawned
+    /// from. See the `Gate::Exit` arm in `receive`.
     outbound: std::sync::Mutex<Option<mpsc::UnboundedSender<Outbound>>>,
     /// Set once a write to stdout has failed, so nothing waits on a reply
     /// that can no longer be sent.
@@ -96,6 +95,21 @@ pub struct Lifecycle {
     /// wakeup until it is taken, so a failure landing before the read parks is
     /// not lost, and a wait dropped in favor of the read puts the permit back.
     write_failed_signal: Notify,
+    /// What the layer above owns and this one does not, run once the queue has
+    /// drained and immediately before the process goes. Today that is the
+    /// judgment cache the SDK holds.
+    ///
+    /// Stored rather than passed in at the call site, and that is the whole
+    /// reason `exit` has one owner. When the SDK passed its own closure, it
+    /// also had to be the caller, so `exit` was forwarded to a handler on a
+    /// spawned task while the read side went on to end the session, and
+    /// whichever arrived first decided whether the pending output was written
+    /// or discarded. With the closure here the framing layer terminates for
+    /// both, and there is no second path to race.
+    ///
+    /// A `OnceLock` because it is installed once at startup and read once at
+    /// the exit; a later install is a wiring bug, not a state change.
+    on_exit: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
     /// Request ids still owed a response.
     ///
     /// A set rather than a count, and deliberately so on both sides.
@@ -134,6 +148,29 @@ impl Lifecycle {
     /// Whether stdout has failed, for the waits that poll rather than park.
     fn write_failed(&self) -> bool {
         self.write_failed.load(Ordering::Acquire)
+    }
+
+    /// Whether anything is wired to run before the process goes.
+    ///
+    /// The framing layer terminates on `exit` and cannot reach what the layer
+    /// above owns, so a server that forgets to install its flush loses it on
+    /// every clean exit with nothing else failing. This is what lets that
+    /// wiring be asserted where it is done, in the SDK's own tests, which is
+    /// the only thing that asks: nothing in the running server needs to know.
+    #[cfg(test)]
+    pub(crate) fn exit_hook_installed(&self) -> bool {
+        self.on_exit.get().is_some()
+    }
+
+    /// Install what runs immediately before the process goes.
+    ///
+    /// Called once, while the server is being wired up and before any envelope
+    /// has been read. A second call is ignored: the first owner keeps the
+    /// slot, rather than an install racing an exit already in progress.
+    pub(crate) fn set_exit_hook(&self, before_exit: impl Fn() + Send + Sync + 'static) {
+        if self.on_exit.set(Box::new(before_exit)).is_err() {
+            tracing::warn!("exit hook already installed, keeping the first");
+        }
     }
 
     /// The status `exit` terminates with: 0 when `shutdown` came first, 1
@@ -222,20 +259,25 @@ impl Lifecycle {
         }
     }
 
-    /// The one way this process terminates on `exit`.
+    /// The one way this process terminates on `exit`, for both sides of the
+    /// handshake. The `Gate::Exit` arm in `receive` says why there is only one.
     ///
-    /// Both triggers end here: the framing layer answers `exit` before the
-    /// handshake, the SDK's notification handler after it. Leaving each to
-    /// open-code the sequence is how they came to disagree, with one of them
-    /// delivering its last log lines and the other dropping them.
-    ///
-    /// `before_exit` is whatever the caller owns and the other does not, which
-    /// today is the judgment cache the handler holds. It runs after the queue
-    /// has drained so that a scan finishing during the drain still counts.
-    pub(crate) async fn terminate(&self, before_exit: impl FnOnce()) -> ! {
+    /// The exit hook runs after the queue has drained, so that a scan
+    /// finishing during the drain still counts.
+    pub(crate) async fn terminate(&self) -> ! {
         self.queue_logs();
         self.drain_outbound().await;
-        before_exit();
+        if let Some(before_exit) = self.on_exit.get() {
+            // The read side is parked on this task and nothing else will
+            // terminate, so a hook that panics would wedge the process rather
+            // than cost a cache write. Unwinding here is not hypothetical: the
+            // flush steps over a poisoned lock precisely because handlers do
+            // panic.
+            let run = std::panic::AssertUnwindSafe(before_exit);
+            if std::panic::catch_unwind(run).is_err() {
+                tracing::error!("the exit hook panicked, exiting anyway");
+            }
+        }
         std::process::exit(self.exit_code());
     }
 
@@ -753,8 +795,8 @@ enum Gate {
     /// Drop in silence, which is what a notification gets when there is
     /// nothing to say back.
     Drop,
-    /// Terminate. The status is read at the exit, from the same flag the
-    /// handler path consults, rather than carried from here.
+    /// Terminate. The status is read at the exit, from the `shutdown` flag,
+    /// rather than carried from here.
     Exit,
 }
 
@@ -771,15 +813,13 @@ fn gate(lifecycle: &Lifecycle, request: &super::types::JsonRpcRequest) -> Gate {
     let method = request.method.as_str();
     let id = request.id.clone();
 
-    // exit is honored regardless of lifecycle state. After the handshake the
-    // handler runs it, because it owns the judgment cache that has to be
-    // flushed before the process goes. Before the handshake RMCP would end the
-    // session rather than deliver it, and no scan has run, so there is nothing
-    // to flush and the transport can honor it directly.
+    // exit is honored regardless of lifecycle state, and honored here rather
+    // than forwarded. Forwarding it after the handshake put termination on a
+    // task RMCP spawns while the read side went on to see end of input and end
+    // the session, and ending the session takes the outbound queue away from
+    // the drain the exit was about to run. The judgment cache was the only
+    // reason to forward, and the lifecycle holds that as an exit hook now.
     if method == "exit" {
-        if lifecycle.initialized() {
-            return Gate::Forward;
-        }
         return Gate::Exit;
     }
     if lifecycle.shutdown.load(Ordering::Acquire) {
@@ -1034,11 +1074,28 @@ impl Transport<RoleServer> for StdioTransport {
                 }
                 Gate::Drop => continue,
                 Gate::Exit => {
-                    tracing::info!("exit notification before initialize, terminating");
+                    tracing::info!("exit notification, terminating");
 
-                    // Nothing to do beyond terminating: no scan has run before
-                    // the handshake, so there is no cache to flush.
-                    self.lifecycle.terminate(|| {}).await;
+                    // Spawned rather than awaited here, and the two halves are
+                    // one fix. RMCP polls receive inside a select and drops
+                    // this future the moment a response is ready to send, so a
+                    // termination awaited here is cancelled halfway with the
+                    // exit line already off the wire: nothing terminates, and
+                    // the next read parks on a client that has said everything
+                    // it means to say. A spawned task is not cancelled.
+                    //
+                    // Parking then keeps the session from ending underneath it.
+                    // Returning None here instead would run close, close takes
+                    // the outbound queue, and the drain the termination is on
+                    // its way to would find nothing to wait on and exit with
+                    // the queue unwritten.
+                    let lifecycle = self.lifecycle.clone();
+                    tokio::spawn(async move { lifecycle.terminate().await });
+
+                    // Never resolves. The spawned task is what ends this
+                    // process, and it is bounded by FLUSH_TIMEOUT, so a
+                    // deadline here would only second-guess that one.
+                    std::future::pending().await
                 }
             }
 
@@ -1393,7 +1450,7 @@ mod tests {
         let lc = lifecycle();
         lc.initialized.store(true, Ordering::Relaxed);
         lc.mark_shutdown();
-        assert!(matches!(gate(&lc, &req("exit", None)), Gate::Forward));
+        assert!(matches!(gate(&lc, &req("exit", None)), Gate::Exit));
         let Gate::Reply(response) = gate(&lc, &req("tools/list", Some(4))) else {
             panic!("a post-shutdown request must be answered");
         };
@@ -1447,6 +1504,36 @@ mod tests {
         lc.initialized.store(true, Ordering::Relaxed);
         assert!(matches!(gate(&lc, &req("shutdown", None)), Gate::Drop));
         assert_eq!(lc.exit_code(), 0);
+    }
+
+    #[test]
+    fn a_handshake_does_not_move_the_exit_off_the_gate() {
+        // The case the other two gate tests do not reach: initialized and not
+        // shutting down, which is where exit used to be forwarded. That put
+        // termination on a task RMCP spawns and raced it against the read side
+        // ending the session. Anything but Gate::Exit here brings that back.
+        // Pre-init is pinned by pre_init_exit_terminates_rather_than_forwarding
+        // and post-shutdown by after_shutdown_everything_but_exit_is_rejected.
+        let lc = lifecycle();
+        lc.initialized.store(true, Ordering::Relaxed);
+        assert!(matches!(gate(&lc, &req("exit", None)), Gate::Exit));
+    }
+
+    #[test]
+    fn the_exit_hook_keeps_its_first_owner() {
+        // A second install would let late wiring displace the flush that the
+        // exit is about to run.
+        let lc = lifecycle();
+        let ran = Arc::new(AtomicBool::new(false));
+        let first = ran.clone();
+        lc.set_exit_hook(move || first.store(true, Ordering::Relaxed));
+        lc.set_exit_hook(|| unreachable!("the second install must not take"));
+
+        lc.on_exit.get().expect("a hook is installed")();
+        assert!(
+            ran.load(Ordering::Relaxed),
+            "the first hook is the one kept"
+        );
     }
 
     #[test]

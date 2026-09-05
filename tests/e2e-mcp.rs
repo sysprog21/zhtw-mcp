@@ -1252,6 +1252,80 @@ fn e2e_every_termination_path_reports_the_code_it_promises() {
 }
 
 #[test]
+fn e2e_exit_terminates_after_an_answered_call_with_stdin_open() {
+    // The exit contract with nothing else left to wake the server.
+    //
+    // RMCP polls the framing layer inside a select whose other arms carry the
+    // outgoing queue and the completion of the task that wrote the last
+    // response, so the read future is dropped on either. A termination awaited
+    // inside that future is cancelled halfway with the exit line already
+    // consumed: nothing terminates, the server goes back to reading stdin, and
+    // because this client never closes stdin there is no end of input to fall
+    // back on. It parks forever.
+    //
+    // Answer a call in full and only then send exit, so a send task is on the
+    // verge of reporting completion when the exit is gated. A single round
+    // lands in that window about one time in twelve, measured against the
+    // broken version, so the round is repeated. Twelve rounds caught it in four
+    // runs out of six; that is a guard, not a proof, and it is stated here so
+    // nobody reads a green run as one. The failure mode is a hang and never a
+    // wrong answer, so the repetition cannot make this flaky in the other
+    // direction. Two to four seconds on its own depending on the machine, and
+    // almost all of that is spawning twelve processes rather than waiting on
+    // them: the child is reaped about a millisecond after the exit line, which
+    // is what the poll interval below is set from.
+    for round in 1..=12 {
+        let (_tmp, mut child, mut stdin, mut stdout) = spawn_server();
+        handshake(&mut stdin, &mut stdout);
+
+        // Rejected on its arguments, which answers without a scan and puts the
+        // reply and the exit as close together as this interface allows.
+        let answer = send_recv(
+            &mut stdin,
+            &mut stdout,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {
+                    "name": "zhtw",
+                    "arguments": {
+                        "text": "這個軟件很好用",
+                        "output": "tabular",
+                        "include_telemetry": true
+                    }
+                }
+            }),
+        );
+        assert!(
+            answer["error"].is_object(),
+            "expected a rejection: {answer}"
+        );
+
+        send_notification(&mut stdin, &json!({"jsonrpc": "2.0", "method": "exit"}));
+
+        // Held open deliberately, so exit is the only thing that can end this.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let status = loop {
+            match child.try_wait().expect("poll the server") {
+                Some(status) => break status,
+                None if std::time::Instant::now() >= deadline => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!(
+                        "round {round}: exit was gated and then lost, the server never terminated"
+                    );
+                }
+                None => std::thread::sleep(std::time::Duration::from_millis(1)),
+            }
+        };
+
+        // No shutdown came first, so the contract says 1.
+        assert_eq!(status.code(), Some(1), "round {round}: wrong exit code");
+    }
+}
+
+#[test]
 fn e2e_cancelling_a_call_stops_it_waiting_on_sampling() {
     // A cancelled request is not owed an answer and the client that cancelled
     // it will not send one, so the sampling deadline is time spent for nothing,

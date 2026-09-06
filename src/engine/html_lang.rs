@@ -157,11 +157,9 @@ fn closed_implicitly_by(open: &str, incoming: &str) -> bool {
         "optgroup" => incoming == "optgroup",
         "rt" | "rp" => matches!(incoming, "rt" | "rp"),
 
-        // A col stays inside a colgroup, and so do the two tags the "in column
-        // group" mode hands to another insertion mode rather than treating as
-        // the end of the group. Anything else ends it, which is what stops a
-        // lang on a column group from scoping the rest of the table.
-        "colgroup" => !matches!(incoming, "col" | "html" | "template"),
+        // Only a col stays inside a colgroup, so anything else ends it. Without
+        // this a lang on a column group went on scoping the rest of the table.
+        "colgroup" => incoming != "col",
         _ => false,
     }
 }
@@ -712,16 +710,22 @@ mod tests {
     }
 
     #[test]
-    fn a_column_group_survives_a_template() {
-        // "in column group" hands an html or a template start tag to another
-        // insertion mode and leaves the group open; only "anything else" pops
-        // it. Ending the scope on a template would cut it short.
-        let text =
-            "<table><colgroup lang=\"en\"><template><col></template><tbody><tr><td>ZH</table>";
-        assert_eq!(
-            excluded_text(text),
-            vec!["<colgroup lang=\"en\"><template><col></template><tbody>"]
-        );
+    fn a_column_group_does_not_outlive_a_tag_it_cannot_close_through() {
+        // Exempting the tags "in column group" hands to another insertion mode
+        // was tried and reverted. Either one is a barrier the implicit-close
+        // walk cannot see past, so the group stayed open and its foreign lang
+        // took the rest of the table out of the scan. Ending the scope early is
+        // the inaccuracy this file can afford; dropping prose silently is not.
+        for markup in [
+            "<table><colgroup lang=\"en\"><html><tbody><tr><td>ZH</table>",
+            "<table><colgroup lang=\"en\"><template><tbody><tr><td>ZH</table>",
+        ] {
+            let covered = excluded_text(markup).concat();
+            assert!(
+                !covered.contains("ZH"),
+                "the table tail was excluded by the column group's lang: {covered}"
+            );
+        }
     }
 
     #[test]

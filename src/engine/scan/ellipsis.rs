@@ -3,8 +3,9 @@
 // Detects non-standard ellipsis patterns adjacent to CJK text and suggests the
 // MoE-standard …… (two U+2026 HORIZONTAL ELLIPSIS characters).
 
-use crate::engine::excluded::{is_excluded, ByteRange};
-use crate::rules::ruleset::{Issue, Severity};
+use super::emit::Emitter;
+use crate::engine::excluded::is_excluded;
+use crate::rules::ruleset::Severity;
 
 use super::{adjacent_cjk, punct_issue_sev};
 
@@ -17,7 +18,11 @@ use super::{adjacent_cjk, punct_issue_sev};
 ///   - ASCII ... (3+ dots)
 ///   - Circle periods 。。。 (3+ consecutive)
 ///   - Single … (should be doubled)
-pub(crate) fn scan_ellipsis(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+pub(crate) fn scan_ellipsis(em: &mut Emitter<'_>) {
+    let text = em.text;
+    let excluded = em.excluded;
+    let issues = &mut *em.issues;
+
     let bytes = text.as_bytes();
     let len = bytes.len();
     let suggestion = "\u{2026}\u{2026}"; // ……

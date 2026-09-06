@@ -2,6 +2,7 @@
 // fallback). Context-clue checking uses a windowed AC scan over bounded slices
 // rather than full-document pre-scan.
 
+use super::emit::Emitter;
 use crate::engine::excluded::{is_excluded, ByteRange};
 use crate::engine::segment::BoundaryBitmap;
 use crate::engine::zhtype::ChineseType;
@@ -35,17 +36,18 @@ impl Scanner {
     ///
     /// Uses the IR-based evaluation path: each AC hit is evaluated against
     /// its precompiled predicate chain via `eval_predicates()`.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn scan_spelling(
         &self,
-        text: &str,
-        excluded: &[ByteRange],
+        em: &mut Emitter<'_>,
         zh_type: ChineseType,
-        issues: &mut Vec<Issue>,
         cfg: &ProfileConfig,
         clue_buf: &mut Vec<(usize, u16)>,
         boundary_bitmap: &BoundaryBitmap,
     ) {
+        let text = em.text;
+        let excluded = em.excluded;
+        let issues = &mut *em.issues;
+
         let mut excl_cursor: usize = 0;
         let n_rules = self.spelling_db.spelling_rules.len();
 

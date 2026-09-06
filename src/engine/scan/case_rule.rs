@@ -3,7 +3,8 @@
 // Checks that terms like "JavaScript", "TypeScript", "API" are correctly cased,
 // rejecting matches that are already in canonical or alternative form.
 
-use crate::engine::excluded::{is_excluded, ByteRange};
+use super::emit::Emitter;
+use crate::engine::excluded::is_excluded;
 use crate::rules::ruleset::{Issue, IssueType, Severity};
 
 use super::Scanner;
@@ -16,7 +17,11 @@ impl Scanner {
     ///    or one of the listed alternatives).
     /// 2. The match has word boundaries: no adjacent ASCII letter on either
     ///    side (prevents matching "React" inside "Unreactive").
-    pub(crate) fn scan_case(&self, text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+    pub(crate) fn scan_case(&self, em: &mut Emitter<'_>) {
+        let text = em.text;
+        let excluded = em.excluded;
+        let issues = &mut *em.issues;
+
         let case_ac = match self.case_ac.as_ref() {
             Some(ac) => ac,
             None => return,

@@ -17,6 +17,8 @@
 mod acronym;
 mod case_rule;
 mod ellipsis;
+mod emit;
+
 mod grammar;
 mod overlap;
 mod punctuation;
@@ -30,6 +32,7 @@ pub use rule_ir::ProfileFilter;
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
+use self::emit::Emitter;
 use super::excluded::{build_excluded_ranges, merge_ranges_pub, ByteRange};
 use super::lineindex::{ColumnEncoding, LineIndex};
 use super::markdown::{
@@ -862,15 +865,8 @@ impl Scanner {
         };
         let mut issues = Vec::new();
         let mut clue_buf = Vec::new();
-        self.scan_spelling(
-            text,
-            excluded,
-            zh_type,
-            &mut issues,
-            cfg,
-            &mut clue_buf,
-            &bitmap,
-        );
+        let mut em = Emitter::new(text, excluded, &mut issues);
+        self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap);
         issues.len()
     }
 
@@ -891,27 +887,20 @@ impl Scanner {
         };
         let mut issues = Vec::new();
         let mut clue_buf = Vec::new();
+        let mut em = Emitter::new(text, excluded, &mut issues);
         if cfg.spelling {
-            self.scan_spelling(
-                text,
-                excluded,
-                zh_type,
-                &mut issues,
-                cfg,
-                &mut clue_buf,
-                &bitmap,
-            );
+            self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap);
         }
         if cfg.casing {
-            self.scan_case(text, excluded, &mut issues);
+            self.scan_case(&mut em);
         }
         if cfg.basic_punctuation {
-            self.scan_punctuation(text, excluded, &mut issues, cfg);
-            self.scan_cn_curly_quotes(text, excluded, &mut issues);
-            self.scan_spacing(text, excluded, &mut issues);
+            self.scan_punctuation(&mut em, cfg);
+            self.scan_cn_curly_quotes(&mut em);
+            self.scan_spacing(&mut em);
         }
         if cfg.ellipsis_normalization {
-            scan_ellipsis(text, excluded, &mut issues);
+            scan_ellipsis(&mut em);
         }
         issues
     }
@@ -1332,51 +1321,40 @@ impl Scanner {
     ///
     /// All of these emit issues in offset order, which is what lets the
     /// caller skip a sort in the common case.
-    #[allow(clippy::too_many_arguments)]
     fn run_lexical_passes(
         &self,
-        text: &str,
-        excluded: &[ByteRange],
+        em: &mut Emitter<'_>,
         zh_type: ChineseType,
-        issues: &mut Vec<Issue>,
         cfg: &ProfileConfig,
         clue_index: &mut Vec<(usize, u16)>,
         boundary_bitmap: &BoundaryBitmap,
     ) {
         if cfg.spelling {
-            self.scan_spelling(
-                text,
-                excluded,
-                zh_type,
-                issues,
-                cfg,
-                clue_index,
-                boundary_bitmap,
-            );
+            self.scan_spelling(em, zh_type, cfg, clue_index, boundary_bitmap);
         }
         if cfg.casing {
-            self.scan_case(text, excluded, issues);
+            self.scan_case(em);
         }
         if cfg.basic_punctuation {
-            self.scan_punctuation(text, excluded, issues, cfg);
+            self.scan_punctuation(em, cfg);
         }
         if cfg.dunhao_detection {
-            self.scan_dunhao(text, excluded, issues);
+            self.scan_dunhao(em);
         }
         if cfg.range_normalization {
-            self.scan_range_indicators(text, excluded, issues, cfg);
+            self.scan_range_indicators(em, cfg);
         }
         if cfg.ellipsis_normalization {
-            scan_ellipsis(text, excluded, issues);
+            scan_ellipsis(em);
         }
         if cfg.basic_punctuation {
-            self.scan_cn_curly_quotes(text, excluded, issues);
-            self.scan_spacing(text, excluded, issues);
+            self.scan_cn_curly_quotes(em);
+            self.scan_spacing(em);
         }
         // Repetition detection (CJK duplicates + Latin duplicates).
-        repetition::scan_repetition(text, excluded, issues);
+        repetition::scan_repetition(em);
         // Spaced-acronym rejoining (C P U to CPU).
-        acronym::scan_spaced_acronyms(text, excluded, issues);
+        acronym::scan_spaced_acronyms(em);
     }
 
     /// Catch a scan config that re-enables a rule type the scanner was built
@@ -1496,15 +1474,8 @@ impl Scanner {
             ref mut overlap_accepted,
         } = *scratch;
 
-        self.run_lexical_passes(
-            text,
-            excluded,
-            zh_type,
-            issues,
-            &cfg,
-            clue_index,
-            &boundary_bitmap,
-        );
+        let mut em = Emitter::new(text, excluded, issues);
+        self.run_lexical_passes(&mut em, zh_type, &cfg, clue_index, &boundary_bitmap);
 
         // All scanners (AC, punctuation, spacing, ellipsis, quotes) emit issues
         // in offset order. Skip the O(n log n) sort when already sorted (common
@@ -1650,8 +1621,12 @@ fn run_structural_passes(
     content_type: ContentType,
     guards: &rule_ir::GuardRules,
 ) -> Vec<ByteRange> {
+    // One emitter for the whole stage: every check below reads this document
+    // through this mask and writes into this list.
+    let mut em = Emitter::new(text, excluded, issues);
+
     if cfg.grammar_checks {
-        grammar::scan_grammar(text, excluded, issues);
+        grammar::scan_grammar(&mut em);
     }
 
     // Build boundaries only when an AI structural or translationese detector
@@ -1663,42 +1638,28 @@ fn run_structural_passes(
         None
     };
 
-    run_ai_filter(
-        text,
-        excluded,
-        issues,
-        cfg,
-        content_type,
-        boundary_index.as_ref(),
-        guards,
-    );
+    run_ai_filter(&mut em, cfg, content_type, boundary_index.as_ref(), guards);
 
     // The spans judged as mentions are handed back: the phrase-density signal
     // reads the text directly, so without them the score would still count a
     // phrase whose findings were just suppressed.
-    let mentions = drop_mentioned_style_findings(text, issues);
+    let mentions = drop_mentioned_style_findings(em.text, em.issues);
 
     // Syntactic translationese detectors (G1-G8, Y1-Y2, S3, V7, V13).
     if cfg.translationese_detection {
         if let Some(ref idx) = boundary_index {
-            grammar::scan_translationese_syntactic(text, excluded, issues, idx);
+            grammar::scan_translationese_syntactic(&mut em, idx);
 
             // Boundary-aware translationese detectors (ZY1b/ZY2b/ZY3b/ZY5).
             // cfg.translationese_domain selects the per-domain threshold table
             // that drives firing behavior at scan time.
-            grammar::scan_translationese_indexed(
-                text,
-                excluded,
-                issues,
-                idx,
-                cfg.translationese_domain,
-            );
+            grammar::scan_translationese_indexed(&mut em, idx, cfg.translationese_domain);
         }
 
         // Substring-only translationese detectors (ZY1a/ZY2a/ZY3a/ZY4a), which
         // need no boundary index.
-        grammar::scan_translationese_lexical(text, excluded, issues);
-        dedup_translationese_phase_duplicates(issues);
+        grammar::scan_translationese_lexical(&mut em);
+        dedup_translationese_phase_duplicates(em.issues);
     }
 
     mentions
@@ -1966,31 +1927,27 @@ fn mark_quoted_on_line(
 /// and overrides apply. Semantic, density, and structural checks stay separate
 /// because their false-positive tradeoffs differ.
 fn run_ai_filter(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     cfg: &ProfileConfig,
     content_type: ContentType,
     boundary_index: Option<&BoundaryIndex>,
     guards: &rule_ir::GuardRules,
 ) {
     if cfg.ai_semantic_safety {
-        grammar::scan_ai_grammar(text, excluded, issues);
+        grammar::scan_ai_grammar(em);
 
         // A style tell, not a grammar error, so it must neither ride along on
         // "grammar_checks" (on by default in every profile) nor vanish with it
         // ("--relaxed" clears it).
         grammar::scan_ai_bare_attribution(
-            text,
-            excluded,
+            em,
             cfg.document_genre,
             guards.get("uncited_attribution"),
-            issues,
         );
     }
 
     if cfg.ai_structural_patterns {
-        grammar::scan_ai_structural(text, excluded, issues, cfg.ai_threshold_multiplier);
+        grammar::scan_ai_structural(em, cfg.ai_threshold_multiplier);
     }
 
     // Invisible characters are not a structural pattern and never were: they
@@ -2003,16 +1960,16 @@ fn run_ai_filter(
         || cfg.ai_density_detection
         || cfg.ai_structural_patterns
     {
-        grammar::scan_ai_zero_width(text, excluded, issues);
+        grammar::scan_ai_zero_width(em);
     }
 
     if cfg.ai_density_detection {
-        grammar::scan_ai_density(text, excluded, issues, cfg.ai_threshold_multiplier);
+        grammar::scan_ai_density(em, cfg.ai_threshold_multiplier);
     }
 
     if cfg.ai_structural_patterns {
         if let Some(idx) = boundary_index {
-            grammar::scan_ai_structural_phase2(text, excluded, issues, idx, content_type);
+            grammar::scan_ai_structural_phase2(em, idx, content_type);
         }
     }
 }

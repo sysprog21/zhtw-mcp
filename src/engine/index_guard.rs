@@ -21,29 +21,29 @@ pub(crate) enum DocIndex {
     Attribution,
 }
 
-// Only the debug build counts builds, so only it has a use for the table, the
-// slot, or the name.
-#[cfg(debug_assertions)]
-impl DocIndex {
-    const ALL: [Self; 3] = [Self::Boundary, Self::CloserTail, Self::Attribution];
-
-    const fn slot(self) -> usize {
-        self as usize
-    }
-
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Boundary => "BoundaryIndex",
-            Self::CloserTail => "CloserTailIndex",
-            Self::Attribution => "AttributionIndex",
-        }
-    }
-}
-
 #[cfg(debug_assertions)]
 mod imp {
     use super::DocIndex;
     use std::cell::Cell;
+
+    // Only the counting build has a use for this table, and an inherent impl is
+    // legal from any module of the defining crate, so it lives under the cfg
+    // this file already draws rather than needing one of its own.
+    impl DocIndex {
+        const ALL: [Self; 3] = [Self::Boundary, Self::CloserTail, Self::Attribution];
+
+        const fn slot(self) -> usize {
+            self as usize
+        }
+
+        const fn name(self) -> &'static str {
+            match self {
+                Self::Boundary => "BoundaryIndex",
+                Self::CloserTail => "CloserTailIndex",
+                Self::Attribution => "AttributionIndex",
+            }
+        }
+    }
 
     thread_local! {
         static BUILDS: Cell<[u32; DocIndex::ALL.len()]> = const { Cell::new([0; 3]) };

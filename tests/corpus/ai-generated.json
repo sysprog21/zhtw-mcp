@@ -788,6 +788,96 @@
           "rule_type": "ai_style"
         }
       ]
+    },
+    {
+      "id": "ai_latin_term_comma",
+      "repeat": 30,
+      "input": "這個服務器需要 Docker,才能部署整套環境。",
+      "expected_fixed": "這個伺服器需要 Docker，才能部署整套環境。",
+      "expected_issues": [
+        {
+          "found": "服務器",
+          "replace": "伺服器",
+          "rule_type": "cross_strait"
+        },
+        {
+          "found": ",",
+          "replace": "，",
+          "rule_type": "punctuation"
+        }
+      ]
+    },
+    {
+      "id": "ai_latin_term_version",
+      "repeat": 30,
+      "input": "團隊只用 Windows 11,沒有其他選擇。",
+      "expected_fixed": "團隊只用 Windows 11，沒有其他選擇。",
+      "expected_issues": [
+        {
+          "found": ",",
+          "replace": "，",
+          "rule_type": "punctuation"
+        }
+      ]
+    },
+    {
+      "id": "ai_latin_proper_name_comma",
+      "repeat": 30,
+      "input": "我們用 Visual Studio Code,開發整個前端專案。",
+      "expected_fixed": "我們用 Visual Studio Code，開發整個前端專案。",
+      "expected_issues": [
+        {
+          "found": ",",
+          "replace": "，",
+          "rule_type": "punctuation"
+        }
+      ]
+    },
+    {
+      "id": "ai_latin_lowercase_term_comma",
+      "repeat": 30,
+      "input": "這臺服務器跑的是 nginx,不是別的網頁伺服器。",
+      "expected_fixed": "這臺伺服器跑的是 nginx，不是別的網頁伺服器。",
+      "expected_issues": [
+        {
+          "found": "服務器",
+          "replace": "伺服器",
+          "rule_type": "cross_strait"
+        },
+        {
+          "found": ",",
+          "replace": "，",
+          "rule_type": "punctuation"
+        }
+      ]
+    },
+    {
+      "id": "ai_latin_run_after_earlier_mark",
+      "repeat": 30,
+      "input": "我們使用 nginx, Google Chrome,瀏覽整個網站。",
+      "expected_fixed": "我們使用 nginx, Google Chrome，瀏覽整個網站。",
+      "expected_issues": [
+        {
+          "found": ",",
+          "replace": "，",
+          "rule_type": "punctuation",
+          "occurrence": 2
+        }
+      ]
+    },
+    {
+      "id": "ai_latin_code_span_comma",
+      "repeat": 30,
+      "content_type": "markdown",
+      "input": "請先執行 `npm run build`,再部署到正式環境。",
+      "expected_fixed": "請先執行 `npm run build`，再部署到正式環境。",
+      "expected_issues": [
+        {
+          "found": ",",
+          "replace": "，",
+          "rule_type": "punctuation"
+        }
+      ]
     }
   ]
 }

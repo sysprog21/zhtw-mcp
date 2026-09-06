@@ -609,6 +609,170 @@
         assert_ne!(issues[0].offset, issues[1].offset);
     }
 
+    // -- embedded Latin run tests ---------------------------------------------
+
+    #[test]
+    fn punct_latin_clause_left_alone() {
+        // The mark closes the English, not the Chinese sentence quoting it,
+        // whichever mark it is and whether the Chinese follows on the same line
+        // or two lines down.
+        let scanner = empty_scanner();
+        for text in [
+            "他說「I agree, 但這不完整」",
+            "Do one thing and do it well,\n\n這是 Unix 哲學。",
+            "他問「Are you sure this works?」",
+            "記錄檔只留下 file not found: 請確認掛載點。",
+            "他寫下 make it work; 之後才談效能。",
+
+            // Punctuated internally, and still English on both sides of its own
+            // comma.
+            "他說「Yes, I do, 但這不完整」",
+            "Do one thing, and do it well,\n\n這是 Unix 哲學。",
+        ] {
+            let issues = scanner.scan(text).issues;
+            assert!(issues.is_empty(), "{text}: {issues:?}");
+        }
+    }
+
+    #[test]
+    fn punct_latin_single_term_still_flagged() {
+        // One word is a term the Chinese sentence borrowed, so the mark after
+        // it is the Chinese sentence's.
+        let scanner = empty_scanner();
+        for text in ["這是 Unix, 很好用", "我們用 Docker, 部署服務"] {
+            let issues = scanner.scan(text).issues;
+            assert_eq!(issues.len(), 1, "{text}: {issues:?}");
+            assert_eq!(issues[0].found, ",");
+        }
+    }
+
+    #[test]
+    fn punct_latin_run_measured_backwards_only() {
+        // The comma follows Chinese; the English after it does not claim the
+        // mark, however long the clause is.
+        let scanner = empty_scanner();
+        let issues = scanner.scan("他說, I agree with all of this").issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].found, ",");
+    }
+
+    #[test]
+    fn punct_latin_run_stops_at_cjk_punctuation() {
+        // 」 closes the run, so the comma counts no Latin words before it even
+        // though an English clause sits inside the quotation, and the mark is
+        // the Chinese sentence's after all.
+        let scanner = empty_scanner();
+        let issues = scanner.scan("他說「I agree with you」, 但是").issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].found, ",");
+    }
+
+    #[test]
+    fn punct_latin_run_counts_a_dotted_term_as_one_word() {
+        // A word is a whitespace-delimited token, so a term stays whole however
+        // it is spelled and the mark after it is still the Chinese sentence's.
+        let scanner = empty_scanner();
+        for text in [
+            "升級到 11.2.3, 重新開機",
+            "編號 000000000000, 已經停用",
+            "我們用 Node.js, 寫後端",
+            "反應式是 H2O, 不是別的",
+            "文件在 docs.example.com, 請自行查閱",
+        ] {
+            let issues = scanner.scan(text).issues;
+            assert_eq!(issues.len(), 1, "{text}: {issues:?}");
+            assert_eq!(issues[0].found, ",");
+        }
+    }
+
+    #[test]
+    fn punct_latin_proper_name_still_flagged() {
+        // Every word is capitalised, so the run is a borrowed proper name
+        // rather than a clause, however many words it runs to.
+        let scanner = empty_scanner();
+        for text in [
+            "我們用 Visual Studio Code, 開發服務",
+            "請安裝 Google Chrome, 再重試一次",
+            "他在 New York, 待了三年",
+        ] {
+            let issues = scanner.scan(text).issues;
+            assert_eq!(issues.len(), 1, "{text}: {issues:?}");
+            assert_eq!(issues[0].found, ",");
+        }
+    }
+
+    #[test]
+    fn punct_latin_run_stops_at_the_search_bound() {
+        // The bound is a distance test as much as a cost one: the clause here
+        // is further from the mark than the walk reaches, so the mark is the
+        // Chinese sentence's. Digits fill the gap because they are no word
+        // wherever the bound falls.
+        let scanner = empty_scanner();
+        let issues = scanner
+            .scan(&format!("we all agree on this {}, 中文", "0".repeat(600)))
+            .issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].found, ",");
+    }
+
+    #[test]
+    fn punct_latin_run_stops_at_an_earlier_mark() {
+        // The first comma ended nginx's clause, so the second one trails a
+        // proper name and stays the Chinese sentence's. The first sits between
+        // two Latin terms and was never a candidate.
+        let scanner = empty_scanner();
+        let issues = scanner.scan("我們使用 nginx, Google Chrome, 瀏覽網頁").issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].found, ",");
+        assert_eq!(issues[0].offset, "我們使用 nginx, Google Chrome".len());
+
+        // A period that ends a sentence closes the run the same way, while one
+        // inside a term does not.
+        let issues = scanner.scan("我們使用 nginx. Google Chrome, 瀏覽網頁").issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].found, ",");
+    }
+
+    #[test]
+    fn punct_latin_run_stops_at_an_excluded_range() {
+        // A code span is not prose, so it is not an English clause either. The
+        // mark after one is the Chinese sentence's, however many lower-case
+        // words the excluded text spells. A URL or a path needs no case here:
+        // both stop-sets run through a trailing mark, so the mark is inside the
+        // excluded range and the walk never reaches this test.
+        let scanner = empty_scanner();
+        for (text, mark) in [
+            ("他先執行 `npm run build`, 然後部署。", ","),
+            ("錯誤訊息是 `file not found`, 請檢查路徑。", ","),
+            ("錯誤訊息是 `file not found`: 請檢查路徑。", ":"),
+        ] {
+            let issues = scanner.scan(text).issues;
+            assert_eq!(
+                issues.iter().filter(|i| i.found == mark).count(),
+                1,
+                "{text}: {issues:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn punct_latin_clause_known_limits() {
+        // The case signal buys back the multi-word product name and pays for it
+        // at two edges. Pinned so that a change to either is deliberate.
+        let scanner = empty_scanner();
+
+        // A title-cased clause reads as a proper name and keeps its mark
+        // converted.
+        let issues = scanner.scan("他讀了「I Agree, 但這不完整」").issues;
+        assert_eq!(issues.len(), 1, "{issues:?}");
+
+        // A lower-case brand reads as a clause and keeps its own.
+        assert!(scanner
+            .scan("團隊喜歡 iPhone Pro Max, 也喜歡平板")
+            .issues
+            .is_empty());
+    }
+
     // line/col position tests
 
     #[test]
@@ -1115,6 +1279,19 @@
         assert!(
             !issues.iter().any(|i| i.found == ":"),
             ": in URL should not be flagged"
+        );
+    }
+
+    #[test]
+    fn halfwidth_colon_not_flagged_after_a_reference_label() {
+        // [id]: url and [^id]: text are Markdown definitions, not prose. The
+        // fourth shape colon_is_notation covers, and the last one to get a test
+        // of its own.
+        let scanner = Scanner::new(vec![], vec![]);
+        let issues = scanner.scan("這是說明[^1]: 補充內容在這裡。").issues;
+        assert!(
+            !issues.iter().any(|i| i.found == ":"),
+            "a reference definition's colon should not be flagged"
         );
     }
 

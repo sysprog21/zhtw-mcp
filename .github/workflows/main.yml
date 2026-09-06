@@ -7,7 +7,7 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
-# Read by default.  Only `publish-latest` widens this, and only for itself, so
+# Read by default.  Only "publish-latest" widens this, and only for itself, so
 # no job that executes pull-request-controlled code ever holds a write token.
 permissions:
   contents: read
@@ -28,6 +28,12 @@ concurrency:
 jobs:
   check:
     strategy:
+      # One platform's failure must not hide another's.  The run that made this
+      # necessary died on a macOS-only ruleset gate and cancelled the Linux and
+      # Windows legs mid-test, so nothing said whether either of those two also
+      # had something to report.  "build-latest" below has carried this setting
+      # all along, for the same reason.
+      fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
 
@@ -37,7 +43,9 @@ jobs:
     steps:
     - uses: actions/checkout@v7
       with:
-        # The ruleset provenance check reads the PR base revision.
+        # The ruleset provenance check reads the PR base revision.  The
+        # "Resolve the ruleset baseline" step below leans on this covering an
+        # ordinary push too, and fetches by hand only what a force-push strands.
         fetch-depth: 0
 
     - name: Install Rust toolchain
@@ -54,13 +62,13 @@ jobs:
       with:
         python-version: "3.x"
 
-    # `make check` runs black through scripts/indent.sh, and the runner image
+    # "make check" runs black through scripts/indent.sh, and the runner image
     # does not carry black.  Only this job needs it; the build jobs run the
     # table generator, which black never sees.
     - name: Install black
       run: pip install black
 
-    # The shell lanes of `make check`.  shfmt takes its style from
+    # The shell lanes of "make check".  shfmt takes its style from
     # .editorconfig, so installing it here is the whole configuration.  Linux
     # only, and that is deliberate: formatting does not vary by platform, and
     # checking it on one runner is what the other two would repeat.  Both lanes
@@ -77,12 +85,12 @@ jobs:
     # failure, so this step is what the formatting gate stands on.
     #
     # Built from a pinned revision rather than downloaded from the release
-    # tagged `latest`.  That tag is rolling, so the asset behind it moves, and a
+    # tagged "latest".  That tag is rolling, so the asset behind it moves, and a
     # digest read from the same release metadata proves the transfer arrived
     # intact without saying anything about which build arrived.  A commit is
     # immutable and readable; bumping it is an edit to this line, which is
     # exactly the review a formatter that rewrites every comment in the tree
-    # deserves.  It also drops the `sudo` and the write into /usr/local/bin that
+    # deserves.  It also drops the "sudo" and the write into /usr/local/bin that
     # the tarball needed: cargo installs into ~/.cargo/bin, which is on PATH.
     #
     # The cost is about a minute of compile on a cold cache, and rust-cache
@@ -100,24 +108,56 @@ jobs:
           --rev "$COMMENTFLOW_REV" --locked commentflow
         commentflow --help > /dev/null
 
+    # Every platform, because both check steps below gate on provenance and a
+    # gate that means one thing on Linux and another on Windows is not a gate.
+    # Each leg is its own runner with its own checkout, so each resolves the
+    # baseline for itself.  Writing it to GITHUB_ENV rather than repeating the
+    # expression keeps the policy in one place: a baseline source added here
+    # reaches both consumers, or neither.
+    - name: Resolve the ruleset baseline
+      shell: bash
+      env:
+        # The provenance gate compares against the revision before the change.
+        # workflow_dispatch has neither a PR base nor a push's before SHA and
+        # leaves this empty, which the Makefile and the Windows leg below both
+        # read as HEAD.
+        RULESET_BASELINE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      run: |
+        # A push that creates the branch reports all zeros for the revision
+        # before it.  That names no commit for the remote to serve, and it
+        # means what the empty value means, so default it rather than asking
+        # upload-pack for a ref nobody has.
+        if [ "$RULESET_BASELINE" = 0000000000000000000000000000000000000000 ]; then
+          RULESET_BASELINE=
+        fi
+        # The checkout above takes every ref, which covers a pull request base
+        # and an ordinary push alike.  A force-push is the gap it does not
+        # cover: the before SHA is left on no ref at all, so ask the remote for
+        # that one object rather than substitute an ancestor of HEAD, which
+        # would narrow a multi-commit push and let its earlier rules evade
+        # provenance.  Asking git first keeps every other run to a local lookup.
+        if [ -n "$RULESET_BASELINE" ] &&
+          ! git cat-file -e "$RULESET_BASELINE^{commit}" 2> /dev/null; then
+          git fetch --no-tags origin "$RULESET_BASELINE"
+        fi
+        echo "RULESET_BASELINE=$RULESET_BASELINE" >> "$GITHUB_ENV"
+
     - name: make check
       if: matrix.os != 'windows-2025'
       env:
-        # The provenance gate compares against the revision before the change.
-        # workflow_dispatch has neither a PR base nor a push's before SHA, and
-        # leaves this empty; the Makefile maps an empty value to HEAD.
-        RULESET_BASELINE: ${{ github.event.pull_request.base.sha || github.event.before }}
         ZHTW_REQUIRE_TOOLS: ${{ matrix.os == 'ubuntu-24.04' && '1' || '' }}
       run: make check
 
-    # `make` is not dependable on the Windows runner (see build-latest's
-    # "Build and package" step below), so run the same checks `make check`
+    # "make" is not dependable on the Windows runner (see build-latest's
+    # "Build and package" step below), so run the same checks "make check"
     # would directly instead.  Two of them are missing here on purpose:
     # scripts/indent.sh and the hook suite drive tar, mktemp, git worktrees and
     # four hook wrappers through whatever sh the runner happens to provide, and
     # neither a formatting rule nor a commit rule varies by platform.  The Linux
-    # leg is where both run; the direct `cargo fmt --check` and `black --check`
-    # below are what this leg keeps of the formatter chain.
+    # leg is where both run; the direct "cargo fmt --check" and "black --check"
+    # below are what this leg keeps of the formatter chain.  The ruleset lint
+    # is not one of the two: it takes the baseline the step above resolved, so
+    # provenance means the same thing here as it does on the other legs.
     #
     # The rest of the list is what caught #124 and #126 turning
     # into recurring Windows-only regressions: those bugs only ever
@@ -134,23 +174,24 @@ jobs:
         ./scripts/clippy-lanes.sh
         cargo fmt --check
         black --check .
-        python scripts/check-ruleset.py --lint
+        python scripts/check-ruleset.py --lint \
+          --baseline-ref "${RULESET_BASELINE:-HEAD}"
 
   # The commit-msg hook binds whoever installed it.  This binds everyone else: a
-  # rebase, an amend, `--no-verify`, or a subject typed into the GitHub merge box
+  # rebase, an amend, "--no-verify", or a subject typed into the GitHub merge box
   # all reach the branch unread otherwise.  It runs the same script the pre-push
   # hook runs, so a contributor with hooks and a contributor without are judged
   # by one list.
   #
-  # Pull requests only, and deliberately.  `base.sha..HEAD` is the work being
+  # Pull requests only, and deliberately.  "base.sha..HEAD" is the work being
   # proposed, which is the thing these rules are about.  The push event's range
   # is not: a merge to main replays every commit of the merged branch, so a rule
   # this log only started following recently would reject history rather than the
   # change in front of it.
   #
-  # Its own job rather than a step in `check`: it needs the full history, and the
-  # check matrix would otherwise pay for a deep clone on three runners to run one
-  # second of shell on one of them.
+  # Its own job rather than a step in "check": commit messages do not vary by
+  # platform, so folding it into that matrix would run one second of shell three
+  # times, and this is skipped outside a pull request while "check" is not.
   commit-log:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
@@ -231,20 +272,27 @@ jobs:
     - name: cargo audit
       run: cargo audit
 
+  # No "needs: check".  This measures a binary, it does not publish one, and
+  # "publish-latest" names "check" itself, so waiting for the slowest leg of a
+  # three-platform matrix bought no safety and cost a pull request about two
+  # minutes before it heard its size verdict.
   check-size:
-    needs: check
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
     - uses: actions/checkout@v7
 
+    # rustfmt because "make check-size" goes through the generator rule, which
+    # runs it over the tables it just wrote.  Asking for the component is what
+    # keeps that from borrowing whichever one the runner image happens to ship.
     - name: Install Rust toolchain
-      run: rustup toolchain install stable --profile minimal
+      run: rustup toolchain install stable --profile minimal --component rustfmt
 
-    # Its own key: sharing "ubuntu-24.04" with the check job meant check saved
-    # its debug tree first and rust-cache never overwrites, so the release tree
-    # this job actually builds was never cached.
+    # Its own key: rust-cache never overwrites an existing entry, so a key
+    # shared with the check job on this runner would keep whichever of the two
+    # trees finished first, and the release tree this job builds is not the one
+    # that wins that race.
     - name: Rust cache
       uses: Swatinem/rust-cache@v2
       with:
@@ -261,8 +309,8 @@ jobs:
 
   # Builds the WASM scanner, runs the extension's own tests, and packages the
   # unpacked and zipped extension.  It lives here rather than in a workflow of
-  # its own because the zip ships on the same `latest` release as the binaries,
-  # and one release wants one owner: `publish-latest` below checksums it,
+  # its own because the zip ships on the same "latest" release as the binaries,
+  # and one release wants one owner: "publish-latest" below checksums it,
   # uploads it, and verifies it alongside everything else.
   package-extension:
     runs-on: ubuntu-24.04
@@ -287,7 +335,7 @@ jobs:
       with:
         node-version: "22"
 
-    # Prebuilt, like cargo-audit above.  `cargo install wasm-pack` builds it
+    # Prebuilt, like cargo-audit above.  "cargo install wasm-pack" builds it
     # from source, which only stayed cheap because rust-cache happened to carry
     # ~/.cargo/bin across runs.
     - name: Install wasm-pack
@@ -316,7 +364,7 @@ jobs:
         cp extension/icons/icon-{16,32,48,128}.png "$EXTENSION_PACKAGE_DIR"/icons/
         (cd extension-package && zip -r "../$EXTENSION_ZIP" zhtw-mcp-extension)
 
-    # Deliberately NOT named `zhtw-mcp-*`: publish-latest downloads that
+    # Deliberately NOT named "zhtw-mcp-*": publish-latest downloads that
     # pattern into ./dist, and an unpacked tree there would be checksummed and
     # uploaded file by file.
     - name: Upload unpacked extension artifact
@@ -333,12 +381,17 @@ jobs:
         path: ${{ env.EXTENSION_ZIP }}
         if-no-files-found: error
 
-  # Rolling binaries for the `latest` tag.  This is the project's release: it
+  # Rolling binaries for the "latest" tag.  This is the project's release: it
   # is not a prerelease, so it carries the "Latest" badge and /releases/latest
   # resolves to it.  Nothing here needs a version tag to be pushed.
+  #
+  # It builds alongside "check" rather than behind it; the release gate is on
+  # "publish-latest".  Queued behind the matrix these four targets waited on its
+  # slowest leg, which on a push to main was most of the pipeline's wall clock.
+  # What it costs is four builds thrown away on the pushes where main does fail,
+  # which is the rarer case.
   build-latest:
     name: build (${{ matrix.name }})
-    needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
@@ -384,7 +437,7 @@ jobs:
     # Runs the generator directly rather than through make, which is not
     # dependable on the Windows runner.  Unlike the Makefile's $(S2T_STAMP)
     # recipe this skips rustfmt and the stamp: nothing here fmt-checks, and the
-    # minimal toolchain has no rustfmt.  `python` not `python3` is for Windows;
+    # minimal toolchain has no rustfmt.  "python" not "python3" is for Windows;
     # setup-python provides both elsewhere.
     - name: Build and package
       shell: bash
@@ -413,8 +466,11 @@ jobs:
         if-no-files-found: error
         retention-days: 1
 
+  # "check" by name rather than by way of another job: "check-size" and
+  # "build-latest" run beside it now, so this list is the whole of what stands
+  # between a failing test suite and a published binary.
   publish-latest:
-    needs: [audit, check-size, build-latest, package-extension]
+    needs: [check, audit, check-size, build-latest, package-extension]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # Without this the job inherits the 360 minute default, and since main runs
@@ -433,9 +489,9 @@ jobs:
         path: dist
         merge-multiple: true
 
-    # This never *moves* the `latest` git tag.  A download URL keys on the
+    # This never *moves* the "latest" git tag.  A download URL keys on the
     # release's tag name, not on the commit the ref points at, so force-moving
-    # the ref on every build bought nothing.  `gh release create` does create
+    # the ref on every build bought nothing.  "gh release create" does create
     # the tag when it is missing, and --target applies only in that case; if the
     # tag already exists the release adopts wherever it points, which is why the
     # commit a build came from is recorded in the notes instead.
@@ -463,7 +519,7 @@ jobs:
         # concurrently, and gh warns that a failed upload loses the originals,
         # so the whole set is briefly absent and can stay that way.  Hence the
         # retry, and the verification below.  --draft=false also recovers a
-        # release left as a draft by a `create` that died mid-upload.
+        # release left as a draft by a "create" that died mid-upload.
         notes="Automated build of $GITHUB_SHA on $(date -u +%Y-%m-%d)."
         upload_rc=0
         if gh release view latest >/dev/null 2>&1; then

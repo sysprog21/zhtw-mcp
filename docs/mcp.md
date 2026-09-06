@@ -91,6 +91,15 @@ Per-call suppression:
 
 Matching issues are downgraded to Info severity for this call only.
 
+Declared languages:
+
+```json
+{"text": "他說<span lang=\"en\">we ship 軟件, 但</span>結束。", "content_type": "markdown"}
+```
+
+Under either Markdown content type, an HTML tag carrying a `lang` attribute scopes the prose it wraps, and a run marked as something other than Chinese is not linted. `zh`, `zh-TW`, `zh-Hant`, `zh-CN`, `zh-Hans` and the other varieties of the Chinese macrolanguage count as Chinese and stay scanned; `lang=""` means "language unknown" and also stays scanned. Nesting, void elements, and unclosed tags are covered in [Declared languages](cli.md#declared-languages), which the MCP path shares.
+
+
 Telemetry-enabled call:
 
 ```json

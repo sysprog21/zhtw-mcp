@@ -35,7 +35,7 @@ use super::lineindex::{ColumnEncoding, LineIndex};
 use super::markdown::{
     build_markdown_excluded_ranges_with_options, build_yaml_excluded_ranges, MdScanOptions,
 };
-use super::normalize::{map_offset, normalize_nfc, Normalized};
+use super::normalize::{map_offset, map_range_forward, normalize_nfc, Normalized};
 use super::segment::{BoundaryBitmap, Segmenter};
 use super::sentence::BoundaryIndex;
 use super::suppression::build_suppression_ranges;
@@ -1062,7 +1062,7 @@ impl Scanner {
         } else {
             ContentType::Plain
         };
-        self.scan_nfc_with_content_type(text, None, profile.config(), content_type)
+        self.scan_nfc_with_content_type(text, None, &[], profile.config(), content_type)
     }
 
     /// Scan YAML text with key-token exclusion.
@@ -1071,7 +1071,7 @@ impl Scanner {
     /// in key-value separators do not trigger false-positive colon warnings.
     /// YAML values after the colon are scanned normally as prose.
     pub fn scan_profiled_yaml(&self, text: &str, profile: Profile) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, None, profile.config(), ContentType::Yaml)
+        self.scan_nfc_with_content_type(text, None, &[], profile.config(), ContentType::Yaml)
     }
 
     /// Scan with NFC normalization, reusing pre-built excluded ranges.
@@ -1099,7 +1099,7 @@ impl Scanner {
         profile: Profile,
         content_type: ContentType,
     ) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, Some(excluded), profile.config(), content_type)
+        self.scan_nfc_with_content_type(text, Some(excluded), &[], profile.config(), content_type)
     }
 
     /// Like scan_with_prebuilt_excluded but with explicit ProfileConfig.
@@ -1110,7 +1110,7 @@ impl Scanner {
         cfg: ProfileConfig,
         content_type: ContentType,
     ) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, Some(excluded), cfg, content_type)
+        self.scan_nfc_with_content_type(text, Some(excluded), &[], cfg, content_type)
     }
 
     /// Scan text using the content-type-aware exclusion strategy.
@@ -1123,7 +1123,7 @@ impl Scanner {
         content_type: ContentType,
         profile: Profile,
     ) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, None, profile.config(), content_type)
+        self.scan_nfc_with_content_type(text, None, &[], profile.config(), content_type)
     }
 
     /// Scan with content-type-aware exclusions and explicit ProfileConfig.
@@ -1135,14 +1135,42 @@ impl Scanner {
         content_type: ContentType,
         cfg: ProfileConfig,
     ) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, None, cfg, content_type)
+        self.scan_nfc_with_content_type(text, None, &[], cfg, content_type)
+    }
+
+    /// Scan with content-type exclusions plus ranges the caller already knows
+    /// are not zh-TW prose.
+    ///
+    /// The browser extension is the caller that needs this: it flattens a page
+    /// into one string and only it can see that a run sat under an ancestor
+    /// declaring a non-Chinese lang.  Ranges are byte offsets into "text",
+    /// need not be sorted, and are merged with the exclusions the engine
+    /// builds for itself.  A range that is empty, inverted, or past the end of
+    /// the text is dropped where they are merged in, so a stale offset from
+    /// the page costs nothing.
+    pub fn scan_for_content_type_with_extra_excluded(
+        &self,
+        text: &str,
+        content_type: ContentType,
+        cfg: ProfileConfig,
+        extra_excluded: &[ByteRange],
+    ) -> ScanOutput {
+        self.scan_nfc_with_content_type(text, None, extra_excluded, cfg, content_type)
     }
 
     /// Core NFC-normalize → build exclusions → scan → remap pipeline.
+    ///
+    /// "caller_excluded" holds ranges the caller derived from something the
+    /// engine cannot see, such as a lang attribute on a DOM ancestor of the
+    /// text the browser extension flattened.  They arrive in "text" offsets
+    /// and are mapped forward when normalization moved the bytes, so they are
+    /// honored on both paths rather than only on the one that skips the
+    /// rebuild.
     fn scan_nfc_with_content_type(
         &self,
         text: &str,
         prebuilt_excluded: Option<&[ByteRange]>,
+        caller_excluded: &[ByteRange],
         cfg: ProfileConfig,
         content_type: ContentType,
     ) -> ScanOutput {
@@ -1157,13 +1185,37 @@ impl Scanner {
         let scan_text = &norm.text;
         let nfc_changed = !norm.offset_map.is_empty();
 
-        let mut output = match prebuilt_excluded {
-            Some(excl) if !nfc_changed => {
+        // Prebuilt ranges are measured against the text as handed in, so
+        // normalization having moved the bytes retires them.
+        let ready = prebuilt_excluded.filter(|_| !nfc_changed);
+
+        let mut output = match ready {
+            Some(excl) if caller_excluded.is_empty() => {
                 self.scan_with_config_content_type(scan_text, excl, cfg, content_type)
             }
+
+            // Prebuilt ranges reach here only alongside caller ranges, which no
+            // caller does today, so they are rebuilt rather than kept: the
+            // rebuild is what the NFC path does anyway and it needs no second
+            // branch to say so.
             _ => {
-                let excl =
+                let mut excl =
                     build_exclusions_for_content_type_with_config(scan_text, content_type, &cfg);
+                if !caller_excluded.is_empty() {
+                    // Clipping the end here rather than at the public wrapper
+                    // keeps the bound next to the code that relies on it. A
+                    // range that is empty, inverted, or wholly past the end
+                    // then falls out of map_range_forward.
+                    excl.extend(caller_excluded.iter().filter_map(|r| {
+                        map_range_forward(&norm.offset_map, r.start, r.end.min(scan_text.len()))
+                            .map(|(start, end)| ByteRange { start, end })
+                    }));
+
+                    // Both sources are merged on their own; only mixing them
+                    // can produce an overlap, which the binary search in
+                    // is_excluded would then read wrong.
+                    excl = merge_ranges_pub(excl);
+                }
                 self.scan_with_config_content_type(scan_text, &excl, cfg, content_type)
             }
         };

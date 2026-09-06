@@ -93,3 +93,45 @@ test("shared.js and format.js do not both define the same helper", () => {
 
   assert.deepEqual(overlap, [], `defined in both shared.js and format.js: ${overlap}`);
 });
+
+// The lang payload crosses into Rust through serde, and ScanOptions carries
+// #[serde(default)] at the container level: a field the scanner no longer
+// recognizes is not an error, it is silently absent, and the extension quietly
+// stops honoring lang with nothing in any console to say so.  Reading the
+// struct is the only way this side can notice.
+const wasmSource = readFileSync(
+  fileURLToPath(new URL("../../src/wasm.rs", import.meta.url)),
+  "utf8",
+);
+
+/// Field names declared by a Rust struct, ignoring doc comments and attributes.
+function rustFieldsOf(source, structName) {
+  const body = new RegExp(`struct\\s+${structName}\\s*\\{([^}]*)\\}`).exec(source);
+  assert.ok(body, `${structName} not found in src/wasm.rs`);
+  return [...body[1].matchAll(/^\s*([a-z_][a-z0-9_]*)\s*:/gm)].map((match) => match[1]);
+}
+
+test("the lang payload matches the struct the scanner deserializes it into", () => {
+  const optionKey = rustFieldsOf(wasmSource, "ScanOptions").find(
+    (name) => name === "lang_spans",
+  );
+  assert.ok(optionKey, "ScanOptions no longer has a lang_spans field");
+
+  for (const file of ["content.js", "background.js"]) {
+    assert.match(
+      src(file),
+      new RegExp(`${optionKey}\\s*:`),
+      `${file} does not send ${optionKey}`,
+    );
+  }
+
+  const runs = globalThis.ZhtwExtensionShared.langSpans([
+    { byteStart: 0, byteEnd: 2, lang: "en" },
+  ]);
+  assert.equal(runs.length, 1, "langSpans should report a declared run");
+  assert.deepEqual(
+    Object.keys(runs[0]).sort(),
+    rustFieldsOf(wasmSource, "LangSpan").sort(),
+    "langSpans emits different fields than LangSpan deserializes",
+  );
+});

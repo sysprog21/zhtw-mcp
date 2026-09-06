@@ -61,7 +61,14 @@ async function runScanForActiveTab(options) {
     throw new Error(collected?.error || "Could not collect visible page text.");
   }
 
-  const scanResult = await scanText(collected.text, options);
+  // The declared languages belong to this page, not to the user's settings, so
+  // they ride along to the scanner without joining the options the result
+  // records.  Which of them takes a run out of the scan is decided in the
+  // scanner, not here.
+  const scanResult = await scanText(collected.text, {
+    ...options,
+    lang_spans: collected.lang_spans || [],
+  });
   const highlighted = await sendTabMessage(tab.id, {
     type: "HIGHLIGHT_ISSUES",
     issues: scanResult.issues,

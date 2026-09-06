@@ -99,6 +99,46 @@
     return segments;
   }
 
+  // The runs of the flattened text that carry a declared language, ready for
+  // the scanner to decide which of them it should leave alone.
+  //
+  // No judgement is made here about which languages count as Chinese: that
+  // lives in src/engine/html_lang.rs, on the other side of the wasm call, so
+  // there is one definition of it rather than one per side.  What this does is
+  // read each span's inherited lang and fold consecutive spans that declared
+  // the same one, which keeps a page whose html element carries a lang from
+  // sending one entry per text node.
+  //
+  // Here rather than in content.js for the same reason issueSegments is: this
+  // is byte arithmetic over the flattened string, and an off-by-one silences
+  // the wrong run without anything looking broken.  The spans are the
+  // byteStart, byteEnd and lang records collectVisibleText builds, in document
+  // order.  A run absorbs the separator bytes between its own nodes, which sit
+  // under the same declaration, but never a span that declared something else
+  // or nothing.
+  function langSpans(spans) {
+    const runs = [];
+    let folded = -2;
+    for (let index = 0; index < spans.length; index += 1) {
+      const span = spans[index];
+      if (typeof span.lang !== "string") {
+        continue;
+      }
+      const last = runs[runs.length - 1];
+      // Only the immediately preceding span may extend a run.  Folding across
+      // an undeclared span in between would claim bytes no declaration covers;
+      // folding across the gap left by a block separator is right, because
+      // that gap sits between two nodes under the same declaration.
+      if (last && last.lang === span.lang && index === folded + 1) {
+        last.end = span.byteEnd;
+      } else {
+        runs.push({ start: span.byteStart, end: span.byteEnd, lang: span.lang });
+      }
+      folded = index;
+    }
+    return runs;
+  }
+
   function tooltipForIssue(issue) {
     const suggestion = issue.suggestions.length
       ? `建議：${issue.suggestions.join("、")}`
@@ -111,6 +151,7 @@
   return {
     byteOffsetToCodeUnit,
     issueSegments,
+    langSpans,
     normalizeIssue,
     tooltipForIssue,
     utf8ByteLength,

@@ -226,9 +226,127 @@ pub fn map_offset(offset_map: &[usize], normalized_offset: usize) -> usize {
     }
 }
 
+/// Map a byte range in the original text to the corresponding range in the
+/// normalized text.
+///
+/// The inverse direction of map_offset, for ranges a caller computed against
+/// the text it handed in. A normalized byte belongs to the answer when the
+/// original offset it records falls inside the range, which is one binary
+/// search at each end of a map that is non-decreasing.
+///
+/// The start needs one correction on top of that. A character NFC composed
+/// away leaves no normalized byte recording its offset, so a range that opens
+/// on such a character would start after the byte that absorbed it and leave
+/// it scannable. When the search lands on a gap rather than on the offset
+/// asked for, the start walks back over the whole composed scalar. Rounding
+/// outward is the safe direction for an exclusion.
+///
+/// Returns None when the range maps to nothing: an empty or inverted input
+/// range, or one that lies past the end of the text.
+pub fn map_range_forward(offset_map: &[usize], start: usize, end: usize) -> Option<(usize, usize)> {
+    if start >= end {
+        return None;
+    }
+    if offset_map.is_empty() {
+        return Some((start, end));
+    }
+
+    let mut mapped_start = offset_map.partition_point(|&origin| origin < start);
+    let mapped_end = offset_map.partition_point(|&origin| origin < end);
+
+    // A gap means the byte before the landing point absorbed the offset asked
+    // for. Take that byte, and the rest of the scalar it belongs to, which is
+    // the run of bytes sharing its origin.
+    if mapped_start > 0 && offset_map.get(mapped_start).is_some_and(|&o| o > start) {
+        let absorbed = offset_map[mapped_start - 1];
+        mapped_start = offset_map.partition_point(|&origin| origin < absorbed);
+    }
+
+    (mapped_start < mapped_end).then_some((mapped_start, mapped_end))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A range mapped forward has to cover every normalized byte that carries
+    /// any part of the original range, or an exclusion leaks.
+    fn covers(input: &str, start: usize, end: usize) -> (usize, usize) {
+        let norm = normalize_nfc(input);
+        map_range_forward(&norm.offset_map, start, end).expect("range maps to something")
+    }
+
+    #[test]
+    fn forward_mapping_is_identity_when_already_nfc() {
+        let input = "Hello 你好世界";
+        let norm = normalize_nfc(input);
+        assert!(norm.offset_map.is_empty());
+        assert_eq!(map_range_forward(&norm.offset_map, 2, 8), Some((2, 8)));
+    }
+
+    #[test]
+    fn forward_mapping_rejects_an_empty_or_inverted_range() {
+        let norm = normalize_nfc("cafe\u{301}");
+        assert_eq!(map_range_forward(&norm.offset_map, 3, 3), None);
+        assert_eq!(map_range_forward(&norm.offset_map, 5, 2), None);
+    }
+
+    #[test]
+    fn forward_mapping_covers_the_bytes_after_a_composition() {
+        // "cafe" plus a combining acute: five chars in, four out, so every
+        // offset after the mark moves by two bytes.
+        let input = "cafe\u{301} 用";
+        let tail = input.find('用').expect("fixture contains the character");
+        let (start, end) = covers(input, tail, input.len());
+        let norm = normalize_nfc(input);
+        assert_eq!(&norm.text[start..end], "用");
+    }
+
+    #[test]
+    fn forward_mapping_keeps_a_range_that_opens_on_a_combining_mark() {
+        // The mark composes into the base before it, so no normalized byte
+        // records the mark's own offset. Rounding the start inward would drop
+        // the composed character out of the range entirely.
+        let input = "e\u{301}";
+        let norm = normalize_nfc(input);
+        let (start, end) = map_range_forward(&norm.offset_map, 1, input.len())
+            .expect("a range over the mark maps to something");
+        assert_eq!(&norm.text[start..end], "\u{e9}");
+    }
+
+    #[test]
+    fn forward_mapping_of_every_prefix_covers_what_it_should() {
+        // Exhaustive over one string that composes, reorders and expands, so a
+        // boundary rule that works only on the fixtures above fails here.
+        let input = "a\u{301}b e\u{344}\u{316}c 用字";
+        let norm = normalize_nfc(input);
+        assert!(
+            !norm.offset_map.is_empty(),
+            "fixture must not be NFC already"
+        );
+        for start in 0..input.len() {
+            for end in start + 1..=input.len() {
+                let Some((s, e)) = map_range_forward(&norm.offset_map, start, end) else {
+                    continue;
+                };
+                assert!(
+                    s < e && e <= norm.text.len(),
+                    "{start}..{end} mapped to {s}..{e}"
+                );
+
+                // Every normalized byte whose recorded origin is inside the
+                // range has to be inside the mapped range.
+                for (i, &origin) in norm.offset_map.iter().enumerate().take(norm.text.len()) {
+                    if (start..end).contains(&origin) {
+                        assert!(
+                            (s..e).contains(&i),
+                            "byte {i} (origin {origin}) escaped {start}..{end} -> {s}..{e}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn already_nfc_identity() {

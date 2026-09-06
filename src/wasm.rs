@@ -3,6 +3,8 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
+use crate::engine::excluded::ByteRange;
+use crate::engine::html_lang::excludes;
 use crate::engine::scan::{ContentType, Scanner};
 use crate::rules::loader::load_embedded_ruleset;
 use crate::rules::ruleset::{Issue, Profile, Severity};
@@ -19,6 +21,22 @@ pub fn start() {
 struct ScanOptions {
     profile: Option<String>,
     relaxed: bool,
+    /// Runs of the text that carry a declared language, from the content
+    /// script.  Only the page can see that a run sat under an ancestor with a
+    /// lang attribute; which languages that takes out of the scan is decided
+    /// here, so there is one definition of it rather than one per side.
+    lang_spans: Vec<LangSpan>,
+}
+
+/// One run of the flattened page text and the language declared over it.
+#[derive(Debug, Deserialize)]
+struct LangSpan {
+    /// Byte offsets into the text argument, half-open.
+    start: usize,
+    end: usize,
+    /// The lang attribute value, verbatim.  An empty one means "unknown" in
+    /// HTML rather than "not Chinese", which excludes returns false for.
+    lang: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,8 +89,23 @@ pub fn scan_text(text: &str, options_json: Option<String>) -> Result<String, JsV
         config = config.with_relaxed();
     }
 
+    let excluded: Vec<ByteRange> = options
+        .lang_spans
+        .iter()
+        .filter(|span| excludes(&span.lang))
+        .map(|span| ByteRange {
+            start: span.start,
+            end: span.end,
+        })
+        .collect();
+
     let scanner = scanner()?;
-    let output = scanner.scan_for_content_type_with_config(text, ContentType::Plain, config);
+    let output = scanner.scan_for_content_type_with_extra_excluded(
+        text,
+        ContentType::Plain,
+        config,
+        &excluded,
+    );
     let mut severity_counts = SeverityCounts::default();
     let issues: Vec<BrowserIssue> = output
         .issues

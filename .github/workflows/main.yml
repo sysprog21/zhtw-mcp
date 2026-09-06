@@ -37,7 +37,9 @@ jobs:
     steps:
     - uses: actions/checkout@v7
       with:
-        # The ruleset provenance check reads the PR base revision.
+        # The ruleset provenance check reads the PR base revision.  The
+        # "Resolve the ruleset baseline" step below leans on this covering an
+        # ordinary push too, and fetches by hand only what a force-push strands.
         fetch-depth: 0
 
     - name: Install Rust toolchain
@@ -100,13 +102,43 @@ jobs:
           --rev "$COMMENTFLOW_REV" --locked commentflow
         commentflow --help > /dev/null
 
+    # Every platform, because both check steps below gate on provenance and a
+    # gate that means one thing on Linux and another on Windows is not a gate.
+    # Each leg is its own runner with its own checkout, so each resolves the
+    # baseline for itself.  Writing it to GITHUB_ENV rather than repeating the
+    # expression keeps the policy in one place: a baseline source added here
+    # reaches both consumers, or neither.
+    - name: Resolve the ruleset baseline
+      shell: bash
+      env:
+        # The provenance gate compares against the revision before the change.
+        # workflow_dispatch has neither a PR base nor a push's before SHA and
+        # leaves this empty, which the Makefile and the Windows leg below both
+        # read as HEAD.
+        RULESET_BASELINE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      run: |
+        # A push that creates the branch reports all zeros for the revision
+        # before it.  That names no commit for the remote to serve, and it
+        # means what the empty value means, so default it rather than asking
+        # upload-pack for a ref nobody has.
+        if [ "$RULESET_BASELINE" = 0000000000000000000000000000000000000000 ]; then
+          RULESET_BASELINE=
+        fi
+        # The checkout above takes every ref, which covers a pull request base
+        # and an ordinary push alike.  A force-push is the gap it does not
+        # cover: the before SHA is left on no ref at all, so ask the remote for
+        # that one object rather than substitute an ancestor of HEAD, which
+        # would narrow a multi-commit push and let its earlier rules evade
+        # provenance.  Asking git first keeps every other run to a local lookup.
+        if [ -n "$RULESET_BASELINE" ] &&
+          ! git cat-file -e "$RULESET_BASELINE^{commit}" 2> /dev/null; then
+          git fetch --no-tags origin "$RULESET_BASELINE"
+        fi
+        echo "RULESET_BASELINE=$RULESET_BASELINE" >> "$GITHUB_ENV"
+
     - name: make check
       if: matrix.os != 'windows-2025'
       env:
-        # The provenance gate compares against the revision before the change.
-        # workflow_dispatch has neither a PR base nor a push's before SHA, and
-        # leaves this empty; the Makefile maps an empty value to HEAD.
-        RULESET_BASELINE: ${{ github.event.pull_request.base.sha || github.event.before }}
         ZHTW_REQUIRE_TOOLS: ${{ matrix.os == 'ubuntu-24.04' && '1' || '' }}
       run: make check
 
@@ -117,7 +149,9 @@ jobs:
     # four hook wrappers through whatever sh the runner happens to provide, and
     # neither a formatting rule nor a commit rule varies by platform.  The Linux
     # leg is where both run; the direct "cargo fmt --check" and "black --check"
-    # below are what this leg keeps of the formatter chain.
+    # below are what this leg keeps of the formatter chain.  The ruleset lint
+    # is not one of the two: it takes the baseline the step above resolved, so
+    # provenance means the same thing here as it does on the other legs.
     #
     # The rest of the list is what caught #124 and #126 turning
     # into recurring Windows-only regressions: those bugs only ever
@@ -134,7 +168,8 @@ jobs:
         ./scripts/clippy-lanes.sh
         cargo fmt --check
         black --check .
-        python scripts/check-ruleset.py --lint
+        python scripts/check-ruleset.py --lint \
+          --baseline-ref "${RULESET_BASELINE:-HEAD}"
 
   # The commit-msg hook binds whoever installed it.  This binds everyone else: a
   # rebase, an amend, "--no-verify", or a subject typed into the GitHub merge box

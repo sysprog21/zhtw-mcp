@@ -272,8 +272,11 @@ jobs:
     - name: cargo audit
       run: cargo audit
 
+  # No "needs: check".  This measures a binary, it does not publish one, and
+  # "publish-latest" names "check" itself, so waiting for the slowest leg of a
+  # three-platform matrix bought no safety and cost a pull request about two
+  # minutes before it heard its size verdict.
   check-size:
-    needs: check
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -283,9 +286,10 @@ jobs:
     - name: Install Rust toolchain
       run: rustup toolchain install stable --profile minimal
 
-    # Its own key: sharing "ubuntu-24.04" with the check job meant check saved
-    # its debug tree first and rust-cache never overwrites, so the release tree
-    # this job actually builds was never cached.
+    # Its own key: rust-cache never overwrites an existing entry, so a key
+    # shared with the check job on this runner would keep whichever of the two
+    # trees finished first, and the release tree this job builds is not the one
+    # that wins that race.
     - name: Rust cache
       uses: Swatinem/rust-cache@v2
       with:
@@ -377,9 +381,14 @@ jobs:
   # Rolling binaries for the "latest" tag.  This is the project's release: it
   # is not a prerelease, so it carries the "Latest" badge and /releases/latest
   # resolves to it.  Nothing here needs a version tag to be pushed.
+  #
+  # It builds alongside "check" rather than behind it; the release gate is on
+  # "publish-latest".  Queued behind the matrix these four targets waited on its
+  # slowest leg, which on a push to main was most of the pipeline's wall clock.
+  # What it costs is four builds thrown away on the pushes where main does fail,
+  # which is the rarer case.
   build-latest:
     name: build (${{ matrix.name }})
-    needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
@@ -454,8 +463,11 @@ jobs:
         if-no-files-found: error
         retention-days: 1
 
+  # "check" by name rather than by way of another job: "check-size" and
+  # "build-latest" run beside it now, so this list is the whole of what stands
+  # between a failing test suite and a published binary.
   publish-latest:
-    needs: [audit, check-size, build-latest, package-extension]
+    needs: [check, audit, check-size, build-latest, package-extension]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # Without this the job inherits the 360 minute default, and since main runs

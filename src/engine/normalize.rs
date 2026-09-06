@@ -242,7 +242,14 @@ pub(crate) fn map_offset(offset_map: &[usize], normalized_offset: usize) -> usiz
 /// outward is the safe direction for an exclusion.
 ///
 /// Returns None when the range maps to nothing: an empty or inverted input
-/// range, or one that lies past the end of the text.
+/// range, or one that starts at or past the end of the text.
+///
+/// An empty map is the identity, and carries no length to measure against, so
+/// a range is handed back as it came: the caller's own coordinate space is
+/// also the answer's. Where there is a map its last entry is the end of the
+/// original text, which is the bound the range is held to. Without that, an
+/// end past it landed on the sentinel index, one byte past the end of the
+/// normalized text, and the caller sliced with it.
 pub(crate) fn map_range_forward(
     offset_map: &[usize],
     start: usize,
@@ -251,9 +258,13 @@ pub(crate) fn map_range_forward(
     if start >= end {
         return None;
     }
-    if offset_map.is_empty() {
+    let Some(&text_len) = offset_map.last() else {
         return Some((start, end));
+    };
+    if start >= text_len {
+        return None;
     }
+    let end = end.min(text_len);
 
     let mut mapped_start = offset_map.partition_point(|&origin| origin < start);
     let mapped_end = offset_map.partition_point(|&origin| origin < end);
@@ -286,6 +297,33 @@ mod tests {
         let norm = normalize_nfc(input);
         assert!(norm.offset_map.is_empty());
         assert_eq!(map_range_forward(&norm.offset_map, 2, 8), Some((2, 8)));
+    }
+
+    #[test]
+    fn forward_mapping_rejects_a_range_starting_at_or_past_the_end() {
+        // The map's last entry is the sentinel for the end-of-string position.
+        // A range opening there names no byte, and mapping it produced an end
+        // one past the normalized text, which a caller would slice with.
+        let input = "cafe\u{301}";
+        let norm = normalize_nfc(input);
+        assert!(norm.text.len() < input.len(), "fixture must compose");
+        assert_eq!(
+            map_range_forward(&norm.offset_map, input.len(), input.len() + 1),
+            None
+        );
+        assert_eq!(
+            map_range_forward(&norm.offset_map, input.len() + 5, input.len() + 9),
+            None
+        );
+
+        // An end past the text is held to it rather than running off the map.
+        let (start, end) = map_range_forward(&norm.offset_map, 0, input.len() + 4)
+            .expect("a range that starts inside the text maps to something");
+        assert!(
+            end <= norm.text.len(),
+            "mapped end left the normalized text"
+        );
+        assert_eq!(&norm.text[start..end], norm.text.as_ref());
     }
 
     #[test]

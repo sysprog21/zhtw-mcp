@@ -50,13 +50,10 @@ check: $(S2T_STAMP)
 # lock cargo audit reads.
 	cargo metadata --locked --format-version 1 >/dev/null
 	cargo test
-	cargo clippy --all-targets -- -D warnings
-# The default feature set is not the only one that ships: the browser extension
-# builds the library with browser-wasm and no native, and that configuration
-# used to accumulate dead-code warnings nothing gated. Lint the two non-default
-# shapes as well. Library only, since the binary needs native.
-	cargo clippy --lib --no-default-features -- -D warnings
-	cargo clippy --lib --no-default-features --features browser-wasm -- -D warnings
+# One script owns the lint lanes, so what the Windows leg of CI runs is what
+# this runs: the feature shapes and the profiles are a grid, and the shipped
+# cells of it live in one list rather than in two files that drift.
+	./scripts/clippy-lanes.sh
 # One script owns the formatter chain, so what `make indent` rewrites is what
 # this checks: comment reflow, then cargo fmt, black, shfmt and the ruleset
 # normalizer.  It runs them against a copy of the tree, so a check never

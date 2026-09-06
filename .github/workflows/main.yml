@@ -131,9 +131,7 @@ jobs:
         rustfmt src/engine/s2t_data.rs
         cargo metadata --locked --format-version 1 >/dev/null
         cargo test
-        cargo clippy --all-targets -- -D warnings
-        cargo clippy --lib --no-default-features -- -D warnings
-        cargo clippy --lib --no-default-features --features browser-wasm -- -D warnings
+        ./scripts/clippy-lanes.sh
         cargo fmt --check
         black --check .
         python scripts/check-ruleset.py --lint

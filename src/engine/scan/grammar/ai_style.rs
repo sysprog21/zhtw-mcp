@@ -30,9 +30,12 @@ pub(super) fn ai_style_issue(
     .with_context(context)
 }
 
-// Context clues for definition sense of 意味著 → 表示.
+// Context clues for definition sense of 意味著 → 表示. 即 on its own is not
+// here: it matches inside 即使, 即將 and 立即, so an ordinary sentence that
+// merely opens on 即使 was read as a definition. 亦即 is the form that actually
+// marks one and cannot be a prefix of those.
 const YIWEIZHE_DEFINITION_CLUES: &[&str] =
-    &["定義", "是指", "就是", "即", "所謂", "稱為", "指的是"];
+    &["定義", "是指", "就是", "亦即", "所謂", "稱為", "指的是"];
 
 // Context clues for consequence sense of 意味著 → 代表.
 const YIWEIZHE_CONSEQUENCE_CLUES: &[&str] = &[
@@ -1483,7 +1486,6 @@ pub(super) fn scan_ai_mechanical_bullets(
     }
 }
 
-// Excessive bold: three or more **...** runs per 200 chars in a paragraph.
 fn emit_ai_mechanical_bullet_issue(
     em: &mut Emitter<'_>,
     first_item_offset: usize,
@@ -1548,6 +1550,10 @@ fn count_non_excluded_bold_runs(text: &str, base_offset: usize, excluded: &[Byte
         / 2
 }
 
+// Excessive bold: three or more **...** runs per 200 chars in a paragraph. The
+// sentence-level arm below stops at four on purpose: five or more in one
+// sentence already clears this paragraph threshold, and reporting both would
+// name the same prose twice.
 pub(super) fn scan_ai_excessive_bold(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,

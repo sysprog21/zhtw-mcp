@@ -1778,6 +1778,25 @@ fn ai_yiweizhe_definition_context() {
 }
 
 #[test]
+fn ai_yiweizhe_is_not_a_definition_because_a_sentence_opens_on_jishi() {
+    // 即使 is not the definition marker 即: reading it as one gave an ordinary
+    // concessive sentence the definition sense.
+    for text in [
+        "即使如此，這意味著風險增加",
+        "系統即將上線，這意味著風險增加",
+        "請立即處理，這意味著風險增加",
+    ] {
+        let issues = scan_ai(text);
+        assert!(
+            issues
+                .iter()
+                .all(|i| i.suggestions[..] != ["表示".to_string()]),
+            "read as a definition: {text} -> {issues:?}"
+        );
+    }
+}
+
+#[test]
 fn ai_yiweizhe_consequence_context() {
     let text = "如果記憶體不足，這意味著系統將會崩潰";
     let issues = scan_ai(text);
@@ -3135,6 +3154,25 @@ fn zy3a_passes_on_single_nominalization() {
         &scan_lex(text),
         (PhaseFamily::Nominalization, PhasePass::Lexical)
     ));
+}
+
+#[test]
+fn zy3a_passes_across_a_terminal_mark() {
+    // A full-width exclamation ends the sentence as surely as a full stop, so
+    // the two heads either side of it are not one chain.
+    for text in [
+        "這個策略的實施！那個效果的提升。",
+        "這個策略的實施？那個效果的提升。",
+        "這個策略的實施!那個效果的提升。",
+    ] {
+        assert!(
+            !fires(
+                &scan_lex(text),
+                (PhaseFamily::Nominalization, PhasePass::Lexical)
+            ),
+            "chained across a terminal mark: {text}"
+        );
+    }
 }
 
 #[test]

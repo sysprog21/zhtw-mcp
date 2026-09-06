@@ -676,7 +676,13 @@ struct HeadPair<'a> {
 /// Clause boundaries used by ZY3a / ZY4a: full-width and ASCII commas,
 /// full-width period/semicolon, and newline.
 fn is_clause_boundary_char(ch: char) -> bool {
-    matches!(ch, '，' | '。' | '；' | ',' | '\n')
+    // The terminal marks belong here as much as the full stop does: without
+    // them 的實施！那個效果的提升 reads as one clause and ZY3a chains two
+    // nominalizations that sit in different sentences.
+    matches!(
+        ch,
+        '，' | '。' | '；' | '！' | '？' | ',' | ';' | '!' | '?' | '\n'
+    )
 }
 
 fn emit_zy3a_clause(

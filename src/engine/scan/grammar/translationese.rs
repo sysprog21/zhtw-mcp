@@ -863,10 +863,12 @@ pub(super) fn scan_zy4a_false_friends(em: &mut Emitter<'_>) {
     }
 }
 
-// Locate the comma-bounded clause containing pos (byte offset). Boundaries:
-// "，" / "," / "。" / "；" / "\n" / start/end. Caller must pass a valid char
-// boundary; debug builds assert this so a future caller passing an interior
-// byte trips an explicit failure.
+// Locate the clause containing pos (byte offset), where a clause ends at any of
+// the marks is_clause_boundary_char names, or at the start or end of the text.
+// Kept in step with that function rather than restating its list, which is how
+// this comment came to describe a narrower set than the code. Caller must pass
+// a valid char boundary; debug builds assert this so a future caller passing an
+// interior byte trips an explicit failure.
 fn clause_bounds(text: &str, pos: usize) -> (usize, usize) {
     debug_assert!(
         pos == text.len() || text.is_char_boundary(pos),
@@ -927,6 +929,7 @@ pub(super) fn scan_trans_tense_marker(
 
     for sent in &idx.sentences {
         let s = &text[sent.byte_start..sent.byte_end];
+
         // Check for explicit date marker (年/月/日 or digits).
         let has_date = s.contains('年')
             || s.contains('月')
@@ -1280,12 +1283,14 @@ pub(super) fn scan_zy5_long_premodifier(
         Zy5Gate {
             min_chars,
             min_de: 1,
+            calibrated_min_de: thresholds.zy5_min_de_count,
             min_pause_free_run: RHYTHM_MIN_FRAGMENT_CJK,
         }
     } else {
         Zy5Gate {
             min_chars,
             min_de: thresholds.zy5_min_de_count,
+            calibrated_min_de: thresholds.zy5_min_de_count,
             min_pause_free_run: 0,
         }
     };
@@ -1423,6 +1428,10 @@ const PREDICATE_MARKERS: &[&str] = &[
 struct Zy5Gate {
     min_chars: usize,
     min_de: usize,
+    /// What the domain asks for when the taste flag is absent. A span that
+    /// clears min_de but not this one is the flag speaking, and is reported as
+    /// advisory so it cannot reach a calibrated score.
+    calibrated_min_de: usize,
     /// Zero is a floor no span can fail, which is the flag being off.
     min_pause_free_run: usize,
 }
@@ -1438,6 +1447,7 @@ fn emit_zy5_span_if_qualifies(
     let Zy5Gate {
         min_chars,
         min_de,
+        calibrated_min_de,
         min_pause_free_run,
     } = gate;
     let (span_start, span_end) = (span_bytes.start, span_bytes.end);
@@ -1614,10 +1624,19 @@ fn emit_zy5_span_if_qualifies(
         return;
     };
 
-    // The gate that replaces the relaxed 的 count. Applied to the winning
-    // candidate rather than inside the walk: it decides only whether to report,
-    // and the walk picks the same candidate either way.
-    if longest_pause_free_run(&span[..candidate_end]) < min_pause_free_run {
+    // Whether the taste flag is the only reason this span is here. The walk
+    // picks the same candidate either way, because a longer candidate can only
+    // hold more 的, so a span that clears the calibrated count is the span the
+    // default pass would have reported.
+    let relaxed_only = de_count < calibrated_min_de;
+
+    // The gate that replaces the relaxed 的 count, so it applies only where
+    // that relaxation is what let the span through. Applying it to a span the
+    // calibrated gate already passed would let the flag delete a finding the
+    // default run makes, which is the score moving in the direction the axis
+    // promises never to move it. Applied to the winning candidate rather than
+    // inside the walk: it decides only whether to report.
+    if relaxed_only && longest_pause_free_run(&span[..candidate_end]) < min_pause_free_run {
         return;
     }
     let abs_start = sent_offset + span_start;
@@ -1629,9 +1648,22 @@ fn emit_zy5_span_if_qualifies(
             &text[abs_start..abs_end],
             vec![],
             IssueType::Translationese,
-            Severity::Warning,
+            // An advisory finding carries the advisory severity, or an opt-in
+            // taste flag raises the warning count a gate is checked against.
+            if relaxed_only {
+                Severity::Info
+            } else {
+                Severity::Warning
+            },
         )
-        .with_phase_family(PhaseFamily::LongPremodifier, PhasePass::Lexical)
+        .with_phase_family(
+            if relaxed_only {
+                PhaseFamily::RhythmLongPremodifier
+            } else {
+                PhaseFamily::LongPremodifier
+            },
+            PhasePass::Lexical,
+        )
         .with_context(format!(
             "翻譯腔：定語堆疊 — {char_count} 字無逗點、含 {de_count} 個「的」，\
              建議拆成短句"

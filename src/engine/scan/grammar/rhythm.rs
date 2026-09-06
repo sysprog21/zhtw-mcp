@@ -190,11 +190,38 @@ fn scan_rhythm_ending_monotony(em: &mut Emitter<'_>, idx: &crate::engine::senten
             );
         };
 
+        // Where the previous sentence ended, so that anything the index left
+        // out between the two can be seen. A sentence wholly inside an
+        // exclusion is not in the index at all, so checking only the sentences
+        // would read the prose either side of a code span as consecutive.
+        let mut prev_end: Option<usize> = None;
+
         for sent in idx.sentence_slice(para) {
-            if is_excluded(sent.byte_start, sent.byte_end, excluded) {
+            // is_excluded is the same overlap test and binary searches once the
+            // list is long, where scanning it per sentence would make the pass
+            // quadratic in a document full of code. An empty gap between
+            // adjacent sentences reports false, which is what it should.
+            let interrupted =
+                prev_end.is_some_and(|end| is_excluded(end, sent.byte_start, excluded));
+            prev_end = Some(sent.byte_end);
+
+            if interrupted || is_excluded(sent.byte_start, sent.byte_end, excluded) {
                 flush(run_particle, run_start, run_limit, run_len, issues);
                 run_particle = None;
                 run_len = 0;
+                if interrupted && !is_excluded(sent.byte_start, sent.byte_end, excluded) {
+                    // The run restarts here rather than being dropped: this
+                    // sentence is prose, it just does not follow the last one.
+                    let raw = &text[sent.byte_start..sent.byte_end];
+                    run_particle = rhythm_ending_particle(raw);
+                    run_len = usize::from(run_particle.is_some());
+
+                    // Trimmed the same way as the path below, or a run that
+                    // restarts after a code span anchors on the newline in
+                    // front of it and reports whitespace as the finding.
+                    run_start = sent.byte_start + (raw.len() - raw.trim_start().len());
+                    run_limit = sent.byte_end;
+                }
                 continue;
             }
             let raw = &text[sent.byte_start..sent.byte_end];
@@ -219,6 +246,3 @@ pub(crate) fn scan_rhythm(em: &mut Emitter<'_>, idx: &crate::engine::sentence::B
     scan_rhythm_long_sentence(em, idx);
     scan_rhythm_ending_monotony(em, idx);
 }
-
-// Entry point for AI writing detection grammar checks. Gated by
-// ProfileConfig::ai_semantic_safety, NOT called from scan_grammar.

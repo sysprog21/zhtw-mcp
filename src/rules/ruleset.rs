@@ -646,6 +646,10 @@ pub enum PhaseFamily {
     FalseFriend,
     /// Stacked pre-modifier.
     LongPremodifier,
+    /// Rhythm (氣口): a stacked pre-modifier that only ZY5's relaxed gate
+    /// reports, so it is the taste flag speaking rather than the calibrated
+    /// detector, and it must not reach a calibrated score.
+    RhythmLongPremodifier,
     /// Rhythm (氣口): a sentence that runs on without a breath.
     RhythmLongSentence,
     /// Rhythm (氣口): consecutive sentences closing on the same particle.
@@ -661,7 +665,10 @@ impl PhaseFamily {
     /// a caller needs is not that they are rhythm, though, but that a flag the
     /// user opted into must not move a number calibrated without it.
     pub fn is_advisory(self) -> bool {
-        matches!(self, Self::RhythmLongSentence | Self::RhythmMonotony)
+        matches!(
+            self,
+            Self::RhythmLongSentence | Self::RhythmMonotony | Self::RhythmLongPremodifier
+        )
     }
 }
 

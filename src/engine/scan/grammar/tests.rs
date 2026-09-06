@@ -3950,6 +3950,35 @@ fn rhythm_treats_a_parenthetical_aside_as_the_pause_it_is() {
 }
 
 #[test]
+fn rhythm_monotony_does_not_run_across_an_excluded_span() {
+    // A code span between two sentences is not in the sentence index, so the
+    // prose either side of it looked consecutive.
+    let text = "天氣變好了。這裡是程式碼。心情也好了。設備修好了。";
+    let code_start = text.find("這裡是程式碼。").unwrap();
+    let excluded = vec![ByteRange {
+        start: code_start,
+        end: code_start + "這裡是程式碼。".len(),
+    }];
+    let idx = BoundaryIndex::build(text, &excluded);
+    let mut issues = Vec::new();
+    scan_rhythm(&mut Emitter::new(text, &excluded, &mut issues), &idx);
+    assert!(
+        !fires(&issues, (PhaseFamily::RhythmMonotony, PhasePass::Indexed)),
+        "a run must not reach across an excluded span: {issues:?}"
+    );
+
+    // Contiguous, so the same three endings are still a run.
+    let plain = "天氣變好了。心情也好了。設備修好了。";
+    let idx = BoundaryIndex::build(plain, &[]);
+    let mut issues = Vec::new();
+    scan_rhythm(&mut Emitter::new(plain, &[], &mut issues), &idx);
+    assert!(
+        fires(&issues, (PhaseFamily::RhythmMonotony, PhasePass::Indexed)),
+        "three consecutive 了 endings are still monotony: {issues:?}"
+    );
+}
+
+#[test]
 fn rhythm_monotony_ignores_a_sentence_ending_in_content() {
     // 了 followed by a version number is not a 了-ending. Reading it as one
     // built runs out of sentences that do not rhyme.
@@ -4043,9 +4072,63 @@ fn zy5_de_gate_relaxes_only_under_rhythm() {
         !fires(&off, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
         "one 的 is below the default gate: {off:?}"
     );
+
+    // The relaxed hit reports under the advisory family, not the calibrated
+    // one, so the taste flag cannot move the translationese score with it.
+    assert!(
+        fires(
+            &on,
+            (PhaseFamily::RhythmLongPremodifier, PhasePass::Lexical)
+        ),
+        "rhythm should bypass the 的 gate: {on:?}"
+    );
+    assert!(
+        !fires(&on, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+        "a relaxed hit must not wear the calibrated family: {on:?}"
+    );
+    assert!(
+        PhaseFamily::RhythmLongPremodifier.is_advisory(),
+        "a relaxed hit has to be advisory or the score counts it"
+    );
+}
+
+#[test]
+fn rhythm_does_not_delete_a_calibrated_premodifier() {
+    // The fragment floor belongs to the relaxed path only. A span that already
+    // clears the domain's 的 count is what the default pass reports, and a
+    // bracket inside it is a pause breaker the floor would otherwise fail, so
+    // applying the floor to every span let the taste flag delete a finding.
+    let text = "一個非常重要而且複雜的「核心」的系統設計模組。";
+    let domain = crate::engine::translationese_score::TranslationeseDomain::General;
+    let off = scan_indexed_with_rhythm(text, domain, false);
+    let on = scan_indexed_with_rhythm(text, domain, true);
+    assert!(
+        fires(&off, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+        "the calibrated pass should report this: {off:?}"
+    );
     assert!(
         fires(&on, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
-        "rhythm should bypass the 的 gate: {on:?}"
+        "rhythm must not delete a calibrated finding: {on:?}"
+    );
+}
+
+#[test]
+fn a_relaxed_premodifier_is_advisory_in_severity_too() {
+    // Info, not Warning: the family keeps it out of the score, and the severity
+    // keeps it out of the counts --max-warnings is checked against.
+    let text = "那個在車站外面等了三個小時的男人終於放棄了。";
+    let domain = crate::engine::translationese_score::TranslationeseDomain::General;
+    let on = scan_indexed_with_rhythm(text, domain, true);
+    let relaxed: Vec<_> = on
+        .iter()
+        .filter(|i| {
+            i.phase_family == Some((PhaseFamily::RhythmLongPremodifier, PhasePass::Lexical))
+        })
+        .collect();
+    assert!(!relaxed.is_empty(), "expected a relaxed hit: {on:?}");
+    assert!(
+        relaxed.iter().all(|i| i.severity == Severity::Info),
+        "a relaxed hit must be advisory in severity: {relaxed:?}"
     );
 }
 

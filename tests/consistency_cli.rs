@@ -76,6 +76,37 @@ fn consistency_block_absent_when_only_one_form_present() {
 }
 
 #[test]
+fn consistency_ignores_canonical_substring_of_flagged_form() {
+    let dir = tempfile::tempdir().unwrap();
+    let md = dir.path().join("test.md");
+    std::fs::write(&md, "我們前往厄瓜多爾旅遊。\n").unwrap();
+
+    let output = Command::new(binary_path())
+        .args([
+            "lint",
+            md.to_str().unwrap(),
+            "--format",
+            "json",
+            "--consistency",
+        ])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert!(
+        parsed["issues"]
+            .as_array()
+            .expect("issues array")
+            .iter()
+            .any(|issue| issue["found"] == "厄瓜多爾"),
+        "the embedded country-name rule must flag the source form: {parsed}"
+    );
+    assert!(
+        parsed.get("consistency").is_none() || parsed["consistency"].is_null(),
+        "厄瓜多 appears only inside the flagged 厄瓜多爾: {parsed}"
+    );
+}
+
+#[test]
 fn consistency_block_omitted_without_flag() {
     let dir = tempfile::tempdir().unwrap();
     let md = dir.path().join("test.md");

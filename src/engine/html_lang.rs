@@ -332,21 +332,32 @@ impl LangScopes {
     /// two list items does not stop the second from ending the first, and it
     /// stops where HTML stops, so a nested list or table does.
     fn close_implied_by(&mut self, incoming: &str) {
+        // One start tag can end more than one element, and stopping at the
+        // first left the rest open: a row starting inside a cell closed the
+        // cell and kept the row holding it, so the old row went on scoping the
+        // new one's text. Every pass drops an element, so this terminates.
+        while self.close_one_implied_by(incoming) {}
+    }
+
+    /// Close the innermost element that "incoming" ends, if there is one, and
+    /// report whether it closed anything so the caller can ask again.
+    fn close_one_implied_by(&mut self, incoming: &str) -> bool {
         // Nothing open can be closed this way, so the walk below could only run
         // off the bottom of the stack. Markup nested hundreds deep makes that
         // walk the difference between linear and quadratic.
         if self.closable == 0 {
-            return;
+            return false;
         }
         for (idx, open) in self.open.iter().enumerate().rev() {
             if closed_implicitly_by(&open.name, incoming) {
                 self.truncate_open(idx);
-                return;
+                return true;
             }
             if !transparent_to_implicit_close(&open.name, incoming) {
-                return;
+                return false;
             }
         }
+        false
     }
 
     /// Open one element, recording what it contributes to the indexes.
@@ -659,6 +670,25 @@ mod tests {
         let n = 20_000;
         let text = format!("<p>{}{}", "<span>".repeat(n), "<b>".repeat(n));
         assert!(scopes(&text).is_empty(), "nothing declared a lang");
+    }
+
+    #[test]
+    fn a_new_row_ends_the_row_before_it() {
+        // A row starting inside an open cell ends the cell and then the row,
+        // the way a browser does. Closing only the cell left the first row
+        // open, and its lang went on scoping the second row's text.
+        assert_eq!(
+            excluded_text("<table><tr lang=\"en\"><td>EN<tr><td>ZH</table>"),
+            vec!["<tr lang=\"en\"><td>EN<tr>"]
+        );
+    }
+
+    #[test]
+    fn a_new_cell_ends_the_cell_before_it() {
+        assert_eq!(
+            excluded_text("<table><tr><td lang=\"en\">EN<td>ZH</table>"),
+            vec!["<td lang=\"en\">EN<td>"]
+        );
     }
 
     #[test]

@@ -17,6 +17,8 @@
 mod acronym;
 mod case_rule;
 mod ellipsis;
+mod emit;
+
 mod grammar;
 mod overlap;
 mod punctuation;
@@ -30,12 +32,13 @@ pub use rule_ir::ProfileFilter;
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
+use self::emit::Emitter;
 use super::excluded::{build_excluded_ranges, merge_ranges_pub, ByteRange};
 use super::lineindex::{ColumnEncoding, LineIndex};
 use super::markdown::{
     build_markdown_excluded_ranges_with_options, build_yaml_excluded_ranges, MdScanOptions,
 };
-use super::normalize::{map_offset, normalize_nfc, Normalized};
+use super::normalize::{map_offset, map_range_forward, normalize_nfc, Normalized};
 use super::segment::{BoundaryBitmap, Segmenter};
 use super::sentence::BoundaryIndex;
 use super::suppression::build_suppression_ranges;
@@ -862,15 +865,8 @@ impl Scanner {
         };
         let mut issues = Vec::new();
         let mut clue_buf = Vec::new();
-        self.scan_spelling(
-            text,
-            excluded,
-            zh_type,
-            &mut issues,
-            cfg,
-            &mut clue_buf,
-            &bitmap,
-        );
+        let mut em = Emitter::new(text, excluded, &mut issues);
+        self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap);
         issues.len()
     }
 
@@ -891,27 +887,20 @@ impl Scanner {
         };
         let mut issues = Vec::new();
         let mut clue_buf = Vec::new();
+        let mut em = Emitter::new(text, excluded, &mut issues);
         if cfg.spelling {
-            self.scan_spelling(
-                text,
-                excluded,
-                zh_type,
-                &mut issues,
-                cfg,
-                &mut clue_buf,
-                &bitmap,
-            );
+            self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap);
         }
         if cfg.casing {
-            self.scan_case(text, excluded, &mut issues);
+            self.scan_case(&mut em);
         }
         if cfg.basic_punctuation {
-            self.scan_punctuation(text, excluded, &mut issues, cfg);
-            self.scan_cn_curly_quotes(text, excluded, &mut issues);
-            self.scan_spacing(text, excluded, &mut issues);
+            self.scan_punctuation(&mut em, cfg);
+            self.scan_cn_curly_quotes(&mut em);
+            self.scan_spacing(&mut em);
         }
         if cfg.ellipsis_normalization {
-            scan_ellipsis(text, excluded, &mut issues);
+            scan_ellipsis(&mut em);
         }
         issues
     }
@@ -1062,7 +1051,7 @@ impl Scanner {
         } else {
             ContentType::Plain
         };
-        self.scan_nfc_with_content_type(text, None, profile.config(), content_type)
+        self.scan_nfc_with_content_type(text, None, &[], profile.config(), content_type)
     }
 
     /// Scan YAML text with key-token exclusion.
@@ -1071,7 +1060,7 @@ impl Scanner {
     /// in key-value separators do not trigger false-positive colon warnings.
     /// YAML values after the colon are scanned normally as prose.
     pub fn scan_profiled_yaml(&self, text: &str, profile: Profile) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, None, profile.config(), ContentType::Yaml)
+        self.scan_nfc_with_content_type(text, None, &[], profile.config(), ContentType::Yaml)
     }
 
     /// Scan with NFC normalization, reusing pre-built excluded ranges.
@@ -1099,7 +1088,7 @@ impl Scanner {
         profile: Profile,
         content_type: ContentType,
     ) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, Some(excluded), profile.config(), content_type)
+        self.scan_nfc_with_content_type(text, Some(excluded), &[], profile.config(), content_type)
     }
 
     /// Like scan_with_prebuilt_excluded but with explicit ProfileConfig.
@@ -1110,7 +1099,7 @@ impl Scanner {
         cfg: ProfileConfig,
         content_type: ContentType,
     ) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, Some(excluded), cfg, content_type)
+        self.scan_nfc_with_content_type(text, Some(excluded), &[], cfg, content_type)
     }
 
     /// Scan text using the content-type-aware exclusion strategy.
@@ -1123,7 +1112,7 @@ impl Scanner {
         content_type: ContentType,
         profile: Profile,
     ) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, None, profile.config(), content_type)
+        self.scan_nfc_with_content_type(text, None, &[], profile.config(), content_type)
     }
 
     /// Scan with content-type-aware exclusions and explicit ProfileConfig.
@@ -1135,14 +1124,42 @@ impl Scanner {
         content_type: ContentType,
         cfg: ProfileConfig,
     ) -> ScanOutput {
-        self.scan_nfc_with_content_type(text, None, cfg, content_type)
+        self.scan_nfc_with_content_type(text, None, &[], cfg, content_type)
+    }
+
+    /// Scan with content-type exclusions plus ranges the caller already knows
+    /// are not zh-TW prose.
+    ///
+    /// The browser extension is the caller that needs this: it flattens a page
+    /// into one string and only it can see that a run sat under an ancestor
+    /// declaring a non-Chinese lang.  Ranges are byte offsets into "text",
+    /// need not be sorted, and are merged with the exclusions the engine
+    /// builds for itself.  A range that is empty, inverted, or past the end of
+    /// the text is dropped where they are merged in, so a stale offset from
+    /// the page costs nothing.
+    pub fn scan_for_content_type_with_extra_excluded(
+        &self,
+        text: &str,
+        content_type: ContentType,
+        cfg: ProfileConfig,
+        extra_excluded: &[ByteRange],
+    ) -> ScanOutput {
+        self.scan_nfc_with_content_type(text, None, extra_excluded, cfg, content_type)
     }
 
     /// Core NFC-normalize → build exclusions → scan → remap pipeline.
+    ///
+    /// "caller_excluded" holds ranges the caller derived from something the
+    /// engine cannot see, such as a lang attribute on a DOM ancestor of the
+    /// text the browser extension flattened.  They arrive in "text" offsets
+    /// and are mapped forward when normalization moved the bytes, so they are
+    /// honored on both paths rather than only on the one that skips the
+    /// rebuild.
     fn scan_nfc_with_content_type(
         &self,
         text: &str,
         prebuilt_excluded: Option<&[ByteRange]>,
+        caller_excluded: &[ByteRange],
         cfg: ProfileConfig,
         content_type: ContentType,
     ) -> ScanOutput {
@@ -1158,12 +1175,45 @@ impl Scanner {
         let nfc_changed = !norm.offset_map.is_empty();
 
         let mut output = match prebuilt_excluded {
-            Some(excl) if !nfc_changed => {
+            // Prebuilt ranges are measured against the text as handed in, so
+            // normalization having moved the bytes retires them, and a caller
+            // range is a second source this arm has nothing to merge with.
+            Some(excl) if !nfc_changed && caller_excluded.is_empty() => {
                 self.scan_with_config_content_type(scan_text, excl, cfg, content_type)
             }
+
+            // Prebuilt ranges reach here only alongside caller ranges, which no
+            // caller does today, so they are rebuilt rather than kept: the
+            // rebuild is what the NFC path does anyway and it needs no second
+            // branch to say so.
             _ => {
-                let excl =
+                let mut excl =
                     build_exclusions_for_content_type_with_config(scan_text, content_type, &cfg);
+                if !caller_excluded.is_empty() {
+                    // Clipping the end here rather than at the public wrapper
+                    // keeps the bound next to the code that relies on it. A
+                    // range that is empty, inverted, or wholly past the end
+                    // then falls out of map_range_forward.
+                    //
+                    // The bound is the original length, not the normalized one,
+                    // because the caller measured the range against the text it
+                    // handed in. Composition makes the normalized text the
+                    // shorter of the two, so clipping against it would cut a
+                    // range that ends near the tail, and once the shrink
+                    // exceeds the run's own length the range collapses and is
+                    // dropped. The offset map's last entry is the original
+                    // length, so this bound is also what keeps the mapped end
+                    // inside the normalized text.
+                    excl.extend(caller_excluded.iter().filter_map(|r| {
+                        map_range_forward(&norm.offset_map, r.start, r.end.min(text.len()))
+                            .map(|(start, end)| ByteRange { start, end })
+                    }));
+
+                    // Both sources are merged on their own; only mixing them
+                    // can produce an overlap, which the binary search in
+                    // is_excluded would then read wrong.
+                    excl = merge_ranges_pub(excl);
+                }
                 self.scan_with_config_content_type(scan_text, &excl, cfg, content_type)
             }
         };
@@ -1270,51 +1320,40 @@ impl Scanner {
     ///
     /// All of these emit issues in offset order, which is what lets the
     /// caller skip a sort in the common case.
-    #[allow(clippy::too_many_arguments)]
     fn run_lexical_passes(
         &self,
-        text: &str,
-        excluded: &[ByteRange],
+        em: &mut Emitter<'_>,
         zh_type: ChineseType,
-        issues: &mut Vec<Issue>,
         cfg: &ProfileConfig,
         clue_index: &mut Vec<(usize, u16)>,
         boundary_bitmap: &BoundaryBitmap,
     ) {
         if cfg.spelling {
-            self.scan_spelling(
-                text,
-                excluded,
-                zh_type,
-                issues,
-                cfg,
-                clue_index,
-                boundary_bitmap,
-            );
+            self.scan_spelling(em, zh_type, cfg, clue_index, boundary_bitmap);
         }
         if cfg.casing {
-            self.scan_case(text, excluded, issues);
+            self.scan_case(em);
         }
         if cfg.basic_punctuation {
-            self.scan_punctuation(text, excluded, issues, cfg);
+            self.scan_punctuation(em, cfg);
         }
         if cfg.dunhao_detection {
-            self.scan_dunhao(text, excluded, issues);
+            self.scan_dunhao(em);
         }
         if cfg.range_normalization {
-            self.scan_range_indicators(text, excluded, issues, cfg);
+            self.scan_range_indicators(em, cfg);
         }
         if cfg.ellipsis_normalization {
-            scan_ellipsis(text, excluded, issues);
+            scan_ellipsis(em);
         }
         if cfg.basic_punctuation {
-            self.scan_cn_curly_quotes(text, excluded, issues);
-            self.scan_spacing(text, excluded, issues);
+            self.scan_cn_curly_quotes(em);
+            self.scan_spacing(em);
         }
         // Repetition detection (CJK duplicates + Latin duplicates).
-        repetition::scan_repetition(text, excluded, issues);
+        repetition::scan_repetition(em);
         // Spaced-acronym rejoining (C P U to CPU).
-        acronym::scan_spaced_acronyms(text, excluded, issues);
+        acronym::scan_spaced_acronyms(em);
     }
 
     /// Catch a scan config that re-enables a rule type the scanner was built
@@ -1434,15 +1473,8 @@ impl Scanner {
             ref mut overlap_accepted,
         } = *scratch;
 
-        self.run_lexical_passes(
-            text,
-            excluded,
-            zh_type,
-            issues,
-            &cfg,
-            clue_index,
-            &boundary_bitmap,
-        );
+        let mut em = Emitter::new(text, excluded, issues);
+        self.run_lexical_passes(&mut em, zh_type, &cfg, clue_index, &boundary_bitmap);
 
         // All scanners (AC, punctuation, spacing, ellipsis, quotes) emit issues
         // in offset order. Skip the O(n log n) sort when already sorted (common
@@ -1588,8 +1620,12 @@ fn run_structural_passes(
     content_type: ContentType,
     guards: &rule_ir::GuardRules,
 ) -> Vec<ByteRange> {
+    // One emitter for the whole stage: every check below reads this document
+    // through this mask and writes into this list.
+    let mut em = Emitter::new(text, excluded, issues);
+
     if cfg.grammar_checks {
-        grammar::scan_grammar(text, excluded, issues);
+        grammar::scan_grammar(&mut em);
     }
 
     // Build boundaries only when an AI structural or translationese detector
@@ -1601,42 +1637,28 @@ fn run_structural_passes(
         None
     };
 
-    run_ai_filter(
-        text,
-        excluded,
-        issues,
-        cfg,
-        content_type,
-        boundary_index.as_ref(),
-        guards,
-    );
+    run_ai_filter(&mut em, cfg, content_type, boundary_index.as_ref(), guards);
 
     // The spans judged as mentions are handed back: the phrase-density signal
     // reads the text directly, so without them the score would still count a
     // phrase whose findings were just suppressed.
-    let mentions = drop_mentioned_style_findings(text, issues);
+    let mentions = drop_mentioned_style_findings(em.text, em.issues);
 
     // Syntactic translationese detectors (G1-G8, Y1-Y2, S3, V7, V13).
     if cfg.translationese_detection {
         if let Some(ref idx) = boundary_index {
-            grammar::scan_translationese_syntactic(text, excluded, issues, idx);
+            grammar::scan_translationese_syntactic(&mut em, idx);
 
             // Boundary-aware translationese detectors (ZY1b/ZY2b/ZY3b/ZY5).
             // cfg.translationese_domain selects the per-domain threshold table
             // that drives firing behavior at scan time.
-            grammar::scan_translationese_indexed(
-                text,
-                excluded,
-                issues,
-                idx,
-                cfg.translationese_domain,
-            );
+            grammar::scan_translationese_indexed(&mut em, idx, cfg.translationese_domain);
         }
 
         // Substring-only translationese detectors (ZY1a/ZY2a/ZY3a/ZY4a), which
         // need no boundary index.
-        grammar::scan_translationese_lexical(text, excluded, issues);
-        dedup_translationese_phase_duplicates(issues);
+        grammar::scan_translationese_lexical(&mut em);
+        dedup_translationese_phase_duplicates(em.issues);
     }
 
     mentions
@@ -1904,31 +1926,27 @@ fn mark_quoted_on_line(
 /// and overrides apply. Semantic, density, and structural checks stay separate
 /// because their false-positive tradeoffs differ.
 fn run_ai_filter(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     cfg: &ProfileConfig,
     content_type: ContentType,
     boundary_index: Option<&BoundaryIndex>,
     guards: &rule_ir::GuardRules,
 ) {
     if cfg.ai_semantic_safety {
-        grammar::scan_ai_grammar(text, excluded, issues);
+        grammar::scan_ai_grammar(em);
 
         // A style tell, not a grammar error, so it must neither ride along on
         // "grammar_checks" (on by default in every profile) nor vanish with it
         // ("--relaxed" clears it).
         grammar::scan_ai_bare_attribution(
-            text,
-            excluded,
+            em,
             cfg.document_genre,
             guards.get("uncited_attribution"),
-            issues,
         );
     }
 
     if cfg.ai_structural_patterns {
-        grammar::scan_ai_structural(text, excluded, issues, cfg.ai_threshold_multiplier);
+        grammar::scan_ai_structural(em, cfg.ai_threshold_multiplier);
     }
 
     // Invisible characters are not a structural pattern and never were: they
@@ -1941,16 +1959,16 @@ fn run_ai_filter(
         || cfg.ai_density_detection
         || cfg.ai_structural_patterns
     {
-        grammar::scan_ai_zero_width(text, excluded, issues);
+        grammar::scan_ai_zero_width(em);
     }
 
     if cfg.ai_density_detection {
-        grammar::scan_ai_density(text, excluded, issues, cfg.ai_threshold_multiplier);
+        grammar::scan_ai_density(em, cfg.ai_threshold_multiplier);
     }
 
     if cfg.ai_structural_patterns {
         if let Some(idx) = boundary_index {
-            grammar::scan_ai_structural_phase2(text, excluded, issues, idx, content_type);
+            grammar::scan_ai_structural_phase2(em, idx, content_type);
         }
     }
 }

@@ -5,7 +5,8 @@
 // sequences of 2+ letters that form a known acronym or any sequence of 3+
 // letters (high confidence that spacing is an ASR artifact).
 
-use super::super::excluded::{is_excluded, ByteRange};
+use super::super::excluded::is_excluded;
+use super::emit::Emitter;
 use crate::rules::ruleset::{Issue, IssueType, Severity};
 
 /// Known 2-letter acronyms that should be rejoined.
@@ -16,7 +17,11 @@ static KNOWN_TWO_LETTER: &[&str] = &[
 ];
 
 /// Scan for spaced single-letter uppercase sequences.
-pub(crate) fn scan_spaced_acronyms(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+pub(crate) fn scan_spaced_acronyms(em: &mut Emitter<'_>) {
+    let text = em.text;
+    let excluded = em.excluded;
+    let issues = &mut *em.issues;
+
     let bytes = text.as_bytes();
     let len = bytes.len();
     let mut i = 0;
@@ -104,10 +109,11 @@ pub(crate) fn scan_spaced_acronyms(text: &str, excluded: &[ByteRange], issues: &
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::excluded::ByteRange;
 
     fn scan(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_spaced_acronyms(text, &[], &mut issues);
+        scan_spaced_acronyms(&mut Emitter::new(text, &[], &mut issues));
         issues
     }
 
@@ -150,7 +156,7 @@ mod tests {
     fn skips_excluded() {
         let excluded = vec![ByteRange { start: 0, end: 50 }];
         let mut issues = Vec::new();
-        scan_spaced_acronyms("C P U 架構", &excluded, &mut issues);
+        scan_spaced_acronyms(&mut Emitter::new("C P U 架構", &excluded, &mut issues));
         assert!(issues.is_empty());
     }
 

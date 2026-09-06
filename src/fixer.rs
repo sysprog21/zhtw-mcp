@@ -386,13 +386,22 @@ pub fn apply_fixes_with_context(
         // slices surrounding_window, whose forward walk stops at text.len()
         // without clamping byte_end, so an out-of-range end reaching it panics
         // on a public entry point.
+        //
+        // In range is not the same as usable. Both edges are sliced further
+        // down, and a slice that splits a character panics exactly as an
+        // out-of-range one does, so a span landing inside a multi-byte
+        // character has to fall out here too. The scanner's own offsets are
+        // character aligned, which is what makes this a guard on the entry
+        // point rather than a check the scan needs.
         let Some(end) = issue
             .offset
             .checked_add(issue.length)
             .filter(|e| *e <= text.len())
+            .filter(|e| text.is_char_boundary(issue.offset) && text.is_char_boundary(*e))
         else {
             tracing::warn!(
-                "skipping malformed issue at offset {}: span past end of text",
+                "skipping malformed issue at offset {}: span past end of text \
+                 or off a character boundary",
                 issue.offset
             );
             continue;
@@ -628,6 +637,41 @@ mod tests {
             IssueType::Punctuation,
             Severity::Warning,
         )
+    }
+
+    /// A caller-supplied span that splits a character is skipped, not sliced.
+    ///
+    /// The scanner never emits one, so this covers the guard rather than the
+    /// scan: apply_fixes is public, and both edges of the span reach a slice.
+    #[test]
+    fn a_span_off_a_character_boundary_is_skipped() {
+        let text = "這個軟件很好用";
+        for offset in [7, 8] {
+            let issues = vec![make_issue(offset, "軟件", vec!["軟體"])];
+            let result = apply_fixes(text, &issues, FixMode::LexicalSafe, &[]);
+            assert_eq!(result.text, text, "text was rewritten at offset {offset}");
+            assert_eq!(result.applied, 0);
+        }
+
+        // The same span on its real boundary still applies, so the guard is
+        // rejecting the misalignment rather than the issue.
+        let issues = vec![make_issue(6, "軟件", vec!["軟體"])];
+        assert_eq!(
+            apply_fixes(text, &issues, FixMode::LexicalSafe, &[]).applied,
+            1
+        );
+    }
+
+    /// An end that splits a character is rejected for the same reason a start
+    /// is: the tail copy after the last fix slices there.
+    #[test]
+    fn a_span_ending_off_a_character_boundary_is_skipped() {
+        let text = "這個軟件很好用";
+        let mut issue = make_issue(6, "軟件", vec!["軟體"]);
+        issue.length = 5;
+        let result = apply_fixes(text, &[issue], FixMode::LexicalSafe, &[]);
+        assert_eq!(result.text, text);
+        assert_eq!(result.applied, 0);
     }
 
     #[test]

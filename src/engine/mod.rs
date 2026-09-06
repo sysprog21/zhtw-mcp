@@ -2,6 +2,7 @@ pub mod ai_score;
 pub mod consistency;
 pub mod disambig;
 pub mod excluded;
+pub(crate) mod html_lang;
 pub(crate) mod index_guard;
 pub mod lineindex;
 pub mod markdown;

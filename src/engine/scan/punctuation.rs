@@ -1,8 +1,9 @@
 // Punctuation scanning: half-width to full-width detection, dunhao (enumeration
 // comma), and range indicator normalization.
 
+use super::emit::Emitter;
 use crate::engine::excluded::{is_excluded, ByteRange};
-use crate::rules::ruleset::{Issue, ProfileConfig, Severity};
+use crate::rules::ruleset::{ProfileConfig, Severity};
 
 use super::quotes::{plan_quote_conversions, QuoteKind, QuoteMark};
 use super::{adjacent_cjk, immediate_cjk, punct_issue, Scanner};
@@ -14,13 +15,11 @@ impl Scanner {
     ///
     /// Handles: , . ! ? ; ( ) : (2.1 + 2.2).
     /// Colon enforcement is profile-dependent: relaxed allows half-width :.
-    pub(crate) fn scan_punctuation(
-        &self,
-        text: &str,
-        excluded: &[ByteRange],
-        issues: &mut Vec<Issue>,
-        cfg: &ProfileConfig,
-    ) {
+    pub(crate) fn scan_punctuation(&self, em: &mut Emitter<'_>, cfg: &ProfileConfig) {
+        let text = em.text;
+        let excluded = em.excluded;
+        let issues = &mut *em.issues;
+
         let bytes = text.as_bytes();
         let len = bytes.len();
 
@@ -198,7 +197,11 @@ impl Scanner {
     /// likely represent coordinate lists and should use 、 instead.
     /// Severity: Info (advisory -- the heuristic false-positives on short
     /// clauses).
-    pub(crate) fn scan_dunhao(&self, text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+    pub(crate) fn scan_dunhao(&self, em: &mut Emitter<'_>) {
+        let text = em.text;
+        let excluded = em.excluded;
+        let issues = &mut *em.issues;
+
         let comma = "\u{FF0C}"; // ，
         let comma_len = comma.len(); // 3 bytes
         let max_item_chars = 4;
@@ -273,12 +276,11 @@ impl Scanner {
     /// Double quotes are emitted as issues; `fix_quote_pairing()` in quotes.rs
     /// then reassigns their suggestions with depth-based nesting (「」/『』).
     /// Single quotes map directly to 『/』 (secondary TW bracket quotes).
-    pub(crate) fn scan_cn_curly_quotes(
-        &self,
-        text: &str,
-        excluded: &[ByteRange],
-        issues: &mut Vec<Issue>,
-    ) {
+    pub(crate) fn scan_cn_curly_quotes(&self, em: &mut Emitter<'_>) {
+        let text = em.text;
+        let excluded = em.excluded;
+        let issues = &mut *em.issues;
+
         let doubles = plan_quote_conversions(text, excluded, QuoteKind::CurlyDouble);
         let singles = plan_quote_conversions(text, excluded, QuoteKind::CurlySingle);
         if doubles.is_empty() && singles.is_empty() {
@@ -327,13 +329,11 @@ impl Scanner {
     /// Detects ~ or - used as range indicators in CJK context and suggests
     /// the profile-appropriate full-width form: ～ (wave dash) for prose,
     /// – (en dash) for technical/UI contexts.
-    pub(crate) fn scan_range_indicators(
-        &self,
-        text: &str,
-        excluded: &[ByteRange],
-        issues: &mut Vec<Issue>,
-        cfg: &ProfileConfig,
-    ) {
+    pub(crate) fn scan_range_indicators(&self, em: &mut Emitter<'_>, cfg: &ProfileConfig) {
+        let text = em.text;
+        let excluded = em.excluded;
+        let issues = &mut *em.issues;
+
         let bytes = text.as_bytes();
         let len = bytes.len();
 

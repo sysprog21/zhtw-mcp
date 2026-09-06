@@ -6,7 +6,8 @@
 //
 // Uses manual scanning (no regex backreferences needed).
 
-use super::super::excluded::{is_excluded, ByteRange};
+use super::super::excluded::is_excluded;
+use super::emit::Emitter;
 use crate::rules::ruleset::{Issue, IssueType, Severity};
 
 /// Lexicalized reduplications common enough that an Info line is not worth
@@ -207,13 +208,20 @@ fn consume_duplicate_separator(bytes: &[u8], mut i: usize) -> Option<usize> {
 }
 
 /// Scan for consecutive duplicate words/characters.
-pub(crate) fn scan_repetition(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
-    scan_cjk_duplicates(text, excluded, issues);
-    scan_latin_duplicates(text, excluded, issues);
+pub(crate) fn scan_repetition(em: &mut Emitter<'_>) {
+    let _text = em.text;
+    let _excluded = em.excluded;
+
+    scan_cjk_duplicates(em);
+    scan_latin_duplicates(em);
 }
 
 /// Detect consecutive identical CJK character sequences (1-3 chars).
-fn scan_cjk_duplicates(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_cjk_duplicates(em: &mut Emitter<'_>) {
+    let text = em.text;
+    let excluded = em.excluded;
+    let issues = &mut *em.issues;
+
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let n = chars.len();
     let mut i = 0;
@@ -293,7 +301,11 @@ fn scan_cjk_duplicates(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issu
 }
 
 /// Detect consecutive duplicate Latin words (e.g. "cache cache").
-fn scan_latin_duplicates(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_latin_duplicates(em: &mut Emitter<'_>) {
+    let text = em.text;
+    let excluded = em.excluded;
+    let issues = &mut *em.issues;
+
     let bytes = text.as_bytes();
     let len = bytes.len();
     let mut i = 0;
@@ -377,10 +389,11 @@ fn scan_latin_duplicates(text: &str, excluded: &[ByteRange], issues: &mut Vec<Is
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::excluded::ByteRange;
 
     fn scan(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_repetition(text, &[], &mut issues);
+        scan_repetition(&mut Emitter::new(text, &[], &mut issues));
         issues
     }
 
@@ -474,7 +487,7 @@ mod tests {
     fn skips_excluded_range() {
         let excluded = vec![ByteRange { start: 0, end: 20 }];
         let mut issues = Vec::new();
-        scan_repetition("去去都知道", &excluded, &mut issues);
+        scan_repetition(&mut Emitter::new("去去都知道", &excluded, &mut issues));
         assert!(issues.is_empty());
     }
 

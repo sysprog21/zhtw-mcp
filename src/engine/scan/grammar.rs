@@ -18,6 +18,7 @@
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
+use super::emit::Emitter;
 use crate::engine::excluded::{is_excluded, ByteRange};
 use crate::engine::scan::is_cjk_ideograph;
 use crate::engine::scan::rule_ir::StructuralGuard;
@@ -265,13 +266,9 @@ fn grammar_ac() -> &'static (AhoCorasick, Vec<(GrammarCheckType, usize)>) {
 // Per-type validators: called with the AC hit position
 
 /// Validate an A-not-A + 嗎 hit.
-fn validate_a_not_a_ma(
-    text: &str,
-    abs_pos: usize,
-    pattern_end: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn validate_a_not_a_ma(em: &mut Emitter<'_>, abs_pos: usize, pattern_end: usize) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if is_excluded(abs_pos, pattern_end, excluded) {
         return;
     }
@@ -310,13 +307,9 @@ fn validate_a_not_a_ma(
 }
 
 /// Validate a 和-connecting-clauses hit.
-fn validate_he_connecting(
-    text: &str,
-    abs_pos: usize,
-    he_end: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn validate_he_connecting(em: &mut Emitter<'_>, abs_pos: usize, he_end: usize) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if is_excluded(abs_pos, he_end, excluded) {
         return;
     }
@@ -362,13 +355,9 @@ fn validate_he_connecting(
 }
 
 /// Validate a bare 是+adjective hit.
-fn validate_bare_shi_adjective(
-    text: &str,
-    abs_pos: usize,
-    shi_end: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn validate_bare_shi_adjective(em: &mut Emitter<'_>, abs_pos: usize, shi_end: usize) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if is_excluded(abs_pos, shi_end, excluded) {
         return;
     }
@@ -440,13 +429,13 @@ fn validate_bare_shi_adjective(
 
 /// Validate a redundant preposition hit.
 fn validate_redundant_preposition(
-    text: &str,
+    em: &mut Emitter<'_>,
     abs_pos: usize,
     verb_end: usize,
     pair_index: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let (verb, prep, ctx) = TRANSITIVE_VERB_PREPOSITION_PAIRS[pair_index];
 
     if is_excluded(abs_pos, verb_end, excluded) {
@@ -476,13 +465,9 @@ fn validate_redundant_preposition(
 }
 
 /// Validate a bureaucratic nominalization hit.
-fn validate_bureaucratic_nominalization(
-    text: &str,
-    abs_pos: usize,
-    prefix_end: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn validate_bureaucratic_nominalization(em: &mut Emitter<'_>, abs_pos: usize, prefix_end: usize) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if is_excluded(abs_pos, prefix_end, excluded) {
         return;
     }
@@ -525,13 +510,9 @@ fn validate_bureaucratic_nominalization(
 }
 
 /// Validate a verbose action hit.
-fn validate_verbose_action(
-    text: &str,
-    abs_pos: usize,
-    prefix_end: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn validate_verbose_action(em: &mut Emitter<'_>, abs_pos: usize, prefix_end: usize) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if is_excluded(abs_pos, prefix_end, excluded) {
         return;
     }
@@ -573,13 +554,9 @@ fn validate_verbose_action(
 }
 
 /// Validate a 對X進行Y hit.
-fn validate_dui_jinxing(
-    text: &str,
-    abs_pos: usize,
-    marker_end: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn validate_dui_jinxing(em: &mut Emitter<'_>, abs_pos: usize, marker_end: usize) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if is_excluded(abs_pos, marker_end, excluded) {
         return;
     }
@@ -670,13 +647,9 @@ fn validate_dui_jinxing(
 }
 
 /// Validate a double attribution hit (根據...顯示/指出/etc).
-fn validate_double_attribution(
-    text: &str,
-    abs_pos: usize,
-    marker_end: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn validate_double_attribution(em: &mut Emitter<'_>, abs_pos: usize, marker_end: usize) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if is_excluded(abs_pos, marker_end, excluded) {
         return;
     }
@@ -980,12 +953,12 @@ fn any_position_in(positions: &[usize], start: usize, end: usize) -> bool {
 }
 
 pub(crate) fn scan_ai_bare_attribution(
-    text: &str,
-    excluded: &[ByteRange],
+    em: &mut Emitter<'_>,
     genre: DocumentGenre,
     guard: Option<&StructuralGuard>,
-    issues: &mut Vec<Issue>,
 ) {
+    let (text, excluded) = (em.text, em.excluded);
+
     // No guard means every phrase carrying it was disabled or overridden away,
     // which is a legitimate configuration and not an error.
     let Some(guard) = guard.filter(|g| !g.is_empty()) else {
@@ -999,26 +972,24 @@ pub(crate) fn scan_ai_bare_attribution(
     for mat in guard.find_iter(text) {
         let index = index.get_or_insert_with(|| AttributionIndex::build(text, excluded));
         validate_bare_attribution(
-            text,
+            em,
             mat.start(),
             guard.phrase(mat.pattern().as_usize()),
-            excluded,
             genre,
             index,
-            issues,
         );
     }
 }
 
 fn validate_bare_attribution(
-    text: &str,
+    em: &mut Emitter<'_>,
     abs_pos: usize,
     phrase: &str,
-    excluded: &[ByteRange],
     genre: DocumentGenre,
     index: &AttributionIndex,
-    issues: &mut Vec<Issue>,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let end = abs_pos + phrase.len();
     let (sentence_start, sentence_end) = index.sentence_bounds(abs_pos, text.len());
 
@@ -1080,7 +1051,9 @@ fn validate_bare_attribution(
 
 // Detect A-not-A structures co-occurring with sentence-final 嗎.
 #[cfg(test)]
-pub(crate) fn scan_a_not_a_ma(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_a_not_a_ma(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for pattern in A_NOT_A_PATTERNS {
         let mut search_start = 0;
         while let Some(pos) = text[search_start..].find(pattern) {
@@ -1130,11 +1103,9 @@ pub(crate) fn scan_a_not_a_ma(text: &str, excluded: &[ByteRange], issues: &mut V
 
 // Detect 和 connecting clauses (verb phrases) instead of nouns.
 #[cfg(test)]
-pub(crate) fn scan_he_connecting_clauses(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn scan_he_connecting_clauses(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let mut search_start = 0;
     let he = '和';
     let he_len = he.len_utf8();
@@ -1200,7 +1171,9 @@ pub(crate) fn scan_he_connecting_clauses(
 
 // Detect bare 是+adjective (English copula calque).
 #[cfg(test)]
-pub(crate) fn scan_bare_shi_adjective(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_bare_shi_adjective(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let shi = "是";
     let shi_len = shi.len();
     let mut search_start = 0;
@@ -1290,11 +1263,9 @@ pub(crate) fn scan_bare_shi_adjective(text: &str, excluded: &[ByteRange], issues
 
 // Detect transitive verb + redundant preposition.
 #[cfg(test)]
-pub(crate) fn scan_redundant_preposition(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn scan_redundant_preposition(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for &(verb, prep, ctx) in TRANSITIVE_VERB_PREPOSITION_PAIRS {
         let mut search_start = 0;
         while let Some(pos) = text[search_start..].find(verb) {
@@ -1335,11 +1306,9 @@ pub(crate) fn scan_redundant_preposition(
 // Detect bureaucratic nominalization: 進行/加以/予以 + verb. These are calques
 // of English "conduct/carry out + noun" and are verbose.
 #[cfg(test)]
-pub(crate) fn scan_bureaucratic_nominalization(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn scan_bureaucratic_nominalization(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for prefix in BUREAUCRATIC_PREFIXES {
         let prefix_len = prefix.len();
         let mut search_start = 0;
@@ -1397,7 +1366,9 @@ pub(crate) fn scan_bureaucratic_nominalization(
 // Detect verbose action prefix: 做出/作出 + abstract noun. "做出決定" → "決定",
 // "作出回應" → "回應"
 #[cfg(test)]
-pub(crate) fn scan_verbose_action(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_verbose_action(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for prefix in VERBOSE_ACTION_PREFIXES {
         let prefix_len = prefix.len();
         let mut search_start = 0;
@@ -1461,7 +1432,9 @@ const DUI_JINXING_VERBS: &[&str] = &[
 // here the explicit 對X object is present, giving a better suggestion that
 // preserves the object.
 #[cfg(test)]
-pub(crate) fn scan_dui_jinxing(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_dui_jinxing(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let marker = "對";
     let marker_len = marker.len();
     let jinxing = "進行";
@@ -1568,7 +1541,9 @@ pub(crate) fn scan_dui_jinxing(text: &str, excluded: &[ByteRange], issues: &mut 
 // Detect double attribution: 根據 + attribution verb in same clause.
 // "根據研究顯示" is redundant: either "根據研究" or "研究顯示" suffices.
 #[cfg(test)]
-pub(crate) fn scan_double_attribution(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_double_attribution(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let marker = "根據";
     let marker_len = marker.len();
     let mut search_start = 0;
@@ -1679,7 +1654,9 @@ const YIWEIZHE_EXPLANATION_CLUES: &[&str] =
 // Emits a single disambiguated suggestion per occurrence (required by fixer.rs
 // which skips issues with >1 suggestion for non-orthographic types). When
 // disambiguation confidence is low, emits advisory-only (no suggestions).
-pub(crate) fn scan_ai_semantic_safety(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_ai_semantic_safety(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let target = "意味著";
     let target_len = target.len();
     let mut search_start = 0;
@@ -1801,11 +1778,9 @@ const COPULA_TECH_CONTEXT: &[&str] = &[
 
 // Detect AI copula avoidance: 作為/標誌著/充當 replacing 是, and 擁有/設有
 // replacing 有, in technical prose context.
-pub(crate) fn scan_ai_copula_avoidance(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn scan_ai_copula_avoidance(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for &(inflated, simple) in COPULA_AVOIDANCE_PATTERNS {
         let inflated_len = inflated.len();
         let mut search_start = 0;
@@ -1861,7 +1836,9 @@ const PASSIVE_REWRITE_PATTERNS: &[(&str, &str)] = &[
 
 // Detect passive voice overuse: 被 + verb where active voice is more natural.
 // Only flags patterns from a curated list to minimize false positives.
-pub(crate) fn scan_ai_passive(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_ai_passive(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for &(pattern, rewrite) in PASSIVE_REWRITE_PATTERNS {
         let pattern_len = pattern.len();
         let mut search_start = 0;
@@ -1889,7 +1866,9 @@ pub(crate) fn scan_ai_passive(text: &str, excluded: &[ByteRange], issues: &mut V
 // Didactic sentence patterns: AI-typical moralizing constructions that are
 // nearly 100% AI-generated in technical articles.
 // Pattern: 的(故事|案例|經驗|教訓|歷史)(告訴|提醒|啟示)(我們|後人|世人)
-pub(crate) fn scan_ai_didactic(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_ai_didactic(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // Use a simple multi-step search: find each 告訴我們/提醒我們/啟示我們
     // then look backward for 的(故事|案例|經驗|教訓|歷史)
     // This is more efficient than regex for CJK text.
@@ -1952,11 +1931,9 @@ pub(crate) fn scan_ai_didactic(text: &str, excluded: &[ByteRange], issues: &mut 
 // Vague exaggeration patterns: AI-typical claims like "領先時代 N 年" without
 // technical substance.
 // Pattern: (領先|超前|超越)(時代|業界|同期)...N年
-pub(crate) fn scan_ai_vague_exaggeration(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn scan_ai_vague_exaggeration(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const VERBS: &[&str] = &["領先", "超前", "超越"];
     const OBJECTS: &[&str] = &["時代", "業界", "同期"];
 
@@ -2033,12 +2010,9 @@ const DENSITY_TRACKED_PHRASES: &[(&str, f32, u32)] = &[
 // emit a single summary AiStyle issue at the first occurrence with density
 // stats. Does NOT duplicate per-occurrence ai_filler detection: this catches
 // the statistical signature that only becomes visible at document level.
-pub(crate) fn scan_ai_density(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    threshold_multiplier: f32,
-) {
+pub(crate) fn scan_ai_density(em: &mut Emitter<'_>, threshold_multiplier: f32) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let char_count = text.chars().count();
 
     // Skip density analysis on short texts (< 500 chars): not enough
@@ -2114,12 +2088,9 @@ fn contrast_hit(sentence: &str, starts: &[&str], turns: &[&str]) -> Option<usize
     None
 }
 
-pub(crate) fn scan_ai_binary_contrast(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    threshold_multiplier: f32,
-) {
+fn scan_ai_binary_contrast(em: &mut Emitter<'_>, threshold_multiplier: f32) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let char_count = text.chars().count();
     if char_count < 500 {
         return;
@@ -2182,11 +2153,9 @@ pub(crate) fn scan_ai_binary_contrast(
 //   這...成為...的基礎/基石/起點
 //   正是這...讓...
 // Flag when 3+ paragraphs end with such patterns.
-pub(crate) fn scan_ai_paragraph_endings(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn scan_ai_paragraph_endings(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let paragraphs: Vec<&str> = super::split_paragraphs(text)
         .into_iter()
         .map(|(_, p)| p)
@@ -2271,7 +2240,9 @@ pub(crate) fn scan_ai_paragraph_endings(
 
 // Dash overuse: flag when many paragraphs contain ≥3 em-dashes. AI writing
 // overuses parenthetical dashes for elaboration.
-pub(crate) fn scan_ai_dash_overuse(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_ai_dash_overuse(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let paragraphs: Vec<&str> = super::split_paragraphs(text)
         .into_iter()
         .map(|(_, p)| p)
@@ -2332,11 +2303,9 @@ const FORMULAIC_HEADINGS: &[&str] = &[
     "發展與演變",
 ];
 
-pub(crate) fn scan_ai_formulaic_headings(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
+fn scan_ai_formulaic_headings(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let mut match_count = 0;
     let mut first_offset: Option<usize> = None;
 
@@ -2381,12 +2350,9 @@ pub(crate) fn scan_ai_formulaic_headings(
 // Enumerated list density: count list-containing paragraphs relative to total.
 // AI writing overuses bullet/numbered lists for organization. Flag when
 // list-paragraph ratio exceeds 40%.
-pub(crate) fn scan_ai_list_density(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    threshold_multiplier: f32,
-) {
+fn scan_ai_list_density(em: &mut Emitter<'_>, threshold_multiplier: f32) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let paragraphs: Vec<&str> = super::split_paragraphs(text)
         .into_iter()
         .map(|(_, p)| p)
@@ -2447,7 +2413,9 @@ pub(crate) fn scan_ai_list_density(
 // marks, both live in ai_score so the scanner and the document-level score
 // cannot disagree about what needs rewriting. Suggestion is empty string so the
 // fixer strips them automatically.
-pub(crate) fn scan_ai_zero_width(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+pub(crate) fn scan_ai_zero_width(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if !crate::engine::ai_score::has_zero_width(text) {
         return;
     }
@@ -2486,12 +2454,9 @@ pub(crate) fn scan_ai_zero_width(text: &str, excluded: &[ByteRange], issues: &mu
 
 // Tricolon detection: three 、-separated spans with identical char length, or
 // identical sentence-final particles.
-fn scan_ai_tricolon(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_ai_tricolon(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for sent in &idx.sentences {
         let s = &text[sent.byte_start..sent.byte_end];
 
@@ -2567,12 +2532,9 @@ fn char_bounded_end(text: &str, start_byte: usize, n_chars: usize) -> usize {
 }
 
 // Negative parallel: 不只是/不僅是 plus 而是/更是 within 30 chars.
-fn scan_ai_negative_parallel(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_ai_negative_parallel(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const OPENERS: &[&str] = &["不只是", "不僅是", "不僅僅是"];
     const CLOSERS: &[&str] = &["而是", "更是"];
 
@@ -2896,12 +2858,12 @@ fn formulaic_ending_ac() -> &'static AhoCorasick {
 }
 
 fn scan_ai_formulaic_section_endings(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
     markdown_blocks: Option<&[usize]>,
 ) {
+    let text = em.text;
+
     // Once for the document, and only when the document has a closing phrase in
     // it at all. flag_closing_phrases runs per paragraph, so building the index
     // there scanned and allocated over the whole text per paragraph: 0.77s to
@@ -2916,9 +2878,9 @@ fn scan_ai_formulaic_section_endings(
     for para in &idx.paragraphs {
         let sents = idx.sentence_slice(para);
         if let Some(tail_index) = &tail_index {
-            flag_closing_phrases(text, excluded, issues, sents, tail_index, markdown_blocks);
+            flag_closing_phrases(em, sents, tail_index, markdown_blocks);
         }
-        flag_significance_stamps(text, excluded, issues, sents);
+        flag_significance_stamps(em, sents);
     }
 }
 
@@ -2930,13 +2892,13 @@ fn scan_ai_formulaic_section_endings(
 /// and 隨著…不斷發展 are tells wherever they sit, so gating those would have
 /// deleted them.
 fn flag_closing_phrases(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     sents: &[crate::engine::sentence::SentenceBound],
     tail_index: &CloserTailIndex,
     markdown_blocks: Option<&[usize]>,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // A sentence followed by a heading is a close even when body text follows
     // that heading inside the same paragraph, so the walk runs forwards over
     // every sentence. Searching backwards for a single candidate found the
@@ -2989,11 +2951,11 @@ fn flag_closing_phrases(
 
 /// Significance stamps and 隨著…不斷發展, which are tells at any position.
 fn flag_significance_stamps(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     sents: &[crate::engine::sentence::SentenceBound],
 ) {
+    let (text, excluded) = (em.text, em.excluded);
+
     const FORMULAIC_PAIRS: &[(&str, &str)] = &[
         ("奠定", "理論基礎"),
         ("提供", "重要框架"),
@@ -3016,7 +2978,7 @@ fn flag_significance_stamps(
             if is_excluded(abs, abs_end, excluded) {
                 continue;
             }
-            issues.push(
+            em.issues.push(
                 ai_style_issue(
                     abs,
                     &text[abs..abs_end],
@@ -3028,17 +2990,14 @@ fn flag_significance_stamps(
             );
         }
 
-        flag_gradual_development(text, excluded, issues, sent);
+        flag_gradual_development(em, sent);
     }
 }
 
 /// 隨著...不斷發展 with a gap of at most 40 characters, which may be zero.
-fn flag_gradual_development(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    sent: &crate::engine::sentence::SentenceBound,
-) {
+fn flag_gradual_development(em: &mut Emitter<'_>, sent: &crate::engine::sentence::SentenceBound) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let s = &text[sent.byte_start..sent.byte_end];
 
     // Two bindings rather than one tuple: a tuple evaluates both arms, so the
@@ -3072,12 +3031,9 @@ fn flag_gradual_development(
 }
 
 // Mechanical bullet lists: every item starts with **keyword**.
-fn scan_ai_mechanical_bullets(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    _idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_ai_mechanical_bullets(em: &mut Emitter<'_>, _idx: &crate::engine::sentence::BoundaryIndex) {
+    let text = em.text;
+
     // Scan for Markdown list items where every item starts with **bold**.
     let mut list_start: Option<usize> = None;
     let mut bold_count = 0;
@@ -3121,13 +3077,11 @@ fn scan_ai_mechanical_bullets(
         } else if list_start.is_some() {
             // End of list.
             emit_ai_mechanical_bullet_issue(
-                text,
+                em,
                 first_item_offset,
                 item_count,
                 bold_count,
                 four_char_label_count,
-                excluded,
-                issues,
             );
             list_start = None;
         }
@@ -3135,27 +3089,25 @@ fn scan_ai_mechanical_bullets(
     // Flush trailing list.
     if list_start.is_some() {
         emit_ai_mechanical_bullet_issue(
-            text,
+            em,
             first_item_offset,
             item_count,
             bold_count,
             four_char_label_count,
-            excluded,
-            issues,
         );
     }
 }
 
 // Excessive bold: three or more **...** runs per 200 chars in a paragraph.
 fn emit_ai_mechanical_bullet_issue(
-    text: &str,
+    em: &mut Emitter<'_>,
     first_item_offset: usize,
     item_count: usize,
     bold_count: usize,
     four_char_label_count: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if item_count < 3 || is_excluded(first_item_offset, first_item_offset + 1, excluded) {
         return;
     }
@@ -3211,12 +3163,9 @@ fn count_non_excluded_bold_runs(text: &str, base_offset: usize, excluded: &[Byte
         / 2
 }
 
-fn scan_ai_excessive_bold(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_ai_excessive_bold(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for sent in &idx.sentences {
         let s = &text[sent.byte_start..sent.byte_end];
         let bold_count = count_non_excluded_bold_runs(s, sent.byte_start, excluded);
@@ -3273,11 +3222,11 @@ fn scan_ai_excessive_bold(
 }
 
 fn scan_ai_abstract_line_metaphor(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const ABSTRACT_TERMS: &[&str] = &["一條線", "路線", "軸線", "脈絡", "橋"];
     const GROWTH_VERBS: &[&str] = &["走出來", "長出來", "鋪出來", "延伸", "串起來", "拓寬"];
 
@@ -3319,11 +3268,11 @@ fn scan_ai_abstract_line_metaphor(
 }
 
 fn scan_ai_repeated_parallel_slogan(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // (slogan text, first byte offset, first paragraph index, emitted).
     let mut seen: Vec<(String, usize, usize, bool)> = Vec::new();
     for (para_idx, para) in idx.paragraphs.iter().enumerate() {
@@ -3408,12 +3357,9 @@ fn strip_qa_lead_in(sentence: &str) -> &str {
 /// "你以為…嗎？錯了" tells the reader they were wrong before saying anything,
 /// which explanatory prose has no reason to do. So require both: at least two
 /// pairs, and at least one of them dramatic.
-fn scan_ai_rhetorical_self_qa(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_ai_rhetorical_self_qa(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // Lowercased before comparison, so a "faq:" heading suppresses too.
     const FAQ_LABELS: &[&str] = &["faq", "常見問題", "q：", "q:", "問：", "問:"];
 
@@ -3549,12 +3495,9 @@ fn count_non_excluded_matches(
 
 // Em-dash overuse: two or more '——' in one paragraph. A single one is ordinary
 // punctuation and always has been.
-fn scan_ai_emdash_overuse(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_ai_emdash_overuse(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for para in &idx.paragraphs {
         let p = &text[para.byte_start..para.byte_end];
         let (count, first_offset) = count_non_excluded_matches(p, para.byte_start, "——", excluded);
@@ -3582,12 +3525,9 @@ fn scan_ai_emdash_overuse(
 
 // Formulaic 'despite': 儘管.*挑戰 plus a forward-looking verb within one
 // sentence.
-fn scan_ai_formulaic_despite(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_ai_formulaic_despite(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const FORWARD_VERBS: &[&str] = &["仍然", "持續", "蓬勃發展", "繼續"];
 
     for sent in &idx.sentences {
@@ -3631,12 +3571,9 @@ fn scan_ai_formulaic_despite(
 }
 
 // False ranges: 從...到...再到 chains.
-fn scan_ai_false_ranges(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_ai_false_ranges(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     for sent in &idx.sentences {
         let s = &text[sent.byte_start..sent.byte_end];
         let Some(cong) = s.find("從") else {
@@ -3723,12 +3660,9 @@ fn scan_ai_hedging_density(
 // Syntactic translationese detectors (require BoundaryIndex)
 
 // Passive voice density: count 被 per paragraph, flag above two per 100 chars.
-fn scan_trans_passive_density(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_trans_passive_density(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // Technical whitelist: these passive forms are standard in zh-TW technical
     // prose.
     const WHITELIST: &[&str] = &[
@@ -3794,12 +3728,9 @@ fn scan_trans_passive_density(
 
 // Abstract subject: a noun phrase ending in 的(減少|增加|...) at sentence
 // head, followed by 導致|標誌著|意味著.
-fn scan_trans_abstract_subject(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_trans_abstract_subject(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const ABSTRACT_NOUNS: &[&str] = &["的減少", "的增加", "的提高", "的下降", "的通過", "的實施"];
     const ABSTRACT_VERBS: &[&str] = &["導致", "標誌著", "意味著"];
 
@@ -3835,11 +3766,11 @@ fn scan_trans_abstract_subject(
 
 // G3/G4: displaced conditionals, 如果 after main clause.
 fn scan_trans_displaced_conditional(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const CONDITIONALS: &[&str] = &["如果", "假如", "若"];
 
     for sent in &idx.sentences {
@@ -3886,12 +3817,9 @@ fn scan_trans_displaced_conditional(
 
 // Pronoun overuse: three or more consecutive sentences starting with
 // 他/她/它/他們.
-fn scan_trans_pronoun_overuse(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_trans_pronoun_overuse(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const PRONOUNS: &[&str] = &["他", "她", "它", "他們", "她們"];
 
     for para in &idx.paragraphs {
@@ -3947,11 +3875,11 @@ fn scan_trans_pronoun_overuse(
 
 // Copula plus classifier inflation: 他是一個/名/位...的...人.
 fn scan_trans_copula_classifier(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const COPULA_PATTERNS: &[&str] = &["是一個", "是一名", "是一位"];
 
     for sent in &idx.sentences {
@@ -3991,11 +3919,11 @@ fn scan_trans_copula_classifier(
 
 // 的 and 地 confusion: adjective plus 的 plus verb where 地 is correct.
 fn scan_trans_adverbial_particle_mixup(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     _idx: &crate::engine::sentence::BoundaryIndex,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // Finite list of common adj+的+verb confusions (should be 地).
     const CONFUSIONS: &[(&str, &str)] = &[
         ("仔細的看", "仔細地看"),
@@ -4034,11 +3962,11 @@ fn scan_trans_adverbial_particle_mixup(
 
 // 的的不休 (余光中): four or more 的 in one continuous span with no comma.
 fn scan_trans_excessive_de_chain(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
+    let text = em.text;
+
     for sent in &idx.sentences {
         let s = &text[sent.byte_start..sent.byte_end];
 
@@ -4046,39 +3974,23 @@ fn scan_trans_excessive_de_chain(
         // identical clauses do not collapse to the first occurrence.
         let mut clause_start = 0usize;
         for (sep_byte, sep_ch) in s.match_indices(['，', ',']) {
-            emit_excessive_de_chain(
-                text,
-                s,
-                sent.byte_start,
-                clause_start,
-                sep_byte,
-                excluded,
-                issues,
-            );
+            emit_excessive_de_chain(em, s, sent.byte_start, clause_start, sep_byte);
             clause_start = sep_byte + sep_ch.len();
         }
         // Final clause after the last separator.
-        emit_excessive_de_chain(
-            text,
-            s,
-            sent.byte_start,
-            clause_start,
-            s.len(),
-            excluded,
-            issues,
-        );
+        emit_excessive_de_chain(em, s, sent.byte_start, clause_start, s.len());
     }
 }
 
 fn emit_excessive_de_chain(
-    text: &str,
+    em: &mut Emitter<'_>,
     sent_text: &str,
     sent_offset: usize,
     clause_start: usize,
     clause_end: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if clause_start >= clause_end {
         return;
     }
@@ -4109,11 +4021,11 @@ fn emit_excessive_de_chain(
 
 // 地 overuse on disyllabic adverbs: 慢慢地、靜靜地、認真地.
 fn scan_trans_adverbial_particle_redundant(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     _idx: &crate::engine::sentence::BoundaryIndex,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // Finite whitelist: these adverbs can drop 地 in natural Chinese.
     const ADVERBS: &[(&str, &str)] = &[
         ("慢慢地", "慢慢"),
@@ -4176,7 +4088,9 @@ fn scan_trans_adverbial_particle_redundant(
 // person-class profession noun ("畫家", "學者", "作家", "工程師", "運動員",
 // etc.), "最…之一" is biographical idiom ("當代最傑出的畫家之一"), not
 // translation tell. Suppress in that case.
-fn scan_zy1a_superlative_yi_zhi(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_zy1a_superlative_yi_zhi(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const SUPERLATIVES: &[&str] = &["最", "極為"];
     const CLOSER: &str = "之一";
     const MAX_CHARS_BETWEEN: usize = 20;
@@ -4279,7 +4193,9 @@ fn starts_another_dang_word(rest: &str) -> bool {
     rest.chars().next().is_some_and(|c| SKIP_NEXT.contains(&c))
 }
 
-fn scan_zy2a_connective_calques(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_zy2a_connective_calques(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // (opener, closer, max_chars_between, label). Distance budget per opener:
     // 40 chars for 因/雖/如, 30 chars for 當.
     const PATTERNS: &[(&str, &str, usize, &str)] = &[
@@ -4350,7 +4266,9 @@ fn scan_zy2a_connective_calques(text: &str, excluded: &[ByteRange], issues: &mut
 // when they appear with another nominalization in the same sentence-clause
 // ("，"/"。"-bounded), which suppresses standalone noun uses ("策略的實施"
 // mentioned once is fine; chained nominalization is the translationese tell).
-fn scan_zy3a_finite_nominalization(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_zy3a_finite_nominalization(em: &mut Emitter<'_>) {
+    let text = em.text;
+
     const NOMINAL_HEADS: &[&str] = &[
         "的實施",
         "的分析",
@@ -4362,10 +4280,20 @@ fn scan_zy3a_finite_nominalization(text: &str, excluded: &[ByteRange], issues: &
         "的下降",
         "的改善",
     ];
-    const IMPLEMENTATION_PAIR_LEFT: &[&str] = &["的實施", "的改善", "的提升", "的下降"];
-    const IMPLEMENTATION_PAIR_RIGHT: &[&str] = &["的提升", "的改善", "的下降"];
-    const ANALYSIS_PAIR_LEFT: &[&str] = &["的分析", "的講解", "的理解", "的認識"];
-    const ANALYSIS_PAIR_RIGHT: &[&str] = &["的發現", "的理解", "的認識"];
+
+    // Each pair is a documented ZY3a form: a left head followed by a right one
+    // with no coordination between them. The two families read the same way, so
+    // they are one list rather than four parallel arguments.
+    const ZY3A_PAIRS: &[HeadPair<'_>] = &[
+        HeadPair {
+            left: &["的實施", "的改善", "的提升", "的下降"],
+            right: &["的提升", "的改善", "的下降"],
+        },
+        HeadPair {
+            left: &["的分析", "的講解", "的理解", "的認識"],
+            right: &["的發現", "的理解", "的認識"],
+        },
+    ];
 
     // Walk the text by character, locate each clause (bounded by "，" / "," /
     // "。" / "；" / "\n" / start / end), and emit only when the clause contains
@@ -4375,34 +4303,19 @@ fn scan_zy3a_finite_nominalization(text: &str, excluded: &[ByteRange], issues: &
     let mut clause_start = 0;
     for (i, ch) in text.char_indices() {
         if is_clause_boundary_char(ch) {
-            emit_zy3a_clause(
-                text,
-                clause_start,
-                i,
-                NOMINAL_HEADS,
-                IMPLEMENTATION_PAIR_LEFT,
-                IMPLEMENTATION_PAIR_RIGHT,
-                ANALYSIS_PAIR_LEFT,
-                ANALYSIS_PAIR_RIGHT,
-                excluded,
-                issues,
-            );
+            emit_zy3a_clause(em, clause_start, i, NOMINAL_HEADS, ZY3A_PAIRS);
             clause_start = i + ch.len_utf8();
         }
     }
     // Final clause (no trailing boundary).
-    emit_zy3a_clause(
-        text,
-        clause_start,
-        text.len(),
-        NOMINAL_HEADS,
-        IMPLEMENTATION_PAIR_LEFT,
-        IMPLEMENTATION_PAIR_RIGHT,
-        ANALYSIS_PAIR_LEFT,
-        ANALYSIS_PAIR_RIGHT,
-        excluded,
-        issues,
-    );
+    emit_zy3a_clause(em, clause_start, text.len(), NOMINAL_HEADS, ZY3A_PAIRS);
+}
+
+/// Two nominal-head lists that qualify as a ZY3a pair when one follows the
+/// other: a head from "left" and then a head from "right".
+struct HeadPair<'a> {
+    left: &'a [&'a str],
+    right: &'a [&'a str],
 }
 
 /// Clause boundaries used by ZY3a / ZY4a: full-width and ASCII commas,
@@ -4411,19 +4324,15 @@ fn is_clause_boundary_char(ch: char) -> bool {
     matches!(ch, '，' | '。' | '；' | ',' | '\n')
 }
 
-#[allow(clippy::too_many_arguments)]
 fn emit_zy3a_clause(
-    text: &str,
+    em: &mut Emitter<'_>,
     clause_start: usize,
     clause_end: usize,
     heads: &[&str],
-    implementation_pair_left: &[&str],
-    implementation_pair_right: &[&str],
-    analysis_pair_left: &[&str],
-    analysis_pair_right: &[&str],
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    pairs: &[HeadPair<'_>],
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     if clause_start >= clause_end {
         return;
     }
@@ -4446,14 +4355,7 @@ fn emit_zy3a_clause(
     }
     hits.sort_unstable_by_key(|&(p, _)| p);
 
-    let Some((rel_start, rel_end, head_count)) = find_zy3a_shape(
-        clause,
-        &hits,
-        implementation_pair_left,
-        implementation_pair_right,
-        analysis_pair_left,
-        analysis_pair_right,
-    ) else {
+    let Some((rel_start, rel_end, head_count)) = find_zy3a_shape(clause, &hits, pairs) else {
         return;
     };
 
@@ -4482,10 +4384,7 @@ fn emit_zy3a_clause(
 fn find_zy3a_shape(
     clause: &str,
     hits: &[(usize, &str)],
-    implementation_pair_left: &[&str],
-    implementation_pair_right: &[&str],
-    analysis_pair_left: &[&str],
-    analysis_pair_right: &[&str],
+    pairs: &[HeadPair<'_>],
 ) -> Option<(usize, usize, usize)> {
     for window in hits.windows(2) {
         let (first_pos, first_head) = window[0];
@@ -4500,12 +4399,10 @@ fn find_zy3a_shape(
         if contains_zy3a_coordination(gap) {
             continue;
         }
-        if implementation_pair_left.contains(&first_head)
-            && implementation_pair_right.contains(&second_head)
+        if pairs
+            .iter()
+            .any(|pair| pair.left.contains(&first_head) && pair.right.contains(&second_head))
         {
-            return Some((first_pos, second_end, 2));
-        }
-        if analysis_pair_left.contains(&first_head) && analysis_pair_right.contains(&second_head) {
             return Some((first_pos, second_end, 2));
         }
     }
@@ -4523,7 +4420,9 @@ fn contains_zy3a_coordination(gap: &str) -> bool {
 // romanized parenthetical gloss (English) immediately after the term). This
 // local guard suppresses standalone uses of these words: "實際上" alone is
 // fine; "實際上, 嚴肅地說..." is the cluster tell.
-fn scan_zy4a_false_friends(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_zy4a_false_friends(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // (term, suggested_rephrasing, label).  Auto-fix safe: false.
     const PAIRS: &[(&str, &str, &str)] = &[
         ("實際上", "其實", "實際上→其實"),
@@ -4663,12 +4562,9 @@ fn has_ascii_parenthetical_after(text: &str, after_byte: usize, excluded: &[Byte
 
 // Tense marker overuse: several 曾/已/過/了 in one sentence when an explicit
 // date is present.
-fn scan_trans_tense_marker(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    idx: &crate::engine::sentence::BoundaryIndex,
-) {
+fn scan_trans_tense_marker(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const TENSE_MARKERS: &[char] = &['曾', '已', '過', '了'];
 
     for sent in &idx.sentences {
@@ -4733,12 +4629,12 @@ const ZY3B_ABSTRACT_HEADS: &[&str] = &[
 // where every other sentence ends "…之一。": a strong tell for "one of the
 // most..." over-use that no individual occurrence betrays.
 fn scan_zy1b_yi_zhi_density(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
     domain: crate::engine::translationese_score::TranslationeseDomain,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const TARGET: &str = "之一";
     const MIN_CHARS: usize = 100; // Skip very short paragraphs.
 
@@ -4800,11 +4696,11 @@ fn scan_zy1b_yi_zhi_density(
 // verifies opener+closer sit in the same sentence: emits a structural-fix
 // suggestion that ZY2a cannot ("drop 因為, keep 所以").
 fn scan_zy2b_sentence_bounded_connectives(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     // (opener, closer, max_chars_between, drop_form, label). Keep the same
     // distance caps as ZY2a so the sentence-bounded variant does not
     // reintroduce long-distance false positives.
@@ -4888,12 +4784,12 @@ fn scan_zy2b_sentence_bounded_connectives(
 // (which counts any of nine specific verb-noun heads in a clause); ZY3b
 // requires the recursive shape with ≥N levels.
 fn scan_zy3b_nominalization_chain(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
     domain: crate::engine::translationese_score::TranslationeseDomain,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let chain_min = domain.thresholds().zy3b_chain_min;
 
     for sent in &idx.sentences {
@@ -4993,12 +4889,12 @@ fn walk_zy3b_chain(s: &str, start: usize) -> (usize, usize) {
 // commas) that ends in "的<noun>". Flag when char-length ≥zy5_min_chars AND the
 // span contains ≥zy5_min_de_count 的 occurrences.
 fn scan_zy5_long_premodifier(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
     domain: crate::engine::translationese_score::TranslationeseDomain,
 ) {
+    let text = em.text;
+
     const SPAN_BREAKERS: &[char] = &['，', '、', '。', '；', '：', ',', ';', ':'];
     let thresholds = domain.thresholds();
     let min_chars = thresholds.zy5_min_chars;
@@ -5007,17 +4903,7 @@ fn scan_zy5_long_premodifier(
     for sent in &idx.sentences {
         let s = &text[sent.byte_start..sent.byte_end];
         let mut emit = |start, end| {
-            emit_zy5_span_if_qualifies(
-                text,
-                s,
-                sent.byte_start,
-                start,
-                end,
-                min_chars,
-                min_de,
-                excluded,
-                issues,
-            );
+            emit_zy5_span_if_qualifies(em, s, sent.byte_start, start, end, min_chars, min_de);
         };
         // Walk the sentence, splitting at SPAN_BREAKERS.
         let mut span_start = 0usize;
@@ -5138,18 +5024,17 @@ const PREDICATE_MARKERS: &[&str] = &[
     "也", "就", "才", "卻", "便", "可以", "應該", "必須", "已經", "正在",
 ];
 
-#[allow(clippy::too_many_arguments)]
 fn emit_zy5_span_if_qualifies(
-    text: &str,
+    em: &mut Emitter<'_>,
     sent_text: &str,
     sent_offset: usize,
     span_start: usize,
     span_end: usize,
     min_chars: usize,
     min_de: usize,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
 ) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const PREDICATE_VERBS: &[&str] = &[
         "看到", "看見", "遇到", "聽到", "找到", "收到", "發現", "認識", "帶著", "帶到", "帶來",
         "告訴", "看著", "碰到", "經過",
@@ -5376,31 +5261,26 @@ fn line_iter(text: &str) -> impl Iterator<Item = (usize, &str)> {
 
 // Entry point: run all structural AI pattern checks. Gated by
 // ProfileConfig::ai_structural_patterns.
-pub(crate) fn scan_ai_structural(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-    threshold_multiplier: f32,
-) {
+pub(crate) fn scan_ai_structural(em: &mut Emitter<'_>, threshold_multiplier: f32) {
     // Every finding these produce must name its detector: the score counts
     // distinct families, and an untagged one silently moves to per-occurrence
     // density and becomes eligible for mention suppression. A builder call is
     // easy to forget, so assert it here rather than trusting each detector to
     // remember.
-    let first_new = issues.len();
-    scan_ai_binary_contrast(text, excluded, issues, threshold_multiplier);
-    scan_ai_paragraph_endings(text, excluded, issues);
-    scan_ai_dash_overuse(text, excluded, issues);
-    scan_ai_formulaic_headings(text, excluded, issues);
-    scan_ai_list_density(text, excluded, issues, threshold_multiplier);
-    scan_ai_mixed_reader_address(text, excluded, issues);
-    scan_ai_stacked_politeness(text, excluded, issues);
+    let first_new = em.issues.len();
+    scan_ai_binary_contrast(em, threshold_multiplier);
+    scan_ai_paragraph_endings(em);
+    scan_ai_dash_overuse(em);
+    scan_ai_formulaic_headings(em);
+    scan_ai_list_density(em, threshold_multiplier);
+    scan_ai_mixed_reader_address(em);
+    scan_ai_stacked_politeness(em);
 
     // assert, not debug_assert: compiled out, this checks nothing in the build
     // people run, and the cost is one pass over the findings just pushed,
     // against the document scan that produced them.
     assert!(
-        issues[first_new..]
+        em.issues[first_new..]
             .iter()
             .all(|i| i.structural_family.is_some()),
         "a structural detector emitted a finding without naming its family"
@@ -5418,7 +5298,9 @@ pub(crate) fn scan_ai_structural(
 //
 // 你 needs a boundary test that 您 does not: it is the second character of 迷你
 // and of 迷你版, where it is not a pronoun at all.
-fn scan_ai_mixed_reader_address(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_ai_mixed_reader_address(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     let occurrences = |needle: char| -> Vec<usize> {
         text.match_indices(needle)
             .filter(|&(pos, _)| {
@@ -5456,7 +5338,9 @@ fn scan_ai_mixed_reader_address(text: &str, excluded: &[ByteRange], issues: &mut
 // One 請 in the surrounding prose is ordinary courtesy. Repeating it per step
 // pads every line with the same word and reads as generated. The gate is the
 // run, not the word: three consecutive list items each opening with it.
-fn scan_ai_stacked_politeness(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+fn scan_ai_stacked_politeness(em: &mut Emitter<'_>) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
     const MIN_RUN: usize = 3;
     /// What a line does to a run of polite steps.
     enum Step {
@@ -5531,48 +5415,42 @@ fn scan_ai_stacked_politeness(text: &str, excluded: &[ByteRange], issues: &mut V
 // mechanical bullets, S5 excessive bold, S6 em-dash overuse, S7 formulaic
 // despite, S8 false ranges, V2 hedging density.
 pub(crate) fn scan_ai_structural_phase2(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     boundary_index: &crate::engine::sentence::BoundaryIndex,
     content_type: crate::engine::scan::ContentType,
 ) {
+    let (text, excluded) = (em.text, em.excluded);
+
     // Every finding these produce must name its detector: the score counts
     // distinct families, and an untagged one silently moves to per-occurrence
     // density and becomes eligible for mention suppression. A builder call is
     // easy to forget, so assert it here rather than trusting each detector to
     // remember.
-    let first_new = issues.len();
+    let first_new = em.issues.len();
     let markdown_blocks = matches!(
         content_type,
         crate::engine::scan::ContentType::Markdown
             | crate::engine::scan::ContentType::MarkdownScanCode
     )
     .then(|| crate::engine::markdown::block_boundary_starts(text));
-    scan_ai_tricolon(text, excluded, issues, boundary_index);
-    scan_ai_negative_parallel(text, excluded, issues, boundary_index);
-    scan_ai_formulaic_section_endings(
-        text,
-        excluded,
-        issues,
-        boundary_index,
-        markdown_blocks.as_deref(),
-    );
-    scan_ai_mechanical_bullets(text, excluded, issues, boundary_index);
-    scan_ai_excessive_bold(text, excluded, issues, boundary_index);
-    scan_ai_emdash_overuse(text, excluded, issues, boundary_index);
-    scan_ai_formulaic_despite(text, excluded, issues, boundary_index);
-    scan_ai_false_ranges(text, excluded, issues, boundary_index);
-    scan_ai_hedging_density(text, excluded, issues, boundary_index);
-    scan_ai_abstract_line_metaphor(text, excluded, issues, boundary_index);
-    scan_ai_repeated_parallel_slogan(text, excluded, issues, boundary_index);
-    scan_ai_rhetorical_self_qa(text, excluded, issues, boundary_index);
+    scan_ai_tricolon(em, boundary_index);
+    scan_ai_negative_parallel(em, boundary_index);
+    scan_ai_formulaic_section_endings(em, boundary_index, markdown_blocks.as_deref());
+    scan_ai_mechanical_bullets(em, boundary_index);
+    scan_ai_excessive_bold(em, boundary_index);
+    scan_ai_emdash_overuse(em, boundary_index);
+    scan_ai_formulaic_despite(em, boundary_index);
+    scan_ai_false_ranges(em, boundary_index);
+    scan_ai_hedging_density(text, excluded, em.issues, boundary_index);
+    scan_ai_abstract_line_metaphor(em, boundary_index);
+    scan_ai_repeated_parallel_slogan(em, boundary_index);
+    scan_ai_rhetorical_self_qa(em, boundary_index);
 
     // assert, not debug_assert: compiled out, this checks nothing in the build
     // people run, and the cost is one pass over the findings just pushed,
     // against the document scan that produced them.
     assert!(
-        issues[first_new..]
+        em.issues[first_new..]
             .iter()
             .all(|i| i.structural_family.is_some()),
         "a structural detector emitted a finding without naming its family"
@@ -5583,15 +5461,11 @@ pub(crate) fn scan_ai_structural_phase2(
 // calque pass:
 //   ZY1a 之一 superlative calque, ZY2a EN connective bounded calques,
 //   ZY3a finite nominalization patterns, ZY4a false-friend lexical pairs.
-pub(crate) fn scan_translationese_lexical(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
-) {
-    scan_zy1a_superlative_yi_zhi(text, excluded, issues);
-    scan_zy2a_connective_calques(text, excluded, issues);
-    scan_zy3a_finite_nominalization(text, excluded, issues);
-    scan_zy4a_false_friends(text, excluded, issues);
+pub(crate) fn scan_translationese_lexical(em: &mut Emitter<'_>) {
+    scan_zy1a_superlative_yi_zhi(em);
+    scan_zy2a_connective_calques(em);
+    scan_zy3a_finite_nominalization(em);
+    scan_zy4a_false_friends(em);
 }
 
 // Syntactic translationese detectors that require sentence/paragraph boundary
@@ -5599,20 +5473,18 @@ pub(crate) fn scan_translationese_lexical(
 // G8 pronoun overuse, Y1 copula+classifier, Y2 的/地 confusion, S3 的的不休, V7
 // 地 overuse, V13 tense markers.
 pub(crate) fn scan_translationese_syntactic(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     boundary_index: &crate::engine::sentence::BoundaryIndex,
 ) {
-    scan_trans_passive_density(text, excluded, issues, boundary_index);
-    scan_trans_abstract_subject(text, excluded, issues, boundary_index);
-    scan_trans_displaced_conditional(text, excluded, issues, boundary_index);
-    scan_trans_pronoun_overuse(text, excluded, issues, boundary_index);
-    scan_trans_copula_classifier(text, excluded, issues, boundary_index);
-    scan_trans_adverbial_particle_mixup(text, excluded, issues, boundary_index);
-    scan_trans_excessive_de_chain(text, excluded, issues, boundary_index);
-    scan_trans_adverbial_particle_redundant(text, excluded, issues, boundary_index);
-    scan_trans_tense_marker(text, excluded, issues, boundary_index);
+    scan_trans_passive_density(em, boundary_index);
+    scan_trans_abstract_subject(em, boundary_index);
+    scan_trans_displaced_conditional(em, boundary_index);
+    scan_trans_pronoun_overuse(em, boundary_index);
+    scan_trans_copula_classifier(em, boundary_index);
+    scan_trans_adverbial_particle_mixup(em, boundary_index);
+    scan_trans_excessive_de_chain(em, boundary_index);
+    scan_trans_adverbial_particle_redundant(em, boundary_index);
+    scan_trans_tense_marker(em, boundary_index);
 }
 
 // Boundary-aware translationese dispatcher. Runs detectors that need
@@ -5622,26 +5494,24 @@ pub(crate) fn scan_translationese_syntactic(
 //   ZY3b extended nominalization chain,
 //   ZY5  long pre-modifier 定語堆疊.
 pub(crate) fn scan_translationese_indexed(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut Vec<Issue>,
+    em: &mut Emitter<'_>,
     boundary_index: &crate::engine::sentence::BoundaryIndex,
     domain: crate::engine::translationese_score::TranslationeseDomain,
 ) {
-    scan_zy1b_yi_zhi_density(text, excluded, issues, boundary_index, domain);
-    scan_zy2b_sentence_bounded_connectives(text, excluded, issues, boundary_index);
-    scan_zy3b_nominalization_chain(text, excluded, issues, boundary_index, domain);
-    scan_zy5_long_premodifier(text, excluded, issues, boundary_index, domain);
+    scan_zy1b_yi_zhi_density(em, boundary_index, domain);
+    scan_zy2b_sentence_bounded_connectives(em, boundary_index);
+    scan_zy3b_nominalization_chain(em, boundary_index, domain);
+    scan_zy5_long_premodifier(em, boundary_index, domain);
 }
 
 // Entry point for AI writing detection grammar checks. Gated by
 // ProfileConfig::ai_semantic_safety, NOT called from scan_grammar.
-pub(crate) fn scan_ai_grammar(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
-    scan_ai_semantic_safety(text, excluded, issues);
-    scan_ai_copula_avoidance(text, excluded, issues);
-    scan_ai_passive(text, excluded, issues);
-    scan_ai_didactic(text, excluded, issues);
-    scan_ai_vague_exaggeration(text, excluded, issues);
+pub(crate) fn scan_ai_grammar(em: &mut Emitter<'_>) {
+    scan_ai_semantic_safety(em);
+    scan_ai_copula_avoidance(em);
+    scan_ai_passive(em);
+    scan_ai_didactic(em);
+    scan_ai_vague_exaggeration(em);
 }
 
 // Main entry point: run all grammar checks via AC prefilter.
@@ -5649,7 +5519,9 @@ pub(crate) fn scan_ai_grammar(text: &str, excluded: &[ByteRange], issues: &mut V
 // A single Aho-Corasick pass finds all trigger patterns, then dispatches each
 // hit to the appropriate validator. This is O(N + H) instead of the old O(P*N)
 // where P = total patterns across 8 scanners.
-pub(crate) fn scan_grammar(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+pub(crate) fn scan_grammar(em: &mut Emitter<'_>) {
+    let text = em.text;
+
     let (ac, metadata) = grammar_ac();
 
     for mat in ac.find_iter(text) {
@@ -5659,28 +5531,28 @@ pub(crate) fn scan_grammar(text: &str, excluded: &[ByteRange], issues: &mut Vec<
 
         match check_type {
             GrammarCheckType::ANotAMa => {
-                validate_a_not_a_ma(text, start, end, excluded, issues);
+                validate_a_not_a_ma(em, start, end);
             }
             GrammarCheckType::HeConnectingClauses => {
-                validate_he_connecting(text, start, end, excluded, issues);
+                validate_he_connecting(em, start, end);
             }
             GrammarCheckType::BareShiAdjective => {
-                validate_bare_shi_adjective(text, start, end, excluded, issues);
+                validate_bare_shi_adjective(em, start, end);
             }
             GrammarCheckType::RedundantPreposition => {
-                validate_redundant_preposition(text, start, end, pattern_index, excluded, issues);
+                validate_redundant_preposition(em, start, end, pattern_index);
             }
             GrammarCheckType::BureaucraticNominalization => {
-                validate_bureaucratic_nominalization(text, start, end, excluded, issues);
+                validate_bureaucratic_nominalization(em, start, end);
             }
             GrammarCheckType::VerboseAction => {
-                validate_verbose_action(text, start, end, excluded, issues);
+                validate_verbose_action(em, start, end);
             }
             GrammarCheckType::DuiJinxing => {
-                validate_dui_jinxing(text, start, end, excluded, issues);
+                validate_dui_jinxing(em, start, end);
             }
             GrammarCheckType::DoubleAttribution => {
-                validate_double_attribution(text, start, end, excluded, issues);
+                validate_double_attribution(em, start, end);
             }
         }
     }
@@ -5688,15 +5560,15 @@ pub(crate) fn scan_grammar(text: &str, excluded: &[ByteRange], issues: &mut Vec<
 
 // Old scan_grammar entry point retained for differential testing.
 #[cfg(test)]
-fn scan_grammar_legacy(text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
-    scan_a_not_a_ma(text, excluded, issues);
-    scan_he_connecting_clauses(text, excluded, issues);
-    scan_bare_shi_adjective(text, excluded, issues);
-    scan_redundant_preposition(text, excluded, issues);
-    scan_bureaucratic_nominalization(text, excluded, issues);
-    scan_verbose_action(text, excluded, issues);
-    scan_dui_jinxing(text, excluded, issues);
-    scan_double_attribution(text, excluded, issues);
+fn scan_grammar_legacy(em: &mut Emitter<'_>) {
+    scan_a_not_a_ma(em);
+    scan_he_connecting_clauses(em);
+    scan_bare_shi_adjective(em);
+    scan_redundant_preposition(em);
+    scan_bureaucratic_nominalization(em);
+    scan_verbose_action(em);
+    scan_dui_jinxing(em);
+    scan_double_attribution(em);
 }
 
 #[cfg(test)]
@@ -5706,7 +5578,7 @@ mod tests {
 
     fn scan(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_grammar(text, &[], &mut issues);
+        scan_grammar(&mut Emitter::new(text, &[], &mut issues));
         issues
     }
 
@@ -5714,13 +5586,11 @@ mod tests {
         let idx = BoundaryIndex::build(text, &[]);
         let mut issues = Vec::new();
         scan_ai_structural_phase2(
-            text,
-            &[],
-            &mut issues,
+            &mut Emitter::new(text, &[], &mut issues),
             &idx,
             crate::engine::scan::ContentType::Markdown,
         );
-        scan_translationese_syntactic(text, &[], &mut issues, &idx);
+        scan_translationese_syntactic(&mut Emitter::new(text, &[], &mut issues), &idx);
         issues
     }
 
@@ -5882,9 +5752,7 @@ mod tests {
             let idx = BoundaryIndex::build(&text, &ranges);
             let mut issues = Vec::new();
             scan_ai_structural_phase2(
-                &text,
-                &ranges,
-                &mut issues,
+                &mut Emitter::new(&text, &ranges, &mut issues),
                 &idx,
                 crate::engine::scan::ContentType::Markdown,
             );
@@ -6951,11 +6819,9 @@ mod tests {
     fn scan_bare_with_excluded(text: &str, excluded: &[ByteRange]) -> Vec<Issue> {
         let mut issues = Vec::new();
         scan_ai_bare_attribution(
-            text,
-            excluded,
+            &mut Emitter::new(text, excluded, &mut issues),
             DocumentGenre::Casual,
             Some(&attribution_guard()),
-            &mut issues,
         );
         issues
     }
@@ -6993,11 +6859,9 @@ mod tests {
         for genre in [DocumentGenre::Technical, DocumentGenre::Financial] {
             let mut issues = Vec::new();
             scan_ai_bare_attribution(
-                "研究顯示成果很好",
-                &[],
+                &mut Emitter::new("研究顯示成果很好", &[], &mut issues),
                 genre,
                 Some(&attribution_guard()),
-                &mut issues,
             );
             assert_eq!(issues.len(), 1, "{genre:?}");
             assert!(issues[0].suggestions.is_empty(), "{genre:?}");
@@ -7324,7 +7188,7 @@ mod tests {
             end: text.len(),
         }];
         let mut issues = Vec::new();
-        scan_grammar(text, &excluded, &mut issues);
+        scan_grammar(&mut Emitter::new(text, &excluded, &mut issues));
         assert!(issues.is_empty());
     }
 
@@ -7336,7 +7200,7 @@ mod tests {
             end: text.len(),
         }];
         let mut issues = Vec::new();
-        scan_grammar(text, &excluded, &mut issues);
+        scan_grammar(&mut Emitter::new(text, &excluded, &mut issues));
         assert!(issues.is_empty());
     }
 
@@ -7348,7 +7212,7 @@ mod tests {
             end: text.len(),
         }];
         let mut issues = Vec::new();
-        scan_grammar(text, &excluded, &mut issues);
+        scan_grammar(&mut Emitter::new(text, &excluded, &mut issues));
         assert!(issues.is_empty());
     }
 
@@ -7358,7 +7222,7 @@ mod tests {
         let text = "你是不是學生嗎？";
         let excluded = vec![ByteRange { start: 0, end: 3 }];
         let mut issues = Vec::new();
-        scan_grammar(text, &excluded, &mut issues);
+        scan_grammar(&mut Emitter::new(text, &excluded, &mut issues));
         // 是不是 starts at byte 3 (after 你), should still be detected.
         assert_eq!(issues.len(), 1);
     }
@@ -7456,7 +7320,7 @@ mod tests {
 
     fn scan_ai(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_ai_grammar(text, &[], &mut issues);
+        scan_ai_grammar(&mut Emitter::new(text, &[], &mut issues));
         issues
     }
 
@@ -7501,7 +7365,7 @@ mod tests {
     fn ai_yiweizhe_in_excluded_region() {
         let mut issues = Vec::new();
         let excluded = vec![ByteRange { start: 0, end: 100 }];
-        scan_ai_semantic_safety("這意味著很多", &excluded, &mut issues);
+        scan_ai_semantic_safety(&mut Emitter::new("這意味著很多", &excluded, &mut issues));
         assert!(issues.is_empty());
     }
 
@@ -7662,7 +7526,7 @@ mod tests {
 
     fn scan_density(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_ai_density(text, &[], &mut issues, 1.0);
+        scan_ai_density(&mut Emitter::new(text, &[], &mut issues), 1.0);
         issues
     }
 
@@ -7733,7 +7597,7 @@ mod tests {
             end: text.len(),
         }];
         let mut issues = Vec::new();
-        scan_ai_density(&text, &excluded, &mut issues, 1.0);
+        scan_ai_density(&mut Emitter::new(&text, &excluded, &mut issues), 1.0);
         assert!(issues.is_empty(), "excluded ranges should suppress density");
     }
 
@@ -7766,11 +7630,11 @@ mod tests {
 
     fn scan_structural(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_ai_structural(text, &[], &mut issues, 1.0);
+        scan_ai_structural(&mut Emitter::new(text, &[], &mut issues), 1.0);
 
         // Mirrors run_ai_filter, which runs the invisible-character layer
         // alongside the structural pass rather than inside it.
-        scan_ai_zero_width(text, &[], &mut issues);
+        scan_ai_zero_width(&mut Emitter::new(text, &[], &mut issues));
         issues
     }
 
@@ -8058,7 +7922,7 @@ mod tests {
         // bytes).
         let excluded = vec![ByteRange { start: 6, end: 9 }];
         let mut issues = Vec::new();
-        scan_ai_structural(text, &excluded, &mut issues, 1.0);
+        scan_ai_structural(&mut Emitter::new(text, &excluded, &mut issues), 1.0);
         let zw: Vec<_> = issues
             .iter()
             .filter(|i| i.context.as_ref().is_some_and(|c| c.contains("隱形字元")))
@@ -8079,7 +7943,7 @@ mod tests {
         let idx = BoundaryIndex::build(text, &excluded);
         let mut issues = Vec::new();
 
-        scan_ai_excessive_bold(text, &excluded, &mut issues, &idx);
+        scan_ai_excessive_bold(&mut Emitter::new(text, &excluded, &mut issues), &idx);
 
         let bold_issues: Vec<_> = issues
             .iter()
@@ -8309,7 +8173,7 @@ mod tests {
         {
             let idx = BoundaryIndex::build(text, &[]);
             let mut issues = Vec::new();
-            scan_ai_emdash_overuse(text, &[], &mut issues, &idx);
+            scan_ai_emdash_overuse(&mut Emitter::new(text, &[], &mut issues), &idx);
             assert_eq!(
                 issues.len(),
                 want,
@@ -8330,7 +8194,7 @@ mod tests {
         let idx = BoundaryIndex::build(text, &excluded);
         let mut issues = Vec::new();
 
-        scan_ai_emdash_overuse(text, &excluded, &mut issues, &idx);
+        scan_ai_emdash_overuse(&mut Emitter::new(text, &excluded, &mut issues), &idx);
 
         let dash_issues: Vec<_> = issues
             .iter()
@@ -8364,7 +8228,7 @@ mod tests {
             .collect();
         let mut issues = Vec::new();
 
-        scan_ai_dash_overuse(text, &excluded, &mut issues);
+        scan_ai_dash_overuse(&mut Emitter::new(text, &excluded, &mut issues));
 
         let dash_issues: Vec<_> = issues
             .iter()
@@ -8426,7 +8290,7 @@ mod tests {
         let idx = BoundaryIndex::build(text, &[]);
         let mut issues = Vec::new();
 
-        scan_trans_abstract_subject(text, &[], &mut issues, &idx);
+        scan_trans_abstract_subject(&mut Emitter::new(text, &[], &mut issues), &idx);
 
         let abstract_issues: Vec<_> = issues
             .iter()
@@ -8493,7 +8357,7 @@ mod tests {
             end: code_end,
         }];
         let mut issues = Vec::new();
-        scan_ai_list_density(&text, &excluded, &mut issues, 1.0);
+        scan_ai_list_density(&mut Emitter::new(&text, &excluded, &mut issues), 1.0);
         let list_issues: Vec<_> = issues
             .iter()
             .filter(|i| i.context.as_ref().is_some_and(|c| c.contains("含列表")))
@@ -8511,11 +8375,11 @@ mod tests {
     /// before comparing.
     fn assert_ac_matches_legacy(text: &str) {
         let mut ac_issues = Vec::new();
-        scan_grammar(text, &[], &mut ac_issues);
+        scan_grammar(&mut Emitter::new(text, &[], &mut ac_issues));
         ac_issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(a.found.cmp(&b.found)));
 
         let mut legacy_issues = Vec::new();
-        scan_grammar_legacy(text, &[], &mut legacy_issues);
+        scan_grammar_legacy(&mut Emitter::new(text, &[], &mut legacy_issues));
         legacy_issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(a.found.cmp(&b.found)));
 
         assert_eq!(
@@ -8613,7 +8477,7 @@ mod tests {
 
     fn scan_lex(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_translationese_lexical(text, &[], &mut issues);
+        scan_translationese_lexical(&mut Emitter::new(text, &[], &mut issues));
         issues
     }
 
@@ -8914,7 +8778,7 @@ mod tests {
             start: 0,
             end: "實際上".len(),
         }];
-        scan_translationese_lexical(text, excluded, &mut issues);
+        scan_translationese_lexical(&mut Emitter::new(text, excluded, &mut issues));
 
         // The remaining 基本上 should NOT fire because its only same-clause
         // companion (實際上) is now excluded.
@@ -8939,7 +8803,7 @@ mod tests {
             start: paren_start,
             end: paren_end,
         }];
-        scan_translationese_lexical(text, excluded, &mut issues);
+        scan_translationese_lexical(&mut Emitter::new(text, excluded, &mut issues));
         assert!(
             !issues
                 .iter()
@@ -8995,7 +8859,7 @@ mod tests {
     ) -> Vec<Issue> {
         let idx = BoundaryIndex::build(text, &[]);
         let mut issues = Vec::new();
-        scan_translationese_indexed(text, &[], &mut issues, &idx, domain);
+        scan_translationese_indexed(&mut Emitter::new(text, &[], &mut issues), &idx, domain);
         issues
     }
 
@@ -9149,9 +9013,7 @@ mod tests {
         let idx = BoundaryIndex::build(&text, excluded);
         let mut issues = Vec::new();
         scan_translationese_indexed(
-            &text,
-            excluded,
-            &mut issues,
+            &mut Emitter::new(&text, excluded, &mut issues),
             &idx,
             crate::engine::translationese_score::TranslationeseDomain::General,
         );

@@ -230,6 +230,34 @@ mainland_samples:
 
 An unclosed block runs to the end of the file. An unrecognized keyword suppresses nothing, so a typo fails loudly (the issue still fires) rather than silently muting a region.
 
+## Declared languages
+
+Under `--content-type markdown` and `--content-type markdown-scan-code`, an HTML tag carrying a `lang` attribute scopes the prose it wraps. A run marked as something other than Chinese is not linted; nothing else about it is guessed.
+
+```markdown
+<div lang="en">
+
+We ship 軟件, and it works.
+
+</div>
+
+他說<span lang="en">we ship 軟件, 但</span>結束。
+```
+
+Neither `軟件` above is reported, though the same word outside the marked runs
+is. The rules:
+
+- A tag whose `lang` names a Chinese variety is scanned as usual. That covers `zh`, `zh-TW`, `zh-Hant`, `zh-CN`, `zh-Hans` and the ISO 639-3 varieties of the Chinese macrolanguage (`cmn`, `yue`, `nan`, `hak`, `wuu`, `gan`, `hsn`, `lzh`, `cdo`, `cjy`, `cnp`, `cpx`, `csp`, `czh`, `czo`, `mnp`). Only the primary subtag is read, and case does not matter. `zh-CN` is deliberately in that list: mainland vocabulary is what this linter exists to rewrite.
+- Any other non-empty value, `en` or `ja-JP` or `fr`, takes the run out of the scan.
+- `lang=""` means "language unknown" in HTML, so it is not a declaration that the run is not Chinese. It leaves the run scanned, and it cancels an outer declaration for the text it wraps.
+- Nesting is honored: a `lang="zh-TW"` span inside a `lang="en"` block is scanned again, and a same-name tag nested inside a scope does not close it early.
+- A void element (`<br lang="en">`) or a self-closed one wraps nothing, so its `lang` scopes nothing.
+- Elements whose end tag is optional close on their next sibling, as they do in a browser. `<p lang="en">English<p lang="zh-TW">中文` is two paragraphs, not one inside the other, so the second is scanned. The same holds for `li`, `dt`, `dd`, `tr`, `td`, `th`, `option`, `optgroup`, `rt` and `rp`. An element in between is looked past where HTML looks past it: a `<span>` or a `<div>` does not stop the close, a `<section>` or a nested list does.
+- What a `script`, `style`, `textarea`, `title`, `xmp` or `iframe` element holds is text, not markup, so a tag written inside one is a string and scopes nothing. The element's own `lang` still applies to its contents.
+- A tag left unclosed scopes to the end of the document, the way an unclosed element in HTML is closed by whatever contains it.
+
+The browser extension honors `lang` the same way, reading it from the nearest ancestor of each text node it collects.
+
 ## Translation memory
 
 The `tm` subcommand manages the translation memory, which records

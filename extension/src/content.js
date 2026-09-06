@@ -6,6 +6,7 @@
 
   const {
     issueSegments,
+    langSpans,
     normalizeIssue,
     tooltipForIssue,
     utf8ByteLength,
@@ -64,6 +65,7 @@
           ok: true,
           text: collected.text,
           node_count: collected.spans.length,
+          lang_spans: langSpans(collected.spans),
         });
         return true;
       }
@@ -107,6 +109,10 @@
         node,
         byteStart: byteCursor,
         byteEnd: byteCursor + byteLength,
+        // The declared language of this run, from the nearest ancestor that
+        // declared one.  It has to be read here: once the nodes are flattened
+        // into one string nothing downstream can see the DOM they came from.
+        lang: declaredLang(node),
         // Read through to the live node rather than snapshotting the value.
         // surroundContents splits a text node when a highlight lands in it, so
         // a copy taken here goes stale partway through a highlight pass.  The
@@ -122,6 +128,15 @@
     }
 
     return { text, spans };
+  }
+
+  // The lang the nearest ancestor declared, or null when none did.  An
+  // explicit lang="" is returned as the empty string rather than null: HTML
+  // reads it as "language unknown", which cancels an outer declaration, and
+  // closest() has already found the innermost one either way.
+  function declaredLang(node) {
+    const scope = node.parentElement?.closest("[lang]");
+    return scope ? scope.getAttribute("lang") : null;
   }
 
   function acceptNode(node) {

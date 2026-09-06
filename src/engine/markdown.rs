@@ -9,6 +9,7 @@
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
 use super::excluded::{merge_ranges_pub, ByteRange};
+use super::html_lang::LangScopes;
 
 /// Build excluded byte ranges from Markdown structure.
 ///
@@ -139,6 +140,7 @@ pub fn build_markdown_excluded_ranges_with_options(
     let mut code_block_start = 0usize;
     let mut blockquote_depth: usize = 0;
     let mut blockquote_start: usize = 0;
+    let mut lang_scopes = LangScopes::new();
 
     for (event, range) in parser.into_offset_iter() {
         match event {
@@ -173,16 +175,31 @@ pub fn build_markdown_excluded_ranges_with_options(
             }
 
             // Inline code: exclude the span including backticks.
-            Event::Code(_) | Event::Html(_) | Event::InlineHtml(_) => {
+            Event::Code(_) => {
                 ranges.push(ByteRange {
                     start: range.start,
                     end: range.end,
                 });
             }
 
+            // HTML: the tags themselves are never prose, and a tag carrying a
+            // non-Chinese lang also takes the prose it wraps out of the scan.
+            // The event text is read from the source rather than from the
+            // event's own string so the offsets fed to the tracker are the
+            // document's.
+            Event::Html(_) | Event::InlineHtml(_) => {
+                ranges.push(ByteRange {
+                    start: range.start,
+                    end: range.end,
+                });
+                lang_scopes.feed(&text[range.start..range.end], range.start);
+            }
+
             _ => {}
         }
     }
+
+    ranges.extend(lang_scopes.finish(text.len()));
 
     // Sort and merge (frontmatter + parser ranges may overlap).
     merge_ranges_pub(ranges)
@@ -814,5 +831,42 @@ mod tests {
             .any(|r| yaml[r.start..r.end].contains("inner:"));
         assert!(covers_outer, "top-level key must be excluded");
         assert!(covers_inner, "indented key must be excluded");
+    }
+
+    // lang-scoped exclusion. The tracker's own rules are covered in
+    // html_lang.rs; what these check is this file's seam, that a pulldown-cmark
+    // HTML event reaches it with the document offsets it needs.
+
+    /// Whether one excluded range covers the given substring.
+    fn excluded_covers(md: &str, needle: &str) -> bool {
+        let ranges = build_markdown_excluded_ranges(md);
+        let start = md.find(needle).expect("needle present in fixture");
+        let end = start + needle.len();
+        ranges.iter().any(|r| r.start <= start && r.end >= end)
+    }
+
+    #[test]
+    fn block_level_lang_en_excludes_the_prose_between_the_tags() {
+        let md = "<div lang=\"en\">\n\nDo one thing, and do it well, 對吧。\n\n</div>\n";
+        assert!(excluded_covers(md, "Do one thing, and do it well, 對吧。"));
+    }
+
+    #[test]
+    fn inline_lang_en_span_excludes_its_run() {
+        let md = "他說<span lang=\"en\">I agree, 但</span>結束\n";
+        assert!(excluded_covers(md, "I agree, 但"));
+        assert!(!excluded_covers(md, "結束"));
+    }
+
+    #[test]
+    fn a_zh_tw_span_is_still_scanned() {
+        let md = "他說<span lang=\"zh-TW\">好, 對</span>結束\n";
+        assert!(!excluded_covers(md, "好, 對"));
+    }
+
+    #[test]
+    fn a_lang_tag_written_inside_a_fence_scopes_nothing() {
+        let md = "```html\n<span lang=\"en\">\n```\n\n他說, 對吧。\n";
+        assert!(!excluded_covers(md, "他說, 對吧。"));
     }
 }

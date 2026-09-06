@@ -6,6 +6,7 @@
 // 4. No repeated full-width punctuation marks
 // 5. Full-width digits → half-width
 
+use super::emit::Emitter;
 use std::iter::Peekable;
 use std::str::CharIndices;
 
@@ -73,7 +74,11 @@ impl super::Scanner {
     /// - Unwanted space adjacent to full-width punctuation (rule 3)
     /// - Repeated full-width punctuation marks (rule 4)
     /// - Full-width digits that should be half-width (rule 5)
-    pub(crate) fn scan_spacing(&self, text: &str, excluded: &[ByteRange], issues: &mut Vec<Issue>) {
+    pub(crate) fn scan_spacing(&self, em: &mut Emitter<'_>) {
+        let text = em.text;
+        let excluded = em.excluded;
+        let issues = &mut *em.issues;
+
         if text.is_empty() {
             return;
         }

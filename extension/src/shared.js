@@ -118,23 +118,22 @@
   // or nothing.
   function langSpans(spans) {
     const runs = [];
-    let folded = -2;
-    for (let index = 0; index < spans.length; index += 1) {
-      const span = spans[index];
+    let previous = null;
+    for (const span of spans) {
       if (typeof span.lang !== "string") {
+        // An undeclared span breaks the run rather than being folded through:
+        // extending across it would claim bytes no declaration covers.
+        previous = null;
         continue;
       }
-      const last = runs[runs.length - 1];
-      // Only the immediately preceding span may extend a run.  Folding across
-      // an undeclared span in between would claim bytes no declaration covers;
-      // folding across the gap left by a block separator is right, because
-      // that gap sits between two nodes under the same declaration.
-      if (last && last.lang === span.lang && index === folded + 1) {
-        last.end = span.byteEnd;
+      // Folding across the gap a block separator left is right, because that
+      // gap sits between two nodes under the same declaration.
+      if (previous && previous.lang === span.lang) {
+        runs[runs.length - 1].end = span.byteEnd;
       } else {
         runs.push({ start: span.byteStart, end: span.byteEnd, lang: span.lang });
       }
-      folded = index;
+      previous = span;
     }
     return runs;
   }

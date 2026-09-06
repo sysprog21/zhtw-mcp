@@ -215,7 +215,7 @@ fn is_combining_mark(ch: char) -> bool {
 /// When offset_map is empty (identity mapping from NFC fast path),
 /// the offset is returned unchanged. Otherwise, out-of-bounds offsets
 /// are clamped to the original text length.
-pub fn map_offset(offset_map: &[usize], normalized_offset: usize) -> usize {
+pub(crate) fn map_offset(offset_map: &[usize], normalized_offset: usize) -> usize {
     if offset_map.is_empty() {
         return normalized_offset;
     }
@@ -243,7 +243,11 @@ pub fn map_offset(offset_map: &[usize], normalized_offset: usize) -> usize {
 ///
 /// Returns None when the range maps to nothing: an empty or inverted input
 /// range, or one that lies past the end of the text.
-pub fn map_range_forward(offset_map: &[usize], start: usize, end: usize) -> Option<(usize, usize)> {
+pub(crate) fn map_range_forward(
+    offset_map: &[usize],
+    start: usize,
+    end: usize,
+) -> Option<(usize, usize)> {
     if start >= end {
         return None;
     }

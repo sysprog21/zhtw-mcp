@@ -1174,12 +1174,11 @@ impl Scanner {
         let scan_text = &norm.text;
         let nfc_changed = !norm.offset_map.is_empty();
 
-        // Prebuilt ranges are measured against the text as handed in, so
-        // normalization having moved the bytes retires them.
-        let ready = prebuilt_excluded.filter(|_| !nfc_changed);
-
-        let mut output = match ready {
-            Some(excl) if caller_excluded.is_empty() => {
+        let mut output = match prebuilt_excluded {
+            // Prebuilt ranges are measured against the text as handed in, so
+            // normalization having moved the bytes retires them, and a caller
+            // range is a second source this arm has nothing to merge with.
+            Some(excl) if !nfc_changed && caller_excluded.is_empty() => {
                 self.scan_with_config_content_type(scan_text, excl, cfg, content_type)
             }
 

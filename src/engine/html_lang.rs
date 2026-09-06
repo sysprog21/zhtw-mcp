@@ -17,7 +17,7 @@ use super::excluded::ByteRange;
 // belong to it. A run marked with any of these is Chinese prose, so it stays
 // scanned; that includes zh-CN and zh-Hans, which are precisely the input this
 // linter exists to rewrite.
-const CHINESE_PRIMARY_SUBTAGS: [&str; 17] = [
+const CHINESE_PRIMARY_SUBTAGS: &[&str] = &[
     "zh", "cdo", "cjy", "cmn", "cnp", "cpx", "csp", "czh", "czo", "gan", "hak", "hsn", "lzh",
     "mnp", "nan", "wuu", "yue",
 ];
@@ -179,7 +179,7 @@ struct OpenElement {
 /// ranges come back unsorted relative to the caller's other ranges, which is
 /// what merge_ranges_pub already expects.
 #[derive(Default)]
-pub struct LangScopes {
+pub(crate) struct LangScopes {
     open: Vec<OpenElement>,
     /// Start of the exclusion currently being accumulated, if any.
     pending: Option<usize>,
@@ -192,7 +192,7 @@ pub struct LangScopes {
 }
 
 impl LangScopes {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
@@ -201,7 +201,7 @@ impl LangScopes {
     ///
     /// Chunks must arrive in document order; the pulldown-cmark offset
     /// iterator yields Html and InlineHtml events that way.
-    pub fn feed(&mut self, chunk: &str, base: usize) {
+    pub(crate) fn feed(&mut self, chunk: &str, base: usize) {
         let bytes = chunk.as_bytes();
         let mut i = 0;
         while i < bytes.len() {
@@ -223,7 +223,7 @@ impl LangScopes {
     /// Close out the accumulated ranges. An element left open at "text_end"
     /// scopes to there, the way an unclosed element in HTML is closed by the
     /// end of what contains it.
-    pub fn finish(mut self, text_end: usize) -> Vec<ByteRange> {
+    pub(crate) fn finish(mut self, text_end: usize) -> Vec<ByteRange> {
         self.close_pending(text_end);
         self.ranges
     }

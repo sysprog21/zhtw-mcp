@@ -157,9 +157,11 @@ fn closed_implicitly_by(open: &str, incoming: &str) -> bool {
         "optgroup" => incoming == "optgroup",
         "rt" | "rp" => matches!(incoming, "rt" | "rp"),
 
-        // Only a col stays inside a colgroup, so anything else ends it. Without
-        // this a lang on a column group went on scoping the rest of the table.
-        "colgroup" => incoming != "col",
+        // A col stays inside a colgroup, and so do the two tags the "in column
+        // group" mode hands to another insertion mode rather than treating as
+        // the end of the group. Anything else ends it, which is what stops a
+        // lang on a column group from scoping the rest of the table.
+        "colgroup" => !matches!(incoming, "col" | "html" | "template"),
         _ => false,
     }
 }
@@ -706,6 +708,19 @@ mod tests {
         assert_eq!(
             excluded_text("<table><colgroup lang=\"en\"><tbody><tr><td>ZH</table>"),
             vec!["<colgroup lang=\"en\"><tbody>"]
+        );
+    }
+
+    #[test]
+    fn a_column_group_survives_a_template() {
+        // "in column group" hands an html or a template start tag to another
+        // insertion mode and leaves the group open; only "anything else" pops
+        // it. Ending the scope on a template would cut it short.
+        let text =
+            "<table><colgroup lang=\"en\"><template><col></template><tbody><tr><td>ZH</table>";
+        assert_eq!(
+            excluded_text(text),
+            vec!["<colgroup lang=\"en\"><template><col></template><tbody>"]
         );
     }
 

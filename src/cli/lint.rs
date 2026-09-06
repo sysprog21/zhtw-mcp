@@ -41,13 +41,17 @@ pub(crate) struct LintBatchParams<'a> {
     pub(crate) exempt_blockquotes: bool,
     pub(crate) detect_ai: bool,
     pub(crate) detect_translationese: bool,
+    /// Advisory rhythm (氣口) axis. Never fixable at any tier: the findings
+    /// carry no suggestion, so every tier declines them for want of one.
+    pub(crate) rhythm: bool,
     /// Emit composite three-axis style scorecard alongside the per-axis
     /// ai_signature / translationese_signature reports.  Set only by
     /// `--detect-style` (which also flips detect_ai +
     /// detect_translationese).
     pub(crate) detect_style: bool,
     pub(crate) translationese_domain: zhtw_mcp::engine::translationese_score::TranslationeseDomain,
-    pub(crate) document_genre: zhtw_mcp::rules::ruleset::DocumentGenre,
+    pub(crate) document_genre: zhtw_mcp::rules::ruleset::AttributionGenre,
+    pub(crate) register: zhtw_mcp::rules::ruleset::RegisterMode,
     pub(crate) ai_threshold_multiplier: f32,
     pub(crate) tm_path: Option<PathBuf>,
     /// Project glossary (`[glossary]` section in `.zhtw-mcp.toml`).
@@ -135,8 +139,12 @@ fn build_lint_setup(
     if params.detect_translationese {
         cfg.translationese_detection = true;
     }
+    if params.rhythm {
+        cfg = cfg.with_rhythm(true);
+    }
     cfg.translationese_domain = params.translationese_domain;
     cfg.document_genre = params.document_genre;
+    cfg = cfg.with_register(params.register);
 
     // Build scanner once for all files, merging overrides + active packs.
     let ruleset = zhtw_mcp::rules::loader::load_embedded_ruleset()?;

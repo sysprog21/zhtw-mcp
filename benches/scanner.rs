@@ -450,7 +450,7 @@ fn bench_post_scan_transforms(c: &mut Criterion) {
 fn bench_cpu_attribution_100kb(c: &mut Criterion) {
     use zhtw_mcp::engine::scan::ContentType;
     use zhtw_mcp::engine::zhtype::detect_chinese_type;
-    use zhtw_mcp::rules::ruleset::{DocumentGenre, PoliticalStance, ProfileConfig};
+    use zhtw_mcp::rules::ruleset::{AttributionGenre, PoliticalStance, ProfileConfig};
 
     let ruleset = load_embedded_ruleset().expect("load embedded ruleset");
     let scanner = Scanner::new(ruleset.spelling_rules, ruleset.case_rules);
@@ -463,7 +463,7 @@ fn bench_cpu_attribution_100kb(c: &mut Criterion) {
     // All-off config: measures baseline overhead (detect_chinese_type + vec
     // alloc + sort). LineIndex is skipped (early-return on 0 issues).
     let cfg_none = ProfileConfig {
-        document_genre: DocumentGenre::Casual,
+        document_genre: AttributionGenre::Casual,
         spelling: false,
         casing: false,
         basic_punctuation: false,
@@ -486,6 +486,8 @@ fn bench_cpu_attribution_100kb(c: &mut Criterion) {
         political_stance: PoliticalStance::RocCentric,
         offset_only: false,
         exempt_blockquotes: false,
+        register: zhtw_mcp::rules::ruleset::RegisterMode::Auto,
+        rhythm: false,
     };
 
     // Spelling-only config.

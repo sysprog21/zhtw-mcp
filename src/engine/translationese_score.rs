@@ -186,7 +186,10 @@ const WEAK_VERB_PREFIXES: &[&str] = &["進行", "加以", "予以", "展開", "�
 // real bureaucratic nominalization ("進行討論" → "討論") rather than a literal
 // standalone use of the prefix ("進行" alone = "in progress"). Kept in sync
 // with src/engine/scan/grammar.rs NOMINALIZED_VERBS / VERBOSE_ACTION_OBJECTS so
-// the scoring signal aligns with per-issue flagging.
+// the scoring signal aligns with per-issue flagging. The register exemption
+// that licenses 予以 in a 公文 is deliberately not mirrored here: the score
+// measures the prose, and a formal document that leans on weak verbs is still
+// leaning on them.
 const WEAK_VERB_OBJECTS: &[&str] = &[
     "討論", "分析", "研究", "調查", "測試", "開發", "設計", "評估", "檢查", "審查", "修改", "更新",
     "比較", "溝通", "合作", "訓練", "處理", "管理", "規劃", "改善", "調整", "整合", "驗證", "觀察",
@@ -317,9 +320,16 @@ pub fn compute_translationese_score_with_domain(
     );
 
     // Signal 5: translationese issue density from per-occurrence detectors.
+    // Rhythm findings are Translationese too, but they only exist when the
+    // opt-in --rhythm axis is on, and this threshold was calibrated without
+    // them. Counting them would let a taste flag move the score.
     let trans_issue_count = issues
         .iter()
         .filter(|i| i.rule_type == IssueType::Translationese)
+        .filter(|i| {
+            !i.phase_family
+                .is_some_and(|(family, _)| family.is_advisory())
+        })
         .count();
     let trans_density = trans_issue_count as f32 / text_k;
     record(

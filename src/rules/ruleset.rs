@@ -30,26 +30,95 @@ pub enum Profile {
     Strict,
 }
 
-/// Intended register of the document being reviewed.
+/// What kind of sourcing the document is held to, for the one detector that
+/// asks: an unsupported authority attribution.
 ///
-/// Unlike the translationese domain, this selects the action suggested for an
-/// unsupported authority attribution. Casual prose can drop it; technical and
-/// financial prose must preserve the claim and name its source.
+/// Casual prose can drop the appeal; technical and financial prose must
+/// preserve the claim and name its source. It never suppresses a finding and
+/// never changes anything else.
+///
+/// Not to be confused with [`Register`], which this used to call itself. The
+/// two answer different questions and are not interchangeable. This one is a
+/// claim the caller makes about the subject matter, and it selects advice.
+/// `Register` is a property of the prose, read off the text, and it decides
+/// which detectors stay quiet. They are also not the same axis: a 公文 is
+/// formal whatever it is about, and a casual blog post about tax law is not.
+///
+/// The CLI flag stays `--document-genre` and the MCP parameter stays
+/// `document_genre`; only the Rust type carries the sharper name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum DocumentGenre {
+pub enum AttributionGenre {
     Casual,
     Technical,
     Financial,
 }
 
-impl DocumentGenre {
+impl AttributionGenre {
     pub fn from_str_strict(s: &str) -> Option<Self> {
         match s {
             "casual" => Some(Self::Casual),
             "technical" => Some(Self::Technical),
             "financial" => Some(Self::Financial),
             _ => None,
+        }
+    }
+}
+
+/// The register a document is actually written in, as the scan resolved it.
+///
+/// Distinct from `AttributionGenre`, which is a claim the caller makes about
+/// the
+/// subject matter and governs what to advise about an unsourced attribution.
+/// This one is a property of the prose: a 公文 opens 敬啟者 and closes 謹啟
+/// whatever it is about, and the forms a detector should stop objecting to are
+/// the ones that register mandates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Register {
+    Formal,
+    Casual,
+}
+
+/// What the caller asked for, which is what a batch-wide config can carry.
+///
+/// `Auto` is the default and resolves per document, because the register is a
+/// property of the text and one `ProfileConfig` serves a whole batch of files.
+/// The two explicit values are the caller's recourse when the heuristic reads
+/// a document wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegisterMode {
+    Auto,
+    Formal,
+    Casual,
+}
+
+impl RegisterMode {
+    pub fn from_str_strict(s: &str) -> Option<Self> {
+        match s {
+            "auto" => Some(Self::Auto),
+            "formal" => Some(Self::Formal),
+            "casual" => Some(Self::Casual),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Formal => "formal",
+            Self::Casual => "casual",
+        }
+    }
+
+    /// The register to scan `text` with: the caller's answer when they gave
+    /// one, the detector's otherwise.
+    pub fn resolve(self, text: &str) -> Register {
+        match self {
+            Self::Auto => crate::engine::register::detect_register(text),
+            Self::Formal => Register::Formal,
+            Self::Casual => Register::Casual,
         }
     }
 }
@@ -62,7 +131,7 @@ impl DocumentGenre {
 #[derive(Debug, Clone, Copy)]
 pub struct ProfileConfig {
     /// Register governing advice for unsupported authority attributions.
-    pub document_genre: DocumentGenre,
+    pub document_genre: AttributionGenre,
     /// Enable spelling rules (cross-strait, political, typo, confusable).
     pub spelling: bool,
     /// Enable case rules (proper noun casing).
@@ -122,6 +191,15 @@ pub struct ProfileConfig {
     /// blockquote prose is real content.  Opt-in via `--exempt-blockquotes`
     /// or `[markdown] exempt_blockquotes = true`.
     pub exempt_blockquotes: bool,
+    /// Register policy. `Auto` (the default and, for now, the only value any
+    /// caller sets) resolves per document from the text; the explicit values
+    /// wait on a flag to select them.
+    pub register: RegisterMode,
+    /// Enable the rhythm (氣口) advisory axis: over-long sentences,
+    /// sentence-ending monotony, and a relaxed 定語堆疊 gate.  Off by
+    /// default and never fixable, because rhythm is taste.  Composes with
+    /// any profile rather than being one, so a strict run can ask for it.
+    pub rhythm: bool,
 }
 
 impl ProfileConfig {
@@ -139,6 +217,18 @@ impl ProfileConfig {
         self.dunhao_detection = false;
         self.grammar_checks = false;
         self.range_en_dash = true;
+        self
+    }
+
+    /// Override the register policy, which is `Auto` unless a caller says so.
+    pub fn with_register(mut self, mode: RegisterMode) -> Self {
+        self.register = mode;
+        self
+    }
+
+    /// Apply the 'rhythm' capability: enable the advisory rhythm axis.
+    pub fn with_rhythm(mut self, on: bool) -> Self {
+        self.rhythm = on;
         self
     }
 
@@ -175,7 +265,7 @@ impl Profile {
     pub fn config(self) -> ProfileConfig {
         match self {
             Profile::Base => ProfileConfig {
-                document_genre: DocumentGenre::Casual,
+                document_genre: AttributionGenre::Casual,
                 spelling: true,
                 casing: true,
                 basic_punctuation: true,
@@ -198,9 +288,11 @@ impl Profile {
                 political_stance: PoliticalStance::RocCentric,
                 offset_only: false,
                 exempt_blockquotes: false,
+                register: RegisterMode::Auto,
+                rhythm: false,
             },
             Profile::Strict => ProfileConfig {
-                document_genre: DocumentGenre::Casual,
+                document_genre: AttributionGenre::Casual,
                 spelling: true,
                 casing: true,
                 basic_punctuation: true,
@@ -223,6 +315,8 @@ impl Profile {
                 political_stance: PoliticalStance::RocCentric,
                 offset_only: false,
                 exempt_blockquotes: false,
+                register: RegisterMode::Auto,
+                rhythm: false,
             },
         }
     }
@@ -552,6 +646,30 @@ pub enum PhaseFamily {
     FalseFriend,
     /// Stacked pre-modifier.
     LongPremodifier,
+    /// Rhythm (氣口): a stacked pre-modifier that only ZY5's relaxed gate
+    /// reports, so it is the taste flag speaking rather than the calibrated
+    /// detector, and it must not reach a calibrated score.
+    RhythmLongPremodifier,
+    /// Rhythm (氣口): a sentence that runs on without a breath.
+    RhythmLongSentence,
+    /// Rhythm (氣口): consecutive sentences closing on the same particle.
+    RhythmMonotony,
+}
+
+impl PhaseFamily {
+    /// Whether the finding comes from an opt-in advisory axis: excluded from
+    /// calibrated scores, and left alone by every fix tier.
+    ///
+    /// Rhythm findings carry `IssueType::Translationese` because that is what
+    /// they are, and the triage list should show them beside ZY5. The property
+    /// a caller needs is not that they are rhythm, though, but that a flag the
+    /// user opted into must not move a number calibrated without it.
+    pub fn is_advisory(self) -> bool {
+        matches!(
+            self,
+            Self::RhythmLongSentence | Self::RhythmMonotony | Self::RhythmLongPremodifier
+        )
+    }
 }
 
 /// Which pass of a paired detector produced a finding. The indexed pass knows

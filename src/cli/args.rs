@@ -85,11 +85,17 @@ pub(crate) struct LintArgs {
     pub(crate) consistency: bool,
     pub(crate) detect_ai: bool,
     pub(crate) detect_translationese: bool,
+    /// Advisory rhythm (氣口) axis: over-long sentences, sentence-ending
+    /// monotony, and a relaxed 定語堆疊 gate. Composes with any profile.
+    pub(crate) rhythm: bool,
     /// Emit the composite three-axis scorecard.  Set only by `--detect-style`,
     /// which also flips detect_ai and detect_translationese.
     pub(crate) detect_style: bool,
     pub(crate) translationese_domain: zhtw_mcp::engine::translationese_score::TranslationeseDomain,
-    pub(crate) document_genre: zhtw_mcp::rules::ruleset::DocumentGenre,
+    pub(crate) document_genre: zhtw_mcp::rules::ruleset::AttributionGenre,
+    /// Register policy. `Auto` reads it off the text; the explicit values are
+    /// the recourse when a 公文 opens on prose and the heuristic misses it.
+    pub(crate) register: zhtw_mcp::rules::ruleset::RegisterMode,
     pub(crate) ai_threshold_multiplier: f32,
     pub(crate) baseline_path: Option<PathBuf>,
     pub(crate) update_baseline: bool,
@@ -117,10 +123,12 @@ impl Default for LintArgs {
             consistency: false,
             detect_ai: false,
             detect_translationese: false,
+            rhythm: false,
             detect_style: false,
             translationese_domain:
                 zhtw_mcp::engine::translationese_score::TranslationeseDomain::General,
-            document_genre: zhtw_mcp::rules::ruleset::DocumentGenre::Casual,
+            document_genre: zhtw_mcp::rules::ruleset::AttributionGenre::Casual,
+            register: zhtw_mcp::rules::ruleset::RegisterMode::Auto,
             ai_threshold_multiplier: 1.0,
             baseline_path: None,
             update_baseline: false,
@@ -316,8 +324,11 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Cli> {
                 i += 1;
                 cli.config_path = Some(path_value(args.get(i), "--config requires a path")?);
             }
-            "--verbose" => {}
-            "--debug" => {}
+
+            // Read from the environment by the tracing setup, not here;
+            // accepted anywhere on the line so they can precede or follow a
+            // subcommand.
+            "--verbose" | "--debug" => {}
             _ => {
                 anyhow::bail!("unknown argument: {}", args[i]);
             }
@@ -326,6 +337,52 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Cli> {
     }
 
     Ok(cli)
+}
+
+/// Flags that take no value. Returns true when `arg` was one of them.
+///
+/// Split out of `parse_lint` because a bare switch is a one-line fact that does
+/// not need a match arm with a body. The parser was growing by three lines
+/// every time the CLI grew by one switch, which is why it was the longest
+/// function in the tree.
+///
+/// `--verify` is not here: it is cfg-gated and has to fail loudly rather than
+/// silently when the `translate` feature is off.
+fn set_bare_flag(arg: &str, lint: &mut LintArgs) -> bool {
+    let field = match arg {
+        "--relaxed" => &mut lint.relaxed,
+        "--exempt-blockquotes" => &mut lint.exempt_blockquotes,
+        "--consistency" => &mut lint.consistency,
+        "--dry-run" => &mut lint.dry_run,
+        "--explain" => &mut lint.explain,
+        "--update-baseline" => &mut lint.update_baseline,
+        "--detect-translationese" => &mut lint.detect_translationese,
+        "--rhythm" => &mut lint.rhythm,
+        "--telemetry" => &mut lint.telemetry,
+        // Read by the driver before parse_lint runs; accepted and ignored here.
+        "--verbose" | "--debug" => return true,
+        _ => return false,
+    };
+    *field = true;
+    true
+}
+
+/// Parse a `--flag value` whose value is one of a fixed set.
+///
+/// The enum-valued flags had the same eight lines each, differing only in the
+/// type and in the list repeated twice in the messages. Both messages are
+/// generated from one `expected` string so they cannot drift apart.
+fn enum_value<T>(
+    rest: &[String],
+    i: usize,
+    flag: &str,
+    expected: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> Result<T> {
+    let next = rest
+        .get(i + 1)
+        .with_context(|| format!("{flag} requires a value ({expected})"))?;
+    parse(next).with_context(|| format!("unknown {flag} value '{next}' (expected: {expected})"))
 }
 
 /// Parse the arguments after `lint`.
@@ -340,6 +397,10 @@ fn parse_lint(rest: &[String]) -> Result<(LintArgs, usize)> {
     let mut i = 0;
 
     while i < rest.len() {
+        if set_bare_flag(&rest[i], &mut lint) {
+            i += 1;
+            continue;
+        }
         match rest[i].as_str() {
             "--format" => {
                 i += 1;
@@ -377,15 +438,6 @@ fn parse_lint(rest: &[String]) -> Result<(LintArgs, usize)> {
                 i += 1;
                 lint.profile = Some(rest.get(i).context("--profile requires a value")?.clone());
             }
-            "--relaxed" => {
-                lint.relaxed = true;
-            }
-            "--exempt-blockquotes" => {
-                lint.exempt_blockquotes = true;
-            }
-            "--consistency" => {
-                lint.consistency = true;
-            }
             "--content-type" => {
                 i += 1;
                 lint.content_type = Some(validated_content_type(rest.get(i))?);
@@ -410,19 +462,10 @@ fn parse_lint(rest: &[String]) -> Result<(LintArgs, usize)> {
                     &arg[6..]
                 );
             }
-            "--dry-run" => {
-                lint.dry_run = true;
-            }
-            "--explain" => {
-                lint.explain = true;
-            }
             "--baseline" => {
                 i += 1;
                 lint.baseline_path =
                     Some(path_value(rest.get(i), "--baseline requires a file path")?);
-            }
-            "--update-baseline" => {
-                lint.update_baseline = true;
             }
             "--diff-from" => {
                 i += 1;
@@ -439,35 +482,35 @@ fn parse_lint(rest: &[String]) -> Result<(LintArgs, usize)> {
                     i += 1;
                 }
             }
-            "--detect-translationese" => {
-                lint.detect_translationese = true;
-            }
+            // Per-domain threshold calibration for the translationese score.
             "--translationese-domain" => {
-                // Per-domain threshold calibration for the
-                // translationese score: general | technical |
-                // literary | news.
-                let next = rest.get(i + 1).context(
-                    "--translationese-domain requires a value (general|technical|literary|news)",
+                lint.translationese_domain = enum_value(
+                    rest,
+                    i,
+                    "--translationese-domain",
+                    "general|technical|literary|news",
+                    zhtw_mcp::engine::translationese_score::TranslationeseDomain::from_str_strict,
                 )?;
-                let domain =
-                    zhtw_mcp::engine::translationese_score::TranslationeseDomain::from_str_strict(
-                        next,
-                    );
-                lint.translationese_domain = domain.with_context(|| {
-                    format!(
-                        "unknown --translationese-domain value '{next}' (expected: general|technical|literary|news)"
-                    )
-                })?;
                 i += 1;
             }
             "--document-genre" => {
-                let next = rest
-                    .get(i + 1)
-                    .context("--document-genre requires a value (casual|technical|financial)")?;
-                lint.document_genre = zhtw_mcp::rules::ruleset::DocumentGenre::from_str_strict(next)
-                    .with_context(|| format!(
-                        "unknown --document-genre value '{next}' (expected: casual|technical|financial)"
-                    ))?;
+                lint.document_genre = enum_value(
+                    rest,
+                    i,
+                    "--document-genre",
+                    "casual|technical|financial",
+                    zhtw_mcp::rules::ruleset::AttributionGenre::from_str_strict,
+                )?;
+                i += 1;
+            }
+            "--register" => {
+                lint.register = enum_value(
+                    rest,
+                    i,
+                    "--register",
+                    "auto|formal|casual",
+                    zhtw_mcp::rules::ruleset::RegisterMode::from_str_strict,
+                )?;
                 i += 1;
             }
             "--detect-style" => {
@@ -490,11 +533,6 @@ fn parse_lint(rest: &[String]) -> Result<(LintArgs, usize)> {
             }
             #[cfg(not(feature = "translate"))]
             "--verify" => anyhow::bail!("{VERIFY_NEEDS_TRANSLATE}"),
-            "--telemetry" => {
-                lint.telemetry = true;
-            }
-            "--verbose" => {}
-            "--debug" => {}
             _ => {
                 lint.files.push(rest[i].clone());
             }
@@ -755,6 +793,19 @@ mod tests {
         assert_eq!(lint.max_errors, None);
         assert!(lint.fix_mode.is_none());
         assert!(!lint.detect_ai);
+        assert!(!lint.rhythm);
+    }
+
+    #[test]
+    fn rhythm_is_a_bare_flag_that_composes() {
+        let lint = lint_of(&["lint", "--rhythm", "a.md"]);
+        assert!(lint.rhythm);
+        assert_eq!(lint.files, ["a.md"], "--rhythm ate the file");
+
+        // It is a capability, not a profile: it must survive beside one.
+        let lint = lint_of(&["lint", "--profile", "strict", "--rhythm", "a.md"]);
+        assert!(lint.rhythm);
+        assert_eq!(lint.profile.as_deref(), Some("strict"));
     }
 
     #[test]
@@ -896,11 +947,36 @@ mod tests {
         let lint = lint_of(&["lint", "a.md", "--document-genre", "financial"]);
         assert!(matches!(
             lint.document_genre,
-            zhtw_mcp::rules::ruleset::DocumentGenre::Financial
+            zhtw_mcp::rules::ruleset::AttributionGenre::Financial
         ));
         assert!(
             err_of(&["lint", "--document-genre", "poetic"]).contains("unknown --document-genre")
         );
+    }
+
+    #[test]
+    fn register_defaults_to_auto() {
+        let lint = lint_of(&["lint", "a.md"]);
+        assert!(matches!(
+            lint.register,
+            zhtw_mcp::rules::ruleset::RegisterMode::Auto
+        ));
+    }
+
+    #[test]
+    fn register_is_validated() {
+        let lint = lint_of(&["lint", "a.md", "--register", "formal"]);
+        assert!(matches!(
+            lint.register,
+            zhtw_mcp::rules::ruleset::RegisterMode::Formal
+        ));
+        let lint = lint_of(&["lint", "a.md", "--register", "casual"]);
+        assert!(matches!(
+            lint.register,
+            zhtw_mcp::rules::ruleset::RegisterMode::Casual
+        ));
+        assert!(err_of(&["lint", "--register", "poetic"]).contains("unknown --register"));
+        assert!(err_of(&["lint", "--register"]).contains("--register requires a value"));
     }
 
     #[test]

@@ -673,8 +673,12 @@ struct HeadPair<'a> {
     right: &'a [&'a str],
 }
 
-/// Clause boundaries used by ZY3a / ZY4a: the full-width and ASCII commas,
-/// semicolons, periods and terminal marks, plus the newline.
+/// Clause boundaries used by ZY3a / ZY4a: the full-width comma, period,
+/// semicolon, exclamation and question marks, their ASCII counterparts except
+/// the period, and the newline.
+///
+/// The ASCII period stays out because it also sits inside a version number, a
+/// file name and an abbreviation, where it ends nothing.
 fn is_clause_boundary_char(ch: char) -> bool {
     // The terminal marks belong here as much as the full stop does: without
     // them 的實施！那個效果的提升 reads as one clause and ZY3a chains two

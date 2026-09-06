@@ -2421,6 +2421,24 @@ fn ai_binary_contrast_ignores_pairs_inside_an_excluded_span() {
     };
 
     assert!(fires(&[]), "prose contrast pairs should be counted");
+
+    // A turn word inside markup is no more the author's contrast than a start
+    // word inside it, so covering only the turns must also silence the count.
+    let turns_only: Vec<ByteRange> = ["但", "還"]
+        .iter()
+        .flat_map(|t| {
+            text.match_indices(t)
+                .map(|(at, m)| ByteRange {
+                    start: at,
+                    end: at + m.len(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert!(
+        !fires(&turns_only),
+        "pairs whose turn word is excluded must not be counted"
+    );
     let covered = vec![ByteRange {
         start: filler.len(),
         end: text.len(),

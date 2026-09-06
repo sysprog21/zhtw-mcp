@@ -471,19 +471,27 @@ pub(super) fn is_para_excluded(start: usize, end: usize, excluded: &[ByteRange])
 // Binary contrast density: AI overuses paired transition patterns. Counts
 // intra-sentence double turns, progressive, and concessive patterns. Threshold:
 // >5 per 1000 chars is AI-typical (human baseline: 2-3).
-/// Offset of a binary-contrast construction in `sentence`: a start word with
-/// one of its turn words somewhere after it.
+/// Byte offsets of a binary-contrast construction in `sentence`: where the
+/// start word begins, and where the turn word that answers it begins.
+///
+/// Both, because the caller has to know that neither half sits in excluded
+/// markup. A pair whose start is prose and whose turn is inside a code span is
+/// not a contrast the author wrote.
 ///
 /// Only the first start word that occurs at all is considered, whether or not
 /// a turn follows it, which is what keeps one sentence from being counted
 /// twice for the same construction.
-fn contrast_hit(sentence: &str, starts: &[&str], turns: &[&str]) -> Option<usize> {
+fn contrast_hit(sentence: &str, starts: &[&str], turns: &[&str]) -> Option<(usize, usize)> {
     for &start_word in starts {
         let Some(pos) = sentence.find(start_word) else {
             continue;
         };
-        let after = &sentence[pos + start_word.len()..];
-        return turns.iter().any(|turn| after.contains(turn)).then_some(pos);
+        let after_start = pos + start_word.len();
+        let after = &sentence[after_start..];
+        return turns
+            .iter()
+            .find_map(|turn| after.find(turn))
+            .map(|turn_pos| (pos, after_start + turn_pos));
     }
     None
 }
@@ -522,15 +530,20 @@ pub(super) fn scan_ai_binary_contrast(em: &mut Emitter<'_>, threshold_multiplier
                 (progressive_starts, progressive_turns),
             ];
             for (starts, turns) in patterns {
-                let Some(pos) = contrast_hit(sentence, starts, turns) else {
+                let Some((pos, turn_pos)) = contrast_hit(sentence, starts, turns) else {
                     continue;
                 };
 
                 // Per match, not per paragraph: the gate above only skips a
                 // paragraph that is wholly excluded, so a contrast pair inside
-                // an inline code span in prose still reached the count.
+                // an inline code span in prose still reached the count. Both
+                // ends are checked, because a turn word in markup is no more
+                // the author's contrast than a start word in it.
                 let abs = sent_start + pos;
-                if is_excluded(abs, abs + 1, excluded) {
+                let abs_turn = sent_start + turn_pos;
+                if is_excluded(abs, abs + 1, excluded)
+                    || is_excluded(abs_turn, abs_turn + 1, excluded)
+                {
                     continue;
                 }
                 count += 1;

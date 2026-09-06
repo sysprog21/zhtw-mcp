@@ -1980,6 +1980,21 @@ fn ai_vague_exaggeration_no_year() {
     assert!(issues.is_empty());
 }
 
+#[test]
+fn ai_vague_exaggeration_ignores_a_calendar_year() {
+    // A digit anywhere plus a 年 anywhere used to match, so a sentence that
+    // merely dated something read as a claim to lead the field by years.
+    for text in [
+        "這項技術領先業界，2025年將全面推出",
+        "該設計超越同期產品，1999年首次發表",
+    ] {
+        assert!(
+            scan_ai(text).is_empty(),
+            "calendar year read as a lead claim: {text}"
+        );
+    }
+}
+
 // -- IssueType::AiStyle plumbing --
 
 // -- AI density detection tests --
@@ -2386,6 +2401,34 @@ fn ai_zero_width_excluded() {
         .filter(|i| i.context.as_ref().is_some_and(|c| c.contains("隱形字元")))
         .collect();
     assert!(zw.is_empty(), "excluded zero-width should not be detected");
+}
+
+#[test]
+fn ai_binary_contrast_ignores_pairs_inside_an_excluded_span() {
+    // The paragraph gate only skips a paragraph that is wholly excluded, so a
+    // contrast pair inside an inline code span in prose used to reach the
+    // count. The detector needs 500 characters before it will look at all.
+    let filler = "這是一段普通的說明文字用來把長度撐過門檻。".repeat(26);
+    let pairs = "雖然快但貴。雖然強但慢。雖然新但貴。不僅快還穩。不僅強還省。";
+    let text = format!("{filler}{pairs}");
+
+    let fires = |excluded: &[ByteRange]| {
+        let mut issues = Vec::new();
+        scan_ai_structural(&mut Emitter::new(&text, excluded, &mut issues), 1.0);
+        issues
+            .iter()
+            .any(|i| i.context.as_ref().is_some_and(|c| c.contains("二元對比")))
+    };
+
+    assert!(fires(&[]), "prose contrast pairs should be counted");
+    let covered = vec![ByteRange {
+        start: filler.len(),
+        end: text.len(),
+    }];
+    assert!(
+        !fires(&covered),
+        "pairs inside an excluded span must not be counted"
+    );
 }
 
 #[test]

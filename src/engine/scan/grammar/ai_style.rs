@@ -353,25 +353,28 @@ pub(super) fn scan_ai_vague_exaggeration(em: &mut Emitter<'_>) {
             let lookahead_end = text.ceil_char_boundary(lookahead_end);
             let lookahead = &text[verb_end..lookahead_end];
 
-            let has_object = OBJECTS.iter().any(|obj| {
-                if let Some(obj_pos) = lookahead.find(obj) {
-                    // Check for digits followed by 年 after the object
-                    let after_obj = &lookahead[obj_pos + obj.len()..];
-                    // Skip up to 12 bytes of gap, then look for digit+年
-                    let win_end = after_obj.floor_char_boundary(after_obj.len().min(20));
-                    let check_window = &after_obj[..win_end];
-                    check_window.chars().any(|c| c.is_ascii_digit()) && check_window.contains('年')
-                } else {
-                    false
+            // The claim is a lead measured in years, so the digits have to run
+            // into the 年 itself. Any digit plus any 年 in the window also
+            // matched a sentence that merely mentioned a calendar year, and the
+            // span then ended at whichever 年 came first rather than at the one
+            // that matched. A duration carries one or two digits; four is a
+            // year, not a lead.
+            let duration_end = OBJECTS.iter().find_map(|obj| {
+                let obj_pos = lookahead.find(obj)?;
+                let after_obj_start = obj_pos + obj.len();
+                let after_obj = &lookahead[after_obj_start..];
+                let win_end = after_obj.floor_char_boundary(after_obj.len().min(20));
+                let mut digits = 0usize;
+                for (i, c) in after_obj[..win_end].char_indices() {
+                    if c == '年' && (1..=2).contains(&digits) {
+                        return Some(verb_end + after_obj_start + i + '年'.len_utf8());
+                    }
+                    digits = if c.is_ascii_digit() { digits + 1 } else { 0 };
                 }
+                None
             });
 
-            if has_object {
-                // Find the end of the pattern (up to 年)
-                let pattern_end = text[verb_end..lookahead_end]
-                    .find('年')
-                    .map(|i| verb_end + i + '年'.len_utf8())
-                    .unwrap_or(verb_end);
+            if let Some(pattern_end) = duration_end {
                 let full_text = &text[abs_pos..pattern_end];
 
                 issues.push(ai_style_issue(
@@ -522,8 +525,16 @@ pub(super) fn scan_ai_binary_contrast(em: &mut Emitter<'_>, threshold_multiplier
                 let Some(pos) = contrast_hit(sentence, starts, turns) else {
                     continue;
                 };
+
+                // Per match, not per paragraph: the gate above only skips a
+                // paragraph that is wholly excluded, so a contrast pair inside
+                // an inline code span in prose still reached the count.
+                let abs = sent_start + pos;
+                if is_excluded(abs, abs + 1, excluded) {
+                    continue;
+                }
                 count += 1;
-                first_offset.get_or_insert(sent_start + pos);
+                first_offset.get_or_insert(abs);
             }
         }
     }

@@ -33,9 +33,11 @@ const FORMAL_ANCHORS: &[&str] = &[
 // note short enough to be all head is exactly the casual writing that then lost
 // its findings.
 //
-// Missing a contract whose opening never says 本合約 is the cheaper mistake,
-// for the same reason the anchors take a boundary test.
-const FORMAL_HEAD_MARKERS: &[&str] = &["本合約", "該合約", "此合約", "本契約", "該契約", "此契約"];
+// 本 only. 該合約 and 此合約 are anaphoric, which is how an article refers to a
+// contract it has just named, so they carry no evidence that the document in
+// hand is the contract. Missing a contract whose opening never says 本合約 is
+// the cheaper mistake, for the same reason the anchors take a boundary test.
+const FORMAL_HEAD_MARKERS: &[&str] = &["本合約", "本契約"];
 
 // How much of the document counts as the head for the weaker markers.
 const FORMAL_HEAD_CHARS: usize = 100;
@@ -77,10 +79,11 @@ pub(crate) fn detect_register(text: &str) -> Register {
         return Register::Formal;
     }
     let head_end = char_bounded_end(text, 0, FORMAL_HEAD_CHARS);
-    if FORMAL_HEAD_MARKERS
-        .iter()
-        .any(|m| text[..head_end].contains(m))
-    {
+    let head = &text[..head_end];
+    if FORMAL_HEAD_MARKERS.iter().any(|m| {
+        head.match_indices(m)
+            .any(|(at, _)| starts_a_phrase(head, at))
+    }) {
         return Register::Formal;
     }
     Register::Casual
@@ -165,6 +168,29 @@ mod tests {
         let text = format!("{padding}本合約之當事人如下。");
         assert!(text.chars().count() > FORMAL_HEAD_CHARS);
         assert_eq!(detect_register(&text), Register::Casual);
+    }
+
+    #[test]
+    fn an_anaphoric_contract_reference_is_not_self_reference() {
+        // 該合約 is how an article refers to a contract it has just named, not
+        // how a contract refers to itself.
+        for text in [
+            "該合約價值十億美元，我們予以處理。",
+            "此合約的爭議點在於付款條件。",
+            "這篇文章討論合約與契約的差異。",
+        ] {
+            assert_eq!(detect_register(text), Register::Casual, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_place_name_ending_in_the_determiner_is_not_a_contract() {
+        // 本合約 sits inside 日本合約, which is a contract with Japan rather
+        // than a contract naming itself.
+        assert_eq!(
+            detect_register("日本合約的談判仍在進行。"),
+            Register::Casual
+        );
     }
 
     #[test]

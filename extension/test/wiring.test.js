@@ -94,11 +94,13 @@ test("shared.js and format.js do not both define the same helper", () => {
   assert.deepEqual(overlap, [], `defined in both shared.js and format.js: ${overlap}`);
 });
 
-// The lang payload crosses into Rust through serde, and ScanOptions carries
-// #[serde(default)] at the container level: a field the scanner no longer
-// recognizes is not an error, it is silently absent, and the extension quietly
-// stops honoring lang with nothing in any console to say so.  Reading the
-// struct is the only way this side can notice.
+// The lang payload crosses into Rust through serde, which ignores a field the
+// struct does not declare unless the struct opts into #[serde(deny_unknown_fields)],
+// and ScanOptions does not.  Rename or drop lang_spans on the Rust side and this
+// side goes on sending it: not an error, just silently absent, and the extension
+// stops honoring lang with nothing in any console to say so.  (The container's
+// #[serde(default)] is the other half, and a different one: it fills in a field
+// the payload omits.)  Reading the struct is the only way this side can notice.
 const wasmSource = readFileSync(
   fileURLToPath(new URL("../../src/wasm.rs", import.meta.url)),
   "utf8",

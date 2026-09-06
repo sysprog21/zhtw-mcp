@@ -1206,8 +1206,18 @@ impl Scanner {
                     // keeps the bound next to the code that relies on it. A
                     // range that is empty, inverted, or wholly past the end
                     // then falls out of map_range_forward.
+                    //
+                    // The bound is the original length, not the normalized one,
+                    // because the caller measured the range against the text it
+                    // handed in. Composition makes the normalized text the
+                    // shorter of the two, so clipping against it would cut a
+                    // range that ends near the tail, and once the shrink
+                    // exceeds the run's own length the range collapses and is
+                    // dropped. The offset map's last entry is the original
+                    // length, so this bound is also what keeps the mapped end
+                    // inside the normalized text.
                     excl.extend(caller_excluded.iter().filter_map(|r| {
-                        map_range_forward(&norm.offset_map, r.start, r.end.min(scan_text.len()))
+                        map_range_forward(&norm.offset_map, r.start, r.end.min(text.len()))
                             .map(|(start, end)| ByteRange { start, end })
                     }));
 

@@ -126,6 +126,24 @@ fn caller_ranges_survive_nfc_normalization() {
 }
 
 #[test]
+fn a_range_reaching_the_end_survives_a_large_nfc_shrink() {
+    // The end of a caller range is clipped before it is mapped, and the bound
+    // has to be the original length rather than the normalized one. Seven
+    // decomposed characters shrink the text by more than the term after them is
+    // long, so a bound taken from the normalized text would push the end below
+    // the range's own start and drop the range entirely.
+    //
+    // The earlier NFC test does not catch this: its range ends on a character
+    // nothing flags, so truncating it still overlaps the term it protects.
+    let text = format!("{} 软件", "e\u{301}".repeat(7));
+    let found = plain_hits(&text, &[from_term(&text)]);
+    assert!(
+        found.is_empty(),
+        "caller range was clipped against the normalized length: {found:?}"
+    );
+}
+
+#[test]
 fn a_range_past_the_end_of_the_text_silences_nothing() {
     let text = "用 软件, 對";
     let past_end = ByteRange {

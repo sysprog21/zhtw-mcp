@@ -136,6 +136,7 @@ const MAX_DEPTH: usize = 512;
 /// lets it skip the walk rather than scan a stack that cannot answer.
 const IMPLICITLY_CLOSABLE: &[&str] = &[
     "p", "li", "dt", "dd", "td", "th", "tr", "thead", "tbody", "option", "optgroup", "rt", "rp",
+    "colgroup",
 ];
 
 /// Whether an open element is implicitly closed when "incoming" starts.
@@ -155,6 +156,9 @@ fn closed_implicitly_by(open: &str, incoming: &str) -> bool {
         "option" => matches!(incoming, "option" | "optgroup"),
         "optgroup" => incoming == "optgroup",
         "rt" | "rp" => matches!(incoming, "rt" | "rp"),
+        // Only a col stays inside a colgroup, so anything else ends it. Without
+        // this a lang on a column group went on scoping the rest of the table.
+        "colgroup" => incoming != "col",
         _ => false,
     }
 }
@@ -688,6 +692,25 @@ mod tests {
         assert_eq!(
             excluded_text("<table><tr><td lang=\"en\">EN<td>ZH</table>"),
             vec!["<td lang=\"en\">EN<td>"]
+        );
+    }
+
+    #[test]
+    fn a_column_group_ends_at_the_first_thing_that_is_not_a_col() {
+        // colgroup's end tag is optional, so the table body ends it. Left open,
+        // a lang on it scoped the rest of the table.
+        assert_eq!(
+            excluded_text("<table><colgroup lang=\"en\"><tbody><tr><td>ZH</table>"),
+            vec!["<colgroup lang=\"en\"><tbody>"]
+        );
+    }
+
+    #[test]
+    fn a_column_group_survives_its_own_cols() {
+        let text = "<table><colgroup lang=\"en\"><col><col><tbody><tr><td>ZH</table>";
+        assert_eq!(
+            excluded_text(text),
+            vec!["<colgroup lang=\"en\"><col><col><tbody>"]
         );
     }
 

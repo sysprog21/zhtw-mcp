@@ -65,6 +65,9 @@ Options:
   --diff-from <ref>         Lint only files changed since a git ref
   --detect-ai [level]       AI-filler detection; optional low|medium|high
   --detect-translationese   Translationese scoring
+  --rhythm                  Advisory rhythm (氣口) checks: over-long
+                            sentences, sentence-ending monotony, relaxed
+                            定語堆疊 gate. Never applied by --fix
   --translationese-domain <d>  general|technical|literary|news
   --detect-style [level]    Both detectors plus a composite scorecard
                             (requires --format json)
@@ -150,6 +153,38 @@ success. Process a file if you need both the report and the text.
 `editorial_confidence: low` terms unattended regardless of any `--fix` setting.
 Conversion is a whole-document rewrite of Simplified input, where leaving the
 judgment calls half-converted would be the worse outcome.
+
+### The rhythm axis
+
+```bash
+zhtw-mcp lint file.md --rhythm
+```
+
+`--rhythm` turns on the 氣口 checks: a sentence that runs past 30 CJK
+characters without a pause, three or more consecutive sentences closing on the
+same particle (的 / 了 / 呢), and a relaxed 定語堆疊 gate that no longer asks a
+long unbroken span to contain several 的 before reporting it.
+
+Everything it reports is advisory. Rhythm findings carry `Info` severity, offer
+no suggestion, and are declined by every `--fix` tier including
+`lexical_contextual`; `zhtw-mcp convert` does not act on them either. Rhythm is
+taste, and the fixer is not.
+
+Length is measured in CJK ideographs, so an identifier, a version number or a
+URL does not make a sentence long. A sentence whose longest pause-free run is
+under 15 CJK characters is never reported however long it is overall: a 頓號
+list, a parenthetical aside and a dash-introduced fragment all already contain
+the pause the rule is asking for.
+
+The flag composes with any profile rather than being one, and it changes
+nothing when absent: without it the output is what it was before the axis
+existed. It also stays out of the translationese score, whose thresholds were
+calibrated against the detectors that run by default.
+
+There is no cross-guard against the AI score. `good-writing-tw` warns that
+均質化本身就是新的 AI tell, and it is right, but the AI score no longer draws on
+sentence-length variability at all, so there is no threshold for splitting long
+sentences to trip. Treat the advice as advice.
 
 ### Explaining flagged terms
 

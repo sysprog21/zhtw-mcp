@@ -122,6 +122,11 @@ pub struct ProfileConfig {
     /// blockquote prose is real content.  Opt-in via `--exempt-blockquotes`
     /// or `[markdown] exempt_blockquotes = true`.
     pub exempt_blockquotes: bool,
+    /// Enable the rhythm (氣口) advisory axis: over-long sentences,
+    /// sentence-ending monotony, and a relaxed 定語堆疊 gate.  Off by
+    /// default and never fixable, because rhythm is taste.  Composes with
+    /// any profile rather than being one, so a strict run can ask for it.
+    pub rhythm: bool,
 }
 
 impl ProfileConfig {
@@ -139,6 +144,12 @@ impl ProfileConfig {
         self.dunhao_detection = false;
         self.grammar_checks = false;
         self.range_en_dash = true;
+        self
+    }
+
+    /// Apply the 'rhythm' capability: enable the advisory rhythm axis.
+    pub fn with_rhythm(mut self, on: bool) -> Self {
+        self.rhythm = on;
         self
     }
 
@@ -198,6 +209,7 @@ impl Profile {
                 political_stance: PoliticalStance::RocCentric,
                 offset_only: false,
                 exempt_blockquotes: false,
+                rhythm: false,
             },
             Profile::Strict => ProfileConfig {
                 document_genre: DocumentGenre::Casual,
@@ -223,6 +235,7 @@ impl Profile {
                 political_stance: PoliticalStance::RocCentric,
                 offset_only: false,
                 exempt_blockquotes: false,
+                rhythm: false,
             },
         }
     }
@@ -552,6 +565,24 @@ pub enum PhaseFamily {
     FalseFriend,
     /// Stacked pre-modifier.
     LongPremodifier,
+    /// Rhythm (氣口): a sentence that runs on without a breath.
+    RhythmLongSentence,
+    /// Rhythm (氣口): consecutive sentences closing on the same particle.
+    RhythmMonotony,
+}
+
+impl PhaseFamily {
+    /// Whether the finding comes from the advisory rhythm axis.
+    ///
+    /// Rhythm findings carry `IssueType::Translationese` because that is what
+    /// they are: 氣口 is the same axis ZY5 already measures, and the triage
+    /// list should show them beside it. They are kept out of the
+    /// translationese score's issue-density signal all the same, because that
+    /// threshold was calibrated against the detectors that run by default and
+    /// an opt-in taste flag must not move a calibrated number.
+    pub fn is_rhythm(self) -> bool {
+        matches!(self, Self::RhythmLongSentence | Self::RhythmMonotony)
+    }
 }
 
 /// Which pass of a paired detector produced a finding. The indexed pass knows

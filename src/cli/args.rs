@@ -85,6 +85,9 @@ pub(crate) struct LintArgs {
     pub(crate) consistency: bool,
     pub(crate) detect_ai: bool,
     pub(crate) detect_translationese: bool,
+    /// Advisory rhythm (氣口) axis: over-long sentences, sentence-ending
+    /// monotony, and a relaxed 定語堆疊 gate. Composes with any profile.
+    pub(crate) rhythm: bool,
     /// Emit the composite three-axis scorecard.  Set only by `--detect-style`,
     /// which also flips detect_ai and detect_translationese.
     pub(crate) detect_style: bool,
@@ -117,6 +120,7 @@ impl Default for LintArgs {
             consistency: false,
             detect_ai: false,
             detect_translationese: false,
+            rhythm: false,
             detect_style: false,
             translationese_domain:
                 zhtw_mcp::engine::translationese_score::TranslationeseDomain::General,
@@ -442,6 +446,9 @@ fn parse_lint(rest: &[String]) -> Result<(LintArgs, usize)> {
             "--detect-translationese" => {
                 lint.detect_translationese = true;
             }
+            "--rhythm" => {
+                lint.rhythm = true;
+            }
             "--translationese-domain" => {
                 // Per-domain threshold calibration for the
                 // translationese score: general | technical |
@@ -755,6 +762,19 @@ mod tests {
         assert_eq!(lint.max_errors, None);
         assert!(lint.fix_mode.is_none());
         assert!(!lint.detect_ai);
+        assert!(!lint.rhythm);
+    }
+
+    #[test]
+    fn rhythm_is_a_bare_flag_that_composes() {
+        let lint = lint_of(&["lint", "--rhythm", "a.md"]);
+        assert!(lint.rhythm);
+        assert_eq!(lint.files, ["a.md"], "--rhythm ate the file");
+
+        // It is a capability, not a profile: it must survive beside one.
+        let lint = lint_of(&["lint", "--profile", "strict", "--rhythm", "a.md"]);
+        assert!(lint.rhythm);
+        assert_eq!(lint.profile.as_deref(), Some("strict"));
     }
 
     #[test]

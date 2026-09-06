@@ -41,6 +41,9 @@ pub(crate) struct LintBatchParams<'a> {
     pub(crate) exempt_blockquotes: bool,
     pub(crate) detect_ai: bool,
     pub(crate) detect_translationese: bool,
+    /// Advisory rhythm (氣口) axis. Never fixable at any tier: the findings
+    /// carry no suggestion, so every tier declines them for want of one.
+    pub(crate) rhythm: bool,
     /// Emit composite three-axis style scorecard alongside the per-axis
     /// ai_signature / translationese_signature reports.  Set only by
     /// `--detect-style` (which also flips detect_ai +
@@ -134,6 +137,9 @@ fn build_lint_setup(
     }
     if params.detect_translationese {
         cfg.translationese_detection = true;
+    }
+    if params.rhythm {
+        cfg = cfg.with_rhythm(true);
     }
     cfg.translationese_domain = params.translationese_domain;
     cfg.document_genre = params.document_genre;

@@ -264,6 +264,7 @@ fn run_lint(
         relaxed: eff_relaxed,
         exempt_blockquotes: eff_exempt_blockquotes,
         detect_ai: lint.detect_ai,
+        rhythm: lint.rhythm,
         detect_translationese: lint.detect_translationese,
         detect_style: lint.detect_style,
         translationese_domain: lint.translationese_domain,

@@ -317,9 +317,13 @@ pub fn compute_translationese_score_with_domain(
     );
 
     // Signal 5: translationese issue density from per-occurrence detectors.
+    // Rhythm findings are Translationese too, but they only exist when the
+    // opt-in --rhythm axis is on, and this threshold was calibrated without
+    // them. Counting them would let a taste flag move the score.
     let trans_issue_count = issues
         .iter()
         .filter(|i| i.rule_type == IssueType::Translationese)
+        .filter(|i| !i.phase_family.is_some_and(|(family, _)| family.is_rhythm()))
         .count();
     let trans_density = trans_issue_count as f32 / text_k;
     record(

@@ -164,6 +164,33 @@ fn is_sentence_end(ch: char) -> bool {
 }
 
 // Clause-level delimiters (includes commas, semicolons).
+/// The part of a forward window that stays inside the sentence it opens in.
+///
+/// A detector pairing an opener with a closer is describing one sentence, so a
+/// window that runs past a terminal mark is reading unrelated prose. Every
+/// caller here searches a raw byte window, which is what let 最好的方法。其中
+/// 之一 pair across a full stop.
+pub(super) fn within_one_sentence(window: &str) -> &str {
+    match window.char_indices().find(|&(_, ch)| is_sentence_end(ch)) {
+        Some((at, _)) => &window[..at],
+        None => window,
+    }
+}
+
+/// The part of a backward window that stays inside the sentence it ends in.
+///
+/// Returns the kept slice and how many bytes were dropped from the front, so a
+/// caller that maps a hit back to an absolute offset can correct for the trim.
+pub(super) fn since_sentence_start(window: &str) -> (&str, usize) {
+    match window.char_indices().rfind(|&(_, ch)| is_sentence_end(ch)) {
+        Some((at, ch)) => {
+            let from = at + ch.len_utf8();
+            (&window[from..], from)
+        }
+        None => (window, 0),
+    }
+}
+
 fn is_clause_boundary(ch: char) -> bool {
     is_sentence_end(ch) || matches!(ch, '，' | ',' | '；' | ';' | '：' | ':')
 }

@@ -30,9 +30,12 @@ pub(super) fn ai_style_issue(
     .with_context(context)
 }
 
-// Context clues for definition sense of 意味著 → 表示.
+// Context clues for definition sense of 意味著 → 表示. 即 on its own is not
+// here: it matches inside 即使, 即將 and 立即, so an ordinary sentence that
+// merely opens on 即使 was read as a definition. 亦即 is the form that actually
+// marks one and cannot be a prefix of those.
 const YIWEIZHE_DEFINITION_CLUES: &[&str] =
-    &["定義", "是指", "就是", "即", "所謂", "稱為", "指的是"];
+    &["定義", "是指", "就是", "亦即", "所謂", "稱為", "指的是"];
 
 // Context clues for consequence sense of 意味著 → 代表.
 const YIWEIZHE_CONSEQUENCE_CLUES: &[&str] = &[
@@ -53,7 +56,31 @@ pub(super) fn scan_ai_semantic_safety(em: &mut Emitter<'_>) {
 
     let target = "意味著";
     let target_len = target.len();
-    let mut search_start = 0;
+
+    // Nothing below runs on a document that never says the word, and most do
+    // not, so the table is not worth a pass over the text and two allocations
+    // before finding that out.
+    let Some(first_hit) = text.find(target) else {
+        return;
+    };
+
+    // Sentence bounds for the whole document, built once. Each occurrence then
+    // finds its own sentence by binary search rather than walking outward to
+    // the ends of the text, which was quadratic on prose that repeats the word.
+    let (sentence_starts, sentence_ends) = {
+        let mut starts = vec![0usize];
+        let mut ends = Vec::new();
+        for (at, ch) in text.char_indices() {
+            if is_sentence_end(ch) {
+                ends.push(at);
+                starts.push(at + ch.len_utf8());
+            }
+        }
+        ends.push(text.len());
+        (starts, ends)
+    };
+    let mut cached: Option<(usize, &str)> = None;
+    let mut search_start = first_hit;
 
     while let Some(pos) = text[search_start..].find(target) {
         let abs_pos = search_start + pos;
@@ -68,39 +95,43 @@ pub(super) fn scan_ai_semantic_safety(em: &mut Emitter<'_>) {
         // sentence boundaries (not clause boundaries) so that clues in an
         // adjacent clause within the same sentence are still visible (e.g.
         // '換言之，這意味著': '換言之' is in the prior clause).
-        let sentence_start = text[..abs_pos]
-            .char_indices()
-            .rev()
-            .find(|&(_, ch)| is_sentence_end(ch))
-            .map(|(i, ch)| i + ch.len_utf8())
-            .unwrap_or(0);
-        let sentence_end = text[end..]
-            .find(|ch: char| is_sentence_end(ch))
-            .map(|i| end + i)
-            .unwrap_or(text.len());
-        let context_window = &text[sentence_start..sentence_end];
+        //
+        // The bounds come from the table built once above. Walking to the ends
+        // of the document per hit was quadratic, and a byte cutoff instead
+        // would have hidden a clue inside a long sentence.
+        let nth = sentence_starts.partition_point(|&at| at <= abs_pos) - 1;
 
-        // Try disambiguation: definition > consequence > explanation.
-        let suggestion = if YIWEIZHE_DEFINITION_CLUES
-            .iter()
-            .any(|c| context_window.contains(c))
-        {
-            "表示"
-        } else if YIWEIZHE_CONSEQUENCE_CLUES
-            .iter()
-            .any(|c| context_window.contains(c))
-        {
-            "代表"
-        } else if YIWEIZHE_EXPLANATION_CLUES
-            .iter()
-            .any(|c| context_window.contains(c))
-        {
-            "也就是說"
-        } else {
-            // Low confidence: no clear context → advisory only (empty
-            // suggestion).
-            ""
-        };
+        // Every occurrence in a sentence reads the same context, so the clue
+        // search runs once per sentence rather than once per occurrence. Hits
+        // arrive in order, so remembering the last answer is enough.
+        if cached.map(|(n, _)| n) != Some(nth) {
+            let window_abs = sentence_starts[nth];
+            let context_window = &text[window_abs..sentence_ends[nth].max(end)];
+
+            // A clue in a code span or a YAML key is not the author choosing a
+            // sense, so the match has to sit in prose to count.
+            let has_clue = |clues: &[&str]| {
+                clues.iter().any(|c| {
+                    context_window.match_indices(c).any(|(at, m)| {
+                        !is_excluded(window_abs + at, window_abs + at + m.len(), excluded)
+                    })
+                })
+            };
+            // Try disambiguation: definition > consequence > explanation.
+            let suggestion = if has_clue(YIWEIZHE_DEFINITION_CLUES) {
+                "表示"
+            } else if has_clue(YIWEIZHE_CONSEQUENCE_CLUES) {
+                "代表"
+            } else if has_clue(YIWEIZHE_EXPLANATION_CLUES) {
+                "也就是說"
+            } else {
+                // Low confidence: no clear context → advisory only (empty
+                // suggestion).
+                ""
+            };
+            cached = Some((nth, suggestion));
+        }
+        let suggestion = cached.expect("just populated").1;
 
         issues.push(ai_style_issue(
             abs_pos,
@@ -286,10 +317,13 @@ pub(super) fn scan_ai_didactic(em: &mut Emitter<'_>) {
                     continue;
                 }
 
-                // Look backward up to 30 bytes for 的 + noun
+                // Look backward up to 30 bytes for 的 + noun, stopping at the
+                // sentence the verb is in: a 的noun in the previous sentence is
+                // not what this one is teaching about.
                 let lookback_start = abs_pos.saturating_sub(30);
                 let lookback_start = text.floor_char_boundary(lookback_start);
-                let lookback = &text[lookback_start..abs_pos];
+                let (lookback, trimmed) = since_sentence_start(&text[lookback_start..abs_pos]);
+                let lookback_start = lookback_start + trimmed;
 
                 let has_didactic_noun = NOUNS.iter().any(|noun| {
                     let prefix = format!("的{noun}");
@@ -348,27 +382,30 @@ pub(super) fn scan_ai_vague_exaggeration(em: &mut Emitter<'_>) {
             // 年
             let lookahead_end = text.len().min(verb_end + 60);
             let lookahead_end = text.ceil_char_boundary(lookahead_end);
-            let lookahead = &text[verb_end..lookahead_end];
+            let lookahead = within_one_sentence(&text[verb_end..lookahead_end]);
 
-            let has_object = OBJECTS.iter().any(|obj| {
-                if let Some(obj_pos) = lookahead.find(obj) {
-                    // Check for digits followed by 年 after the object
-                    let after_obj = &lookahead[obj_pos + obj.len()..];
-                    // Skip up to 12 bytes of gap, then look for digit+年
-                    let win_end = after_obj.floor_char_boundary(after_obj.len().min(20));
-                    let check_window = &after_obj[..win_end];
-                    check_window.chars().any(|c| c.is_ascii_digit()) && check_window.contains('年')
-                } else {
-                    false
+            // The claim is a lead measured in years, so the digits have to run
+            // into the 年 itself. Any digit plus any 年 in the window also
+            // matched a sentence that merely mentioned a calendar year, and the
+            // span then ended at whichever 年 came first rather than at the one
+            // that matched. A duration carries one or two digits; four is a
+            // year, not a lead.
+            let duration_end = OBJECTS.iter().find_map(|obj| {
+                let obj_pos = lookahead.find(obj)?;
+                let after_obj_start = obj_pos + obj.len();
+                let after_obj = &lookahead[after_obj_start..];
+                let win_end = after_obj.floor_char_boundary(after_obj.len().min(20));
+                let mut digits = 0usize;
+                for (i, c) in after_obj[..win_end].char_indices() {
+                    if c == '年' && (1..=2).contains(&digits) {
+                        return Some(verb_end + after_obj_start + i + '年'.len_utf8());
+                    }
+                    digits = if c.is_ascii_digit() { digits + 1 } else { 0 };
                 }
+                None
             });
 
-            if has_object {
-                // Find the end of the pattern (up to 年)
-                let pattern_end = text[verb_end..lookahead_end]
-                    .find('年')
-                    .map(|i| verb_end + i + '年'.len_utf8())
-                    .unwrap_or(verb_end);
+            if let Some(pattern_end) = duration_end {
                 let full_text = &text[abs_pos..pattern_end];
 
                 issues.push(ai_style_issue(
@@ -458,6 +495,25 @@ pub(crate) fn scan_ai_density(em: &mut Emitter<'_>, threshold_multiplier: f32) {
 
 /// Returns true if the byte range [start, end) is entirely within an exclusion
 /// zone.
+/// The paragraphs of `text` that carry prose: non-empty, and not sitting
+/// wholly inside an excluded range.
+///
+/// Three detectors collected these with the same eleven lines, which is three
+/// places for the trim or the exclusion rule to drift apart from each other.
+fn prose_paragraphs<'a>(text: &'a str, excluded: &[ByteRange]) -> Vec<&'a str> {
+    crate::engine::scan::split_paragraphs(text)
+        .into_iter()
+        .map(|(_, p)| p)
+        .filter(|p| {
+            if p.trim().is_empty() {
+                return false;
+            }
+            let start = p.as_ptr() as usize - text.as_ptr() as usize;
+            !is_para_excluded(start, start + p.len(), excluded)
+        })
+        .collect()
+}
+
 pub(super) fn is_para_excluded(start: usize, end: usize, excluded: &[ByteRange]) -> bool {
     excluded.iter().any(|r| r.start <= start && end <= r.end)
 }
@@ -465,19 +521,31 @@ pub(super) fn is_para_excluded(start: usize, end: usize, excluded: &[ByteRange])
 // Binary contrast density: AI overuses paired transition patterns. Counts
 // intra-sentence double turns, progressive, and concessive patterns. Threshold:
 // >5 per 1000 chars is AI-typical (human baseline: 2-3).
-/// Offset of a binary-contrast construction in `sentence`: a start word with
-/// one of its turn words somewhere after it.
+/// Byte offsets of a binary-contrast construction in `sentence`: where the
+/// start word begins, and where the turn word that answers it begins.
+///
+/// Both, because the caller has to know that neither half sits in excluded
+/// markup. A pair whose start is prose and whose turn is inside a code span is
+/// not a contrast the author wrote.
 ///
 /// Only the first start word that occurs at all is considered, whether or not
 /// a turn follows it, which is what keeps one sentence from being counted
 /// twice for the same construction.
-fn contrast_hit(sentence: &str, starts: &[&str], turns: &[&str]) -> Option<usize> {
+fn contrast_hit(
+    sentence: &str,
+    starts: &[&str],
+    turns: &[&str],
+) -> Option<(std::ops::Range<usize>, std::ops::Range<usize>)> {
     for &start_word in starts {
         let Some(pos) = sentence.find(start_word) else {
             continue;
         };
-        let after = &sentence[pos + start_word.len()..];
-        return turns.iter().any(|turn| after.contains(turn)).then_some(pos);
+        let after_start = pos + start_word.len();
+        let after = &sentence[after_start..];
+        return turns.iter().find_map(|turn| {
+            let turn_pos = after_start + after.find(turn)?;
+            Some((pos..after_start, turn_pos..turn_pos + turn.len()))
+        });
     }
     None
 }
@@ -508,19 +576,38 @@ pub(super) fn scan_ai_binary_contrast(em: &mut Emitter<'_>, threshold_multiplier
         if is_para_excluded(para_start, para_start + para.len(), excluded) {
             continue;
         }
-        // Scan sentences within paragraph (split on 。！？).
-        for sentence in para.split(['。', '！', '？']) {
+
+        // Scan sentences within the paragraph, breaking on the full-width and
+        // ASCII terminal marks and on both semicolons: a contrast that
+        // straddles a clause boundary is two clauses, not one construction.
+        for sentence in para.split(['。', '！', '？', '；', ';', '!', '?']) {
             let sent_start = sentence.as_ptr() as usize - text.as_ptr() as usize;
             let patterns = [
                 (concessive_starts, concessive_turns),
                 (progressive_starts, progressive_turns),
             ];
             for (starts, turns) in patterns {
-                let Some(pos) = contrast_hit(sentence, starts, turns) else {
+                let Some((start_span, turn_span)) = contrast_hit(sentence, starts, turns) else {
                     continue;
                 };
+
+                // Per match, not per paragraph: the gate above only skips a
+                // paragraph that is wholly excluded, so a contrast pair inside
+                // an inline code span in prose still reached the count. Both
+                // ends are checked, because a turn word in markup is no more
+                // the author's contrast than a start word in it.
+                let abs = sent_start + start_span.start;
+                if is_excluded(abs, sent_start + start_span.end, excluded)
+                    || is_excluded(
+                        sent_start + turn_span.start,
+                        sent_start + turn_span.end,
+                        excluded,
+                    )
+                {
+                    continue;
+                }
                 count += 1;
-                first_offset.get_or_insert(sent_start + pos);
+                first_offset.get_or_insert(abs);
             }
         }
     }
@@ -550,17 +637,7 @@ pub(super) fn scan_ai_binary_contrast(em: &mut Emitter<'_>, threshold_multiplier
 pub(super) fn scan_ai_paragraph_endings(em: &mut Emitter<'_>) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
 
-    let paragraphs: Vec<&str> = crate::engine::scan::split_paragraphs(text)
-        .into_iter()
-        .map(|(_, p)| p)
-        .filter(|p| {
-            if p.trim().is_empty() {
-                return false;
-            }
-            let start = p.as_ptr() as usize - text.as_ptr() as usize;
-            !is_para_excluded(start, start + p.len(), excluded)
-        })
-        .collect();
+    let paragraphs = prose_paragraphs(text, excluded);
     if paragraphs.len() < 5 {
         return;
     }
@@ -594,21 +671,19 @@ pub(super) fn scan_ai_paragraph_endings(em: &mut Emitter<'_>) {
         let tail_start = trimmed.len().saturating_sub(check_len);
         let tail = &trimmed[trimmed.floor_char_boundary(tail_start)..];
 
-        let mut matched = false;
-        for &pat in ending_patterns {
-            if tail.contains(pat) {
-                matched = true;
-                break;
-            }
-        }
-        if !matched {
-            for &pat in prefix_patterns {
-                if tail.contains(pat) {
-                    matched = true;
-                    break;
-                }
-            }
-        }
+        // Per match, with its offset: the paragraph gate above only skips a
+        // paragraph that is wholly excluded, so a closing phrase inside a code
+        // span sharing the paragraph still counted as prose.
+        let tail_abs = tail.as_ptr() as usize - text.as_ptr() as usize;
+        let hits = |pats: &[&str]| {
+            pats.iter().any(|pat| {
+                // Every occurrence, not the first: an excluded one earlier in
+                // the tail would otherwise mask a real one after it.
+                tail.match_indices(pat)
+                    .any(|(at, m)| !is_excluded(tail_abs + at, tail_abs + at + m.len(), excluded))
+            })
+        };
+        let matched = hits(ending_patterns) || hits(prefix_patterns);
         if matched {
             match_count += 1;
             if first_offset.is_none() {
@@ -637,17 +712,7 @@ pub(super) fn scan_ai_paragraph_endings(em: &mut Emitter<'_>) {
 pub(super) fn scan_ai_dash_overuse(em: &mut Emitter<'_>) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
 
-    let paragraphs: Vec<&str> = crate::engine::scan::split_paragraphs(text)
-        .into_iter()
-        .map(|(_, p)| p)
-        .filter(|p| {
-            if p.trim().is_empty() {
-                return false;
-            }
-            let start = p.as_ptr() as usize - text.as_ptr() as usize;
-            !is_para_excluded(start, start + p.len(), excluded)
-        })
-        .collect();
+    let paragraphs = prose_paragraphs(text, excluded);
     if paragraphs.len() < 3 {
         return;
     }
@@ -715,8 +780,14 @@ pub(super) fn scan_ai_formulaic_headings(em: &mut Emitter<'_>) {
         }
         // Strip leading # and whitespace.
         let heading_text = trimmed.trim_start_matches('#').trim();
+        let heading_abs = heading_text.as_ptr() as usize - text.as_ptr() as usize;
         for &pattern in FORMULAIC_HEADINGS {
-            if heading_text.contains(pattern) {
+            // The line gate above rejects only a wholly excluded line, so a
+            // phrase inside inline code on that line still counted.
+            let in_prose = heading_text.match_indices(pattern).any(|(at, m)| {
+                !is_excluded(heading_abs + at, heading_abs + at + m.len(), excluded)
+            });
+            if in_prose {
                 match_count += 1;
                 if first_offset.is_none() {
                     let line_start = line.as_ptr() as usize - text.as_ptr() as usize;
@@ -747,17 +818,7 @@ pub(super) fn scan_ai_formulaic_headings(em: &mut Emitter<'_>) {
 pub(super) fn scan_ai_list_density(em: &mut Emitter<'_>, threshold_multiplier: f32) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
 
-    let paragraphs: Vec<&str> = crate::engine::scan::split_paragraphs(text)
-        .into_iter()
-        .map(|(_, p)| p)
-        .filter(|p| {
-            if p.trim().is_empty() {
-                return false;
-            }
-            let start = p.as_ptr() as usize - text.as_ptr() as usize;
-            !is_para_excluded(start, start + p.len(), excluded)
-        })
-        .collect();
+    let paragraphs = prose_paragraphs(text, excluded);
     if paragraphs.len() < 5 {
         return;
     }
@@ -1483,7 +1544,6 @@ pub(super) fn scan_ai_mechanical_bullets(
     }
 }
 
-// Excessive bold: three or more **...** runs per 200 chars in a paragraph.
 fn emit_ai_mechanical_bullet_issue(
     em: &mut Emitter<'_>,
     first_item_offset: usize,
@@ -1548,6 +1608,10 @@ fn count_non_excluded_bold_runs(text: &str, base_offset: usize, excluded: &[Byte
         / 2
 }
 
+// Excessive bold: three or more **...** runs per 200 chars in a paragraph. The
+// sentence-level arm below stops at four on purpose: five or more in one
+// sentence already clears this paragraph threshold, and reporting both would
+// name the same prose twice.
 pub(super) fn scan_ai_excessive_bold(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,

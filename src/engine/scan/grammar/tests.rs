@@ -1778,6 +1778,74 @@ fn ai_yiweizhe_definition_context() {
 }
 
 #[test]
+fn ai_yiweizhe_ignores_a_clue_inside_excluded_markup() {
+    // 定義 sits in a code span, so it is not the author choosing the definition
+    // sense for the prose 意味著 after it.
+    let text = "這個 `定義` 欄位意味著所有的值都必須為正";
+    let code_start = text.find("`定義`").unwrap();
+    let excluded = vec![ByteRange {
+        start: code_start,
+        end: code_start + "`定義`".len(),
+    }];
+    let mut issues = Vec::new();
+    scan_ai_semantic_safety(&mut Emitter::new(text, &excluded, &mut issues));
+    assert!(
+        issues
+            .iter()
+            .all(|i| i.suggestions[..] != ["表示".to_string()]),
+        "a clue inside markup chose the sense: {issues:?}"
+    );
+
+    // The same clue as prose still chooses it.
+    let mut issues = Vec::new();
+    scan_ai_semantic_safety(&mut Emitter::new(text, &[], &mut issues));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.suggestions[..] == ["表示".to_string()]),
+        "as prose the clue should still count: {issues:?}"
+    );
+}
+
+#[test]
+fn ai_yiweizhe_sees_a_clue_far_away_in_the_same_sentence() {
+    // The context window is the sentence, with no byte cutoff: a cutoff would
+    // hide this clue and downgrade a confident replacement to advisory.
+    let filler = "而且系統必須重新設計並且要考慮效能與可維護性以及擴充性".repeat(12);
+    let text = format!("這個定義{filler}意味著所有的值都必須為正。");
+    assert!(
+        text.len() > 600,
+        "the clue has to be past any plausible cutoff"
+    );
+    let issues = scan_ai(&text);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.found == "意味著" && i.suggestions[..] == ["表示".to_string()]),
+        "the definition clue should still be found: {issues:?}"
+    );
+}
+
+#[test]
+fn ai_yiweizhe_is_not_a_definition_because_a_sentence_opens_on_jishi() {
+    // 即使 is not the definition marker 即: reading it as one gave an ordinary
+    // concessive sentence the definition sense.
+    for text in [
+        "即使如此，這意味著風險增加",
+        "系統即將上線，這意味著風險增加",
+        "請立即處理，這意味著風險增加",
+    ] {
+        let issues = scan_ai(text);
+        assert!(
+            issues
+                .iter()
+                .all(|i| i.suggestions[..] != ["表示".to_string()]),
+            "read as a definition: {text} -> {issues:?}"
+        );
+    }
+}
+
+#[test]
 fn ai_yiweizhe_consequence_context() {
     let text = "如果記憶體不足，這意味著系統將會崩潰";
     let issues = scan_ai(text);
@@ -1959,6 +2027,64 @@ fn ai_vague_exaggeration_no_year() {
     let text = "這項技術領先業界的水準";
     let issues = scan_ai(text);
     assert!(issues.is_empty());
+}
+
+#[test]
+fn ai_formulaic_heading_inside_inline_code_does_not_count() {
+    let plain = "## 總結與展望\n\n內容一。\n\n".repeat(3);
+    let coded = "## `總結與展望`\n\n內容二。\n\n".repeat(3);
+    let fires_on = |doc: &str| {
+        let ranges = crate::engine::scan::build_exclusions_for_content_type(
+            doc,
+            crate::engine::scan::ContentType::Markdown,
+        );
+        let mut issues = Vec::new();
+        scan_ai_structural(&mut Emitter::new(doc, &ranges, &mut issues), 1.0);
+        issues
+            .iter()
+            .any(|i| i.context.as_ref().is_some_and(|c| c.contains("公式化標題")))
+    };
+    assert!(fires_on(&plain), "plain formulaic headings should count");
+    assert!(
+        !fires_on(&coded),
+        "a heading phrase inside inline code is not the author's heading"
+    );
+}
+
+#[test]
+fn ai_didactic_does_not_reach_back_past_a_full_stop() {
+    // The 的noun the pattern teaches about has to be in its own sentence.
+    assert!(
+        scan_ai("我們研究了它的歷史。這份報告告訴我們一個道理。").is_empty(),
+        "didactic reached into the previous sentence"
+    );
+    assert!(
+        !scan_ai("這個專案的歷史告訴我們一個道理。").is_empty(),
+        "the same-sentence case must still fire"
+    );
+}
+
+#[test]
+fn ai_vague_exaggeration_does_not_reach_past_a_full_stop() {
+    assert!(
+        scan_ai("這項技術領先業界。專案歷時20年才完成。").is_empty(),
+        "a duration in the next sentence is not this verb's claim"
+    );
+}
+
+#[test]
+fn ai_vague_exaggeration_ignores_a_calendar_year() {
+    // A digit anywhere plus a 年 anywhere used to match, so a sentence that
+    // merely dated something read as a claim to lead the field by years.
+    for text in [
+        "這項技術領先業界，2025年將全面推出",
+        "該設計超越同期產品，1999年首次發表",
+    ] {
+        assert!(
+            scan_ai(text).is_empty(),
+            "calendar year read as a lead claim: {text}"
+        );
+    }
 }
 
 // -- IssueType::AiStyle plumbing --
@@ -2367,6 +2493,52 @@ fn ai_zero_width_excluded() {
         .filter(|i| i.context.as_ref().is_some_and(|c| c.contains("隱形字元")))
         .collect();
     assert!(zw.is_empty(), "excluded zero-width should not be detected");
+}
+
+#[test]
+fn ai_binary_contrast_ignores_pairs_inside_an_excluded_span() {
+    // The paragraph gate only skips a paragraph that is wholly excluded, so a
+    // contrast pair inside an inline code span in prose used to reach the
+    // count. The detector needs 500 characters before it will look at all.
+    let filler = "這是一段普通的說明文字用來把長度撐過門檻。".repeat(26);
+    let pairs = "雖然快但貴。雖然強但慢。雖然新但貴。不僅快還穩。不僅強還省。";
+    let text = format!("{filler}{pairs}");
+
+    let fires = |excluded: &[ByteRange]| {
+        let mut issues = Vec::new();
+        scan_ai_structural(&mut Emitter::new(&text, excluded, &mut issues), 1.0);
+        issues
+            .iter()
+            .any(|i| i.context.as_ref().is_some_and(|c| c.contains("二元對比")))
+    };
+
+    assert!(fires(&[]), "prose contrast pairs should be counted");
+
+    // A turn word inside markup is no more the author's contrast than a start
+    // word inside it, so covering only the turns must also silence the count.
+    let turns_only: Vec<ByteRange> = ["但", "還"]
+        .iter()
+        .flat_map(|t| {
+            text.match_indices(t)
+                .map(|(at, m)| ByteRange {
+                    start: at,
+                    end: at + m.len(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert!(
+        !fires(&turns_only),
+        "pairs whose turn word is excluded must not be counted"
+    );
+    let covered = vec![ByteRange {
+        start: filler.len(),
+        end: text.len(),
+    }];
+    assert!(
+        !fires(&covered),
+        "pairs inside an excluded span must not be counted"
+    );
 }
 
 #[test]
@@ -3138,6 +3310,25 @@ fn zy3a_passes_on_single_nominalization() {
 }
 
 #[test]
+fn zy3a_passes_across_a_terminal_mark() {
+    // A full-width exclamation ends the sentence as surely as a full stop, so
+    // the two heads either side of it are not one chain.
+    for text in [
+        "這個策略的實施！那個效果的提升。",
+        "這個策略的實施？那個效果的提升。",
+        "這個策略的實施!那個效果的提升。",
+    ] {
+        assert!(
+            !fires(
+                &scan_lex(text),
+                (PhaseFamily::Nominalization, PhasePass::Lexical)
+            ),
+            "chained across a terminal mark: {text}"
+        );
+    }
+}
+
+#[test]
 fn zy3a_passes_when_clause_boundary_separates() {
     // Two nominalizations across a comma: different clauses.
     let text = "策略的實施完成了，效率的提升仍在觀察。";
@@ -3414,6 +3605,46 @@ fn zy2b_fires_on_sentence_bounded_yinwei_suoyi() {
     assert!(
         fires(&issues, (PhaseFamily::Connective, PhasePass::Indexed)),
         "expected ZY2b: {issues:?}"
+    );
+}
+
+#[test]
+fn a_paired_connective_does_not_reach_across_a_full_stop() {
+    // 因為 and 所以 within the distance budget but in different sentences are
+    // two statements, not one paired connective.
+    let across = "因為下雨了。我們待在屋裡，所以很無聊。";
+    assert!(
+        !fires(
+            &scan_lex(across),
+            (PhaseFamily::Connective, PhasePass::Lexical)
+        ),
+        "ZY2a paired across a sentence boundary: {:?}",
+        scan_lex(across)
+    );
+    let within = "因為下雨了，所以我們待在屋裡。";
+    assert!(
+        fires(
+            &scan_lex(within),
+            (PhaseFamily::Connective, PhasePass::Lexical)
+        ),
+        "ZY2a must still pair inside one sentence: {:?}",
+        scan_lex(within)
+    );
+}
+
+#[test]
+fn a_superlative_does_not_reach_across_a_full_stop() {
+    let across = "這是最好的方法。其中之一是重構。";
+    assert!(
+        !fires(&scan_lex(across), (PhaseFamily::YiZhi, PhasePass::Lexical)),
+        "ZY1a paired across a sentence boundary: {:?}",
+        scan_lex(across)
+    );
+    let within = "這是最好的方法，其中之一是重構。";
+    assert!(
+        fires(&scan_lex(within), (PhaseFamily::YiZhi, PhasePass::Lexical)),
+        "ZY1a must still pair inside one sentence: {:?}",
+        scan_lex(within)
     );
 }
 

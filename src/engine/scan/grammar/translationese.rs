@@ -481,7 +481,7 @@ pub(super) fn scan_zy1a_superlative_yi_zhi(em: &mut Emitter<'_>) {
             let after_open = abs_open + opener.len();
             // Bounded forward window: at most MAX_CHARS_BETWEEN chars.
             let window_end = char_bounded_end(text, after_open, MAX_CHARS_BETWEEN);
-            let window = &text[after_open..window_end];
+            let window = within_one_sentence(&text[after_open..window_end]);
 
             // Disqualify when no 之一 in window, when 之 splits the gap (would
             // change semantics), or when the gap is empty.
@@ -532,7 +532,9 @@ fn find_within_chars(
     needle: &str,
 ) -> Option<usize> {
     let end = char_bounded_end(text, start_byte, max_chars);
-    text[start_byte..end].find(needle).map(|p| start_byte + p)
+    within_one_sentence(&text[start_byte..end])
+        .find(needle)
+        .map(|p| start_byte + p)
 }
 
 // ZY2a: bounded EN connective calques, 因為…所以 / 雖然…但是 / 當…的時候 /
@@ -673,10 +675,20 @@ struct HeadPair<'a> {
     right: &'a [&'a str],
 }
 
-/// Clause boundaries used by ZY3a / ZY4a: full-width and ASCII commas,
-/// full-width period/semicolon, and newline.
+/// Clause boundaries used by ZY3a / ZY4a: the full-width comma, period,
+/// semicolon, exclamation and question marks, their ASCII counterparts except
+/// the period, and the newline.
+///
+/// The ASCII period stays out because it also sits inside a version number, a
+/// file name and an abbreviation, where it ends nothing.
 fn is_clause_boundary_char(ch: char) -> bool {
-    matches!(ch, '，' | '。' | '；' | ',' | '\n')
+    // The terminal marks belong here as much as the full stop does: without
+    // them 的實施！那個效果的提升 reads as one clause and ZY3a chains two
+    // nominalizations that sit in different sentences.
+    matches!(
+        ch,
+        '，' | '。' | '；' | '！' | '？' | ',' | ';' | '!' | '?' | '\n'
+    )
 }
 
 fn emit_zy3a_clause(
@@ -770,7 +782,7 @@ fn contains_zy3a_coordination(gap: &str) -> bool {
         .any(|tok| gap.contains(tok))
 }
 
-// ZY4a: false-friend lexical pairs. Fire only when the same comma-bounded span
+// ZY4a: false-friend lexical pairs. Fire only when the same clause-bounded span
 // contains another translation-context cue (another false-friend hit OR a
 // romanized parenthetical gloss (English) immediately after the term). This
 // local guard suppresses standalone uses of these words: "實際上" alone is
@@ -930,11 +942,18 @@ pub(super) fn scan_trans_tense_marker(
     for sent in &idx.sentences {
         let s = &text[sent.byte_start..sent.byte_end];
 
-        // Check for explicit date marker (年/月/日 or digits).
-        let has_date = s.contains('年')
-            || s.contains('月')
-            || s.contains('日')
-            || s.chars().any(|c| c.is_ascii_digit());
+        // An explicit date, which means digits running into 年, 月 or 日. Any
+        // digit and any one of those characters, counted separately, also made
+        // 第3章 and 很多年 look like dates and let unrelated tense markers
+        // through.
+        let has_date = {
+            let mut digits = false;
+            s.chars().any(|c| {
+                let hit = digits && matches!(c, '年' | '月' | '日');
+                digits = c.is_ascii_digit();
+                hit
+            })
+        };
 
         if !has_date {
             continue;

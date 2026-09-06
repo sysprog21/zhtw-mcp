@@ -673,8 +673,8 @@ struct HeadPair<'a> {
     right: &'a [&'a str],
 }
 
-/// Clause boundaries used by ZY3a / ZY4a: full-width and ASCII commas,
-/// full-width period/semicolon, and newline.
+/// Clause boundaries used by ZY3a / ZY4a: the full-width and ASCII commas,
+/// semicolons, periods and terminal marks, plus the newline.
 fn is_clause_boundary_char(ch: char) -> bool {
     // The terminal marks belong here as much as the full stop does: without
     // them 的實施！那個效果的提升 reads as one clause and ZY3a chains two
@@ -776,7 +776,7 @@ fn contains_zy3a_coordination(gap: &str) -> bool {
         .any(|tok| gap.contains(tok))
 }
 
-// ZY4a: false-friend lexical pairs. Fire only when the same comma-bounded span
+// ZY4a: false-friend lexical pairs. Fire only when the same clause-bounded span
 // contains another translation-context cue (another false-friend hit OR a
 // romanized parenthetical gloss (English) immediately after the term). This
 // local guard suppresses standalone uses of these words: "實際上" alone is
@@ -869,10 +869,12 @@ pub(super) fn scan_zy4a_false_friends(em: &mut Emitter<'_>) {
     }
 }
 
-// Locate the comma-bounded clause containing pos (byte offset). Boundaries:
-// "，" / "," / "。" / "；" / "\n" / start/end. Caller must pass a valid char
-// boundary; debug builds assert this so a future caller passing an interior
-// byte trips an explicit failure.
+// Locate the clause containing pos (byte offset), where a clause ends at any of
+// the marks is_clause_boundary_char names, or at the start or end of the text.
+// Kept in step with that function rather than restating its list, which is how
+// this comment came to describe a narrower set than the code. Caller must pass
+// a valid char boundary; debug builds assert this so a future caller passing an
+// interior byte trips an explicit failure.
 fn clause_bounds(text: &str, pos: usize) -> (usize, usize) {
     debug_assert!(
         pos == text.len() || text.is_char_boundary(pos),

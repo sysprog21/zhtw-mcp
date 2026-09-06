@@ -28,6 +28,12 @@ concurrency:
 jobs:
   check:
     strategy:
+      # One platform's failure must not hide another's.  The run that made this
+      # necessary died on a macOS-only ruleset gate and cancelled the Linux and
+      # Windows legs mid-test, so nothing said whether either of those two also
+      # had something to report.  "build-latest" below has carried this setting
+      # all along, for the same reason.
+      fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
 

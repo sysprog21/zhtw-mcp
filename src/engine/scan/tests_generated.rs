@@ -916,6 +916,17 @@
     }
 
     #[test]
+    fn auto_register_does_not_suppress_prose_about_a_contract() {
+        let scanner = Scanner::new(sample_spelling_rules(), vec![]);
+        let text = "這篇文章討論合約與契約的差異。我們予以處理。";
+        let issues = scanner.scan_profiled(text, Profile::Base).issues;
+        assert!(
+            issues.iter().any(|issue| issue.found == "予以處理"),
+            "a bare contract noun must not suppress prose findings: {issues:?}"
+        );
+    }
+
+    #[test]
     fn auto_register_suppresses_indexed_connective_in_formal_prose() {
         let scanner = Scanner::new(sample_spelling_rules(), vec![]);
         let text = "敬啟者：因為下雨了，所以我們待在屋裡。";

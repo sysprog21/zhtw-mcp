@@ -27,14 +27,15 @@ const FORMAL_ANCHORS: &[&str] = &[
     "相應函復",
 ];
 
-// Ordinary nouns that are evidence only where a document declares itself. An
-// article about contract law says 合約 as often as a contract does, so these
-// stay scoped to the head.
+// How a contract refers to itself in its own opening. The determiner is the
+// whole of the evidence: 合約 on its own is the subject of any article about
+// contract law, and scoping the bare noun to the head was not enough, because a
+// note short enough to be all head is exactly the casual writing that then lost
+// its findings.
 //
-// These take no boundary test, unlike the anchors: 本合約 and 該契約 are how a
-// contract refers to itself, and requiring a boundary would reject the very
-// documents the markers are here to catch.
-const FORMAL_HEAD_MARKERS: &[&str] = &["合約", "契約"];
+// Missing a contract whose opening never says 本合約 is the cheaper mistake,
+// for the same reason the anchors take a boundary test.
+const FORMAL_HEAD_MARKERS: &[&str] = &["本合約", "該合約", "此合約", "本契約", "該契約", "此契約"];
 
 // How much of the document counts as the head for the weaker markers.
 const FORMAL_HEAD_CHARS: usize = 100;

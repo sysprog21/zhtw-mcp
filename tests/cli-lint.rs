@@ -2549,7 +2549,11 @@ fn cli_lint_rhythm_is_opt_in_advisory_and_never_fixed() {
         let p = path.to_string_lossy().into_owned();
         let mut argv = args.clone();
         argv.push(p.as_str());
-        run_lint_args(&argv);
+        let output = run_lint_args(&argv);
+        assert!(
+            output.status.success(),
+            "--fix failed with {args:?}, so leaving the file alone proves nothing"
+        );
         let after = std::fs::read_to_string(&path).expect("read back");
         assert_eq!(after, bad, "--fix rewrote a rhythm finding with {args:?}");
     }

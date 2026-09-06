@@ -180,6 +180,30 @@ fn configs() -> Vec<(&'static str, ProfileConfig)> {
 /// not fail until something slices with it, and by then the panic names a
 /// different function from the one that computed it.
 fn assert_spans_are_sane(text: &str, issues: &[Issue], case: &str) {
+    assert_spans_avoid(text, issues, &[], case);
+}
+
+/// As above, and additionally that no finding sits wholly inside an excluded
+/// range. That is close to the property the register work turns on: an anchor
+/// in a code fence or a YAML key must not be read as prose, and a regression
+/// there lands a span that is perfectly in bounds, so the checks below would
+/// not see it.
+///
+/// Wholly inside rather than overlapping, because overlapping is not an
+/// invariant of this engine: a punctuation finding on a mark that abuts a
+/// suppression comment legitimately spans the boundary.
+fn assert_spans_avoid(text: &str, issues: &[Issue], excluded: &[ByteRange], case: &str) {
+    for issue in issues {
+        for span in excluded {
+            let (s, e) = (issue.offset, issue.offset + issue.length);
+            assert!(
+                !(s >= span.start && e <= span.end),
+                "{case}: span {s}..{e} sits wholly inside excluded {}..{}",
+                span.start,
+                span.end
+            );
+        }
+    }
     for issue in issues {
         let start = issue.offset;
         let end = issue.offset + issue.length;
@@ -231,7 +255,7 @@ fn scanning_adversarial_input_never_panics_and_never_reports_a_bad_span() {
                 content_type,
                 &mut scratch,
             );
-            assert_spans_are_sane(&text, &out.issues, &case);
+            assert_spans_avoid(&text, &out.issues, &excluded, &case);
         }
     }
 }

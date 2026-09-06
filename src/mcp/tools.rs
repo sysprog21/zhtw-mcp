@@ -3669,6 +3669,7 @@ mod tests {
             "output",
             "translationese_domain",
             "document_genre",
+            "register",
             "ai_threshold",
         ] {
             assert!(
@@ -3724,6 +3725,8 @@ mod tests {
             "detect_style",
             "translationese_domain",
             "document_genre",
+            "register",
+            "rhythm",
             "ai_threshold",
             "include_telemetry",
             "include_stats",

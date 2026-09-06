@@ -21,6 +21,9 @@ pub(crate) enum DocIndex {
     Attribution,
 }
 
+// Only the debug build counts builds, so only it has a use for the table, the
+// slot, or the name.
+#[cfg(debug_assertions)]
 impl DocIndex {
     const ALL: [Self; 3] = [Self::Boundary, Self::CloserTail, Self::Attribution];
 

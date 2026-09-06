@@ -123,10 +123,23 @@ pub struct SdkServer {
 
 impl SdkServer {
     pub fn new(inner: Server) -> Self {
+        let catalog = inner.catalog();
+        let inner = Arc::new(Mutex::new(inner));
+        let lifecycle = Arc::new(Lifecycle::default());
+
+        // The judgment cache is this layer's, and flushing it is the only thing
+        // the framing layer cannot do for itself. Handing it over here is what
+        // lets exit have a single owner: the transport terminates, and this
+        // still gets written.
+        let flushing = inner.clone();
+        lifecycle.set_exit_hook(move || {
+            flush_before_exit(&flushing);
+        });
+
         Self {
-            catalog: inner.catalog(),
-            inner: Arc::new(Mutex::new(inner)),
-            lifecycle: Arc::new(Lifecycle::default()),
+            catalog,
+            inner,
+            lifecycle,
         }
     }
 
@@ -602,30 +615,18 @@ impl ServerHandler for SdkServer {
         ))
     }
 
-    /// `exit` terminates the process unconditionally, per the lifecycle this
-    /// server has always implemented: exit code 0 when `shutdown` came first,
-    /// 1 otherwise.
+    /// No custom notification reaches this server either.
+    ///
+    /// `exit` is the only one its clients send, and the framing layer honors
+    /// it before RMCP is handed the envelope; the `Gate::Exit` arm in
+    /// `transport::StdioTransport::receive` says why. Kept rather than left to
+    /// RMCP's no-op default so an unknown notification is at least logged.
     async fn on_custom_notification(
         &self,
         notification: CustomNotification,
         _: NotificationContext<RoleServer>,
     ) {
-        if notification.method != "exit" {
-            tracing::debug!("unhandled notification: {}", notification.method);
-            return;
-        }
-        tracing::info!("exit notification, terminating");
-
-        // The cache is this path's own business; the log flush, the queue drain
-        // and the status are the same for both ways out and live at the one
-        // exit. It runs after the drain so a scan finishing during it still
-        // gets its judgments written.
-        let inner = self.inner.clone();
-        self.lifecycle
-            .terminate(move || {
-                flush_before_exit(&inner);
-            })
-            .await
+        tracing::debug!("unhandled notification: {}", notification.method);
     }
 }
 
@@ -645,6 +646,20 @@ mod tests {
         )
         .expect("build server");
         (Mutex::new(server), dir)
+    }
+
+    #[test]
+    fn the_server_wires_its_cache_flush_into_the_exit() {
+        // exit terminates in the framing layer now, and that layer cannot reach
+        // the judgment cache. Losing this wiring costs the cache on every clean
+        // exit and fails nothing else, which is why it is asserted here rather
+        // than left to an end-to-end test that would still pass.
+        let (server, _dir) = test_server();
+        let sdk = SdkServer::new(server.into_inner().expect("unpoisoned"));
+        assert!(
+            sdk.lifecycle().exit_hook_installed(),
+            "new must hand the flush to the lifecycle"
+        );
     }
 
     /// Poison a lock the way a panicking handler does.

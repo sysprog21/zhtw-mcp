@@ -283,8 +283,11 @@ jobs:
     steps:
     - uses: actions/checkout@v7
 
+    # rustfmt because "make check-size" goes through the generator rule, which
+    # runs it over the tables it just wrote.  Asking for the component is what
+    # keeps that from borrowing whichever one the runner image happens to ship.
     - name: Install Rust toolchain
-      run: rustup toolchain install stable --profile minimal
+      run: rustup toolchain install stable --profile minimal --component rustfmt
 
     # Its own key: rust-cache never overwrites an existing entry, so a key
     # shared with the check job on this runner would keep whichever of the two

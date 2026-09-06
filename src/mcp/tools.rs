@@ -34,7 +34,7 @@ use crate::rules::ignore::apply_ignore_set;
 use crate::rules::loader::compute_ruleset_hash;
 use crate::rules::ruleset::Ruleset;
 use crate::rules::ruleset::{
-    DocumentGenre, Issue, IssueType, PoliticalStance, Profile, ResolutionTier, Severity,
+    AttributionGenre, Issue, IssueType, PoliticalStance, Profile, ResolutionTier, Severity,
 };
 use crate::rules::store::{OverrideStore, PackStore, SuppressionStore, TranslationMemoryStore};
 
@@ -330,6 +330,7 @@ impl Server {
             ai_threshold,
             relaxed,
             exempt_blockquotes,
+            rhythm,
             include_telemetry,
             include_stats,
             #[cfg(feature = "translate")]
@@ -337,6 +338,7 @@ impl Server {
             ref ignore_terms,
             ref translationese_domain_opt,
             ref document_genre_opt,
+            ref register_opt,
             ..
         } = params;
 
@@ -388,7 +390,9 @@ impl Server {
                 detect_translationese: detect_translationese_opt,
                 translationese_domain: translationese_domain_opt.as_deref(),
                 document_genre: document_genre_opt.as_deref(),
+                register: register_opt.as_deref(),
                 ai_threshold,
+                rhythm,
             },
         )?;
 
@@ -972,9 +976,14 @@ struct CheckParams<'a> {
     detect_style: bool,
     translationese_domain_opt: Option<String>,
     document_genre_opt: Option<String>,
+    register_opt: Option<String>,
     ai_threshold: Option<&'a str>,
     relaxed: bool,
     exempt_blockquotes: bool,
+    /// Advisory rhythm (氣口) axis. Opt-in and never fixable, exactly as on
+    /// the CLI: the tool exposes it so an agent can ask for the same advice a
+    /// human gets from --rhythm.
+    rhythm: bool,
     glossary: crate::rules::glossary::ProjectGlossary,
     consistency_requested: bool,
     include_telemetry: bool,
@@ -1004,9 +1013,11 @@ impl<'a> CheckParams<'a> {
                 .and_then(|v| v.as_str())
                 .map(str::to_string),
             document_genre_opt: optional_str_validated(args, "document_genre")?.map(str::to_string),
+            register_opt: optional_str_validated(args, "register")?.map(str::to_string),
             ai_threshold: optional_str_validated(args, "ai_threshold")?,
             relaxed: parse_flag(args, "relaxed"),
             exempt_blockquotes: parse_flag(args, "exempt_blockquotes"),
+            rhythm: parse_flag(args, "rhythm"),
             glossary: parse_glossary(args),
             consistency_requested: parse_flag(args, "consistency"),
             include_telemetry: parse_flag(args, "include_telemetry"),
@@ -1989,7 +2000,9 @@ struct CheckFlags<'a> {
     detect_translationese: Option<bool>,
     translationese_domain: Option<&'a str>,
     document_genre: Option<&'a str>,
+    register: Option<&'a str>,
     ai_threshold: Option<&'a str>,
+    rhythm: bool,
 }
 
 /// Fold the profile base and the caller's capability flags into one
@@ -2028,10 +2041,19 @@ fn build_check_config(
         }
     }
     if let Some(genre_str) = flags.document_genre {
-        match DocumentGenre::from_str_strict(genre_str) {
+        match AttributionGenre::from_str_strict(genre_str) {
             Some(genre) => cfg.document_genre = genre,
             None => return Err(enum_param_error("document_genre", genre_str)),
         }
+    }
+    if let Some(register_str) = flags.register {
+        match crate::rules::ruleset::RegisterMode::from_str_strict(register_str) {
+            Some(mode) => cfg = cfg.with_register(mode),
+            None => return Err(enum_param_error("register", register_str)),
+        }
+    }
+    if flags.rhythm {
+        cfg = cfg.with_rhythm(true);
     }
 
     // Resolve effective AI detection: explicit arg wins over profile default.
@@ -2817,7 +2839,16 @@ when the server has ZHTW_NO_NETWORK set."
         props.insert("document_genre".into(), json!({
                 "type": "string",
                 "enum": ["casual", "technical", "financial"],
-                "description": "Register for unsupported authority attributions. Requires detect_ai. Never suggests an edit: casual prose is advised to name the source or drop the appeal, technical and financial prose that the claim needs a citation. Default: casual."
+                "description": "How strictly the document is held to sourcing, for unsupported authority attributions. Requires detect_ai. Distinct from the register parameter, which is a property of the prose and suppresses findings; this one only selects advice and never suppresses. Never suggests an edit: casual prose is advised to name the source or drop the appeal, technical and financial prose that the claim needs a citation. Default: casual."
+            }));
+        props.insert("register".into(), json!({
+                "type": "string",
+                "enum": ["auto", "formal", "casual"],
+                "description": "Register the document is written in. 'auto' (default) reads it off the text: a 公文 opens 敬啟者 and signs off 謹啟. 'formal' licenses the forms that register mandates, so 予以核准 and 因為…所以 stop being reported. Suppression only; never changes what is suggested for anything it does report."
+            }));
+        props.insert("rhythm".into(), json!({
+                "type": "boolean",
+                "description": "Advisory rhythm (氣口) checks: over-long sentences, consecutive sentences closing on the same particle, and a relaxed 定語堆疊 gate. Default: false. Advisory only, never applied by any fix tier."
             }));
         props.insert("ai_threshold".into(), json!({
                 "type": "string",
@@ -3831,6 +3862,58 @@ mod tests {
         );
         let output = assert_tool_success(&resp);
         assert_eq!(output["accepted"], true);
+    }
+
+    #[test]
+    fn tools_call_register_formal_licenses_the_bureaucratic_prefix() {
+        let (mut server, _dir) = make_initialized_server();
+        let casual = call_zhtw(
+            &mut server,
+            serde_json::json!({"text": "我們予以處理這件事。", "register": "casual"}),
+        );
+        let casual = assert_tool_success(&casual);
+        assert!(
+            !casual["issues"].as_array().unwrap().is_empty(),
+            "casual prose should still report 予以處理: {casual}"
+        );
+
+        let formal = call_zhtw(
+            &mut server,
+            serde_json::json!({"text": "我們予以處理這件事。", "register": "formal"}),
+        );
+        let formal = assert_tool_success(&formal);
+        assert!(
+            formal["issues"].as_array().unwrap().is_empty(),
+            "a formal register licenses 予以處理: {formal}"
+        );
+    }
+
+    #[test]
+    fn tools_call_rejects_an_unknown_register() {
+        let (mut server, _dir) = make_initialized_server();
+        let resp = call_zhtw(
+            &mut server,
+            serde_json::json!({"text": "測試", "register": "poetic"}),
+        );
+        let body = serde_json::to_string(&resp).unwrap();
+        assert!(body.contains("register"), "{body}");
+    }
+
+    #[test]
+    fn tools_call_rhythm_is_opt_in() {
+        let (mut server, _dir) = make_initialized_server();
+        let text = "這個系統在使用者完成註冊並且通過驗證之後就會自動建立一組預設的設定檔然後開始同步資料。";
+        let off = call_zhtw(&mut server, serde_json::json!({"text": text}));
+        let on = call_zhtw(
+            &mut server,
+            serde_json::json!({"text": text, "rhythm": true}),
+        );
+        let off = assert_tool_success(&off)["issues"]
+            .as_array()
+            .unwrap()
+            .len();
+        let on = assert_tool_success(&on)["issues"].as_array().unwrap().len();
+        assert!(on > off, "rhythm should add advisories: {on} vs {off}");
     }
 
     #[test]

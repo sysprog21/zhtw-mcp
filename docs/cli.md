@@ -76,6 +76,10 @@ Options:
                             requires the translate feature)
   --telemetry               Print stderr summary counters after the run
   --document-genre <g>      casual|technical|financial; with --detect-ai
+  --register <r>            auto|formal|casual; auto reads the register off
+                            the text. Formal licenses the forms a 公文
+                            mandates, so 予以核准 and 因為…所以 stop being
+                            reported
   -h, --help                Show this help
 
 ```
@@ -166,7 +170,7 @@ same particle (的 / 了 / 呢), and a relaxed 定語堆疊 gate that no longer 
 long unbroken span to contain several 的 before reporting it.
 
 Everything it reports is advisory. Rhythm findings carry `Info` severity, offer
-no suggestion, and are declined by every `--fix` tier including
+no suggestion, and are left alone by every `--fix` tier including
 `lexical_contextual`; `zhtw-mcp convert` does not act on them either. Rhythm is
 taste, and the fixer is not.
 

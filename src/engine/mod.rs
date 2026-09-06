@@ -7,6 +7,7 @@ pub(crate) mod index_guard;
 pub mod lineindex;
 pub mod markdown;
 pub mod normalize;
+pub mod register;
 pub mod s2t;
 pub mod scan;
 pub mod segment;

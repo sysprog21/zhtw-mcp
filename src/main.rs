@@ -269,6 +269,7 @@ fn run_lint(
         detect_style: lint.detect_style,
         translationese_domain: lint.translationese_domain,
         document_genre: lint.document_genre,
+        register: lint.register,
         ai_threshold_multiplier: lint.ai_threshold_multiplier,
         tm_path: Some(eff_tm_path),
         glossary: eff_glossary,

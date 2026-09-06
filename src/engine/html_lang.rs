@@ -118,6 +118,26 @@ fn transparent_to_implicit_close(element: &str, incoming: &str) -> bool {
     INLINE_ELEMENTS.contains(&element) || matches!(element, "address" | "div" | "p")
 }
 
+/// How deep the open-element stack is allowed to get.
+///
+/// Every search in here is bounded by the stack, and the stack was bounded
+/// only by the document, so markup that nests thousands deep cost time in the
+/// square of its size on an entry point that accepts 256 KiB of it. Past this
+/// depth a tag is counted rather than tracked, so its lang scopes nothing and
+/// the text under it stays scanned: the direction that lints too much rather
+/// than the one that silently skips prose. Browsers cap nesting for the same
+/// reason and in the same range.
+const MAX_DEPTH: usize = 512;
+
+/// Elements a following sibling can close without an end tag of their own.
+///
+/// The left-hand side of closed_implicitly_by, as a set. When none of these is
+/// open there is nothing for the implicit-close walk to find, which is what
+/// lets it skip the walk rather than scan a stack that cannot answer.
+const IMPLICITLY_CLOSABLE: &[&str] = &[
+    "p", "li", "dt", "dd", "td", "th", "tr", "thead", "tbody", "option", "optgroup", "rt", "rp",
+];
+
 /// Whether an open element is implicitly closed when "incoming" starts.
 ///
 /// The end tag is optional for these, and a browser closes them on the next
@@ -181,6 +201,20 @@ struct OpenElement {
 #[derive(Default)]
 pub(crate) struct LangScopes {
     open: Vec<OpenElement>,
+    /// Indices into "open" of the elements that declared a lang, innermost
+    /// last. What the current text inherits is the innermost declaration, and
+    /// reading it off the back of this is what keeps a stack of elements that
+    /// declared nothing from being rescanned for every tag that follows.
+    declared: Vec<usize>,
+    /// How many entries in "open" a sibling could close implicitly. Zero means
+    /// the walk in close_implied_by has nothing to find, and deeply nested
+    /// markup is otherwise a stack walk per start tag.
+    closable: usize,
+    /// How many elements are open past MAX_DEPTH. While this is non-zero the
+    /// tracker only balances tags against it, so the stack it walks stays
+    /// bounded. Well-formed markup closes what it opened, which is what brings
+    /// this back to zero and resumes tracking where it left off.
+    suppressed: usize,
     /// Start of the exclusion currently being accumulated, if any.
     pending: Option<usize>,
     /// Whether the innermost open element is one whose content is text rather
@@ -230,6 +264,17 @@ impl LangScopes {
 
     /// Fold in one tag, whose bytes span [start, end) in the document.
     fn apply(&mut self, tag: Tag<'_>, start: usize, end: usize) {
+        // Past the depth cap nothing is tracked, only balanced, so that the
+        // stack every search below walks cannot grow with the document.
+        if self.suppressed > 0 {
+            if tag.closing {
+                self.suppressed -= 1;
+            } else if !tag.self_closing && !VOID_ELEMENTS.contains(&tag.name.as_str()) {
+                self.suppressed += 1;
+            }
+            return;
+        }
+
         // Inside a raw-text element only its own closer is markup, and that
         // element is the innermost open one. Its closer falls through to the
         // path below, which pops it and ends the scope its own lang opened.
@@ -250,7 +295,7 @@ impl LangScopes {
             // names nothing on the stack and is ignored, which is what a
             // browser does with it too.
             if let Some(idx) = self.open.iter().rposition(|open| open.name == tag.name) {
-                self.open.truncate(idx);
+                self.truncate_open(idx);
                 self.settle(start, end);
             }
             return;
@@ -268,7 +313,11 @@ impl LangScopes {
         let raw = RAW_TEXT_ELEMENTS.contains(&tag.name.as_str());
 
         self.close_implied_by(&tag.name);
-        self.open.push(OpenElement {
+        if self.open.len() >= MAX_DEPTH {
+            self.suppressed = 1;
+            return;
+        }
+        self.push_open(OpenElement {
             name: tag.name,
             foreign: tag.lang.map(excludes),
         });
@@ -283,14 +332,47 @@ impl LangScopes {
     /// two list items does not stop the second from ending the first, and it
     /// stops where HTML stops, so a nested list or table does.
     fn close_implied_by(&mut self, incoming: &str) {
+        // Nothing open can be closed this way, so the walk below could only run
+        // off the bottom of the stack. Markup nested hundreds deep makes that
+        // walk the difference between linear and quadratic.
+        if self.closable == 0 {
+            return;
+        }
         for (idx, open) in self.open.iter().enumerate().rev() {
             if closed_implicitly_by(&open.name, incoming) {
-                self.open.truncate(idx);
+                self.truncate_open(idx);
                 return;
             }
             if !transparent_to_implicit_close(&open.name, incoming) {
                 return;
             }
+        }
+    }
+
+    /// Open one element, recording what it contributes to the indexes.
+    fn push_open(&mut self, element: OpenElement) {
+        if element.foreign.is_some() {
+            self.declared.push(self.open.len());
+        }
+        if IMPLICITLY_CLOSABLE.contains(&element.name.as_str()) {
+            self.closable += 1;
+        }
+        self.open.push(element);
+    }
+
+    /// Drop every element from "idx" up, keeping the indexes in step.
+    ///
+    /// Each element is counted once when it opens and uncounted once when it
+    /// closes, so the cost of maintaining them is linear in the tags fed
+    /// rather than in the depth they reach.
+    fn truncate_open(&mut self, idx: usize) {
+        for open in self.open.drain(idx..) {
+            if IMPLICITLY_CLOSABLE.contains(&open.name.as_str()) {
+                self.closable -= 1;
+            }
+        }
+        while self.declared.last().is_some_and(|&at| at >= idx) {
+            self.declared.pop();
         }
     }
 
@@ -318,10 +400,9 @@ impl LangScopes {
 
     /// Whether the innermost declared lang marks the current text as foreign.
     fn foreign(&self) -> bool {
-        self.open
-            .iter()
-            .rev()
-            .find_map(|open| open.foreign)
+        self.declared
+            .last()
+            .and_then(|&at| self.open[at].foreign)
             .unwrap_or(false)
     }
 }
@@ -511,6 +592,73 @@ mod tests {
         for tag in ["", "en", "en-US", "ja", "zhx", "z"] {
             assert!(!is_chinese_lang(tag), "{tag} should not read as Chinese");
         }
+    }
+
+    // Depth cap. Every search in the tracker is bounded by the open-element
+    // stack, so what these check is that the stack is bounded by MAX_DEPTH
+    // rather than by the document, and that the cap gives up in the direction
+    // that leaves text scanned.
+
+    #[test]
+    fn a_declaration_inside_the_cap_still_scopes() {
+        // One short of the cap, so the declaration is tracked as usual. The
+        // scope has to reach its own closer and no further.
+        let depth = MAX_DEPTH - 2;
+        let text = format!(
+            "{}<span lang=\"en\">b</span>{}c",
+            "<div>".repeat(depth),
+            "</div>".repeat(depth)
+        );
+        let ranges = scopes(&text);
+        assert_eq!(ranges.len(), 1, "one declaration, one range");
+        assert_eq!(
+            &text[ranges[0].start..ranges[0].end],
+            "<span lang=\"en\">b</span>"
+        );
+    }
+
+    #[test]
+    fn a_declaration_past_the_cap_scopes_nothing() {
+        // Giving up has to leave the text scanned rather than silently
+        // excluded, so the run under an untracked declaration is not reported.
+        let text = format!(
+            "{}<span lang=\"en\">b</span>",
+            "<div>".repeat(MAX_DEPTH + 10)
+        );
+        assert!(
+            scopes(&text).is_empty(),
+            "a declaration past the cap must not take text out of the scan"
+        );
+    }
+
+    #[test]
+    fn tracking_resumes_once_the_nesting_unwinds() {
+        // The counter balances what it suppressed, so a declaration written
+        // after the deep run comes back is tracked again. Without that, one
+        // deep spot would disable scoping for the rest of the document.
+        let deep = format!(
+            "{}{}",
+            "<div>".repeat(MAX_DEPTH + 10),
+            "</div>".repeat(MAX_DEPTH + 10)
+        );
+        let text = format!("{deep}<span lang=\"en\">b</span>c");
+        let ranges = scopes(&text);
+        assert_eq!(ranges.len(), 1, "scoping did not resume after the deep run");
+        assert_eq!(
+            &text[ranges[0].start..ranges[0].end],
+            "<span lang=\"en\">b</span>"
+        );
+    }
+
+    #[test]
+    fn deep_nesting_does_not_walk_the_whole_stack_per_tag() {
+        // A stack of transparent elements over one paragraph defeats the cheap
+        // "nothing is closable" exit, so this shape is what the cap itself has
+        // to bound. The assertion is only that it terminates and stays
+        // conservative; the cost is what the cap is for.
+        let n = 20_000;
+        let text = format!("<p>{}{}", "<span>".repeat(n), "<b>".repeat(n));
+        assert!(scopes(&text).is_empty(), "nothing declared a lang");
     }
 
     #[test]

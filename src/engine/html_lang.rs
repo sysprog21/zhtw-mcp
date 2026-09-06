@@ -156,6 +156,7 @@ fn closed_implicitly_by(open: &str, incoming: &str) -> bool {
         "option" => matches!(incoming, "option" | "optgroup"),
         "optgroup" => incoming == "optgroup",
         "rt" | "rp" => matches!(incoming, "rt" | "rp"),
+
         // Only a col stays inside a colgroup, so anything else ends it. Without
         // this a lang on a column group went on scoping the rest of the table.
         "colgroup" => incoming != "col",
@@ -531,7 +532,10 @@ fn scan_token(chunk: &str, start: usize) -> (Option<Tag<'_>>, usize) {
             None
         };
 
-        if attr.eq_ignore_ascii_case("lang") {
+        // A repeated attribute is dropped rather than applied, so the first
+        // lang written is the one a browser parses and the one that has to
+        // decide the scope here.
+        if attr.eq_ignore_ascii_case("lang") && lang.is_none() {
             lang = Some(value.unwrap_or(""));
         }
     }
@@ -711,6 +715,20 @@ mod tests {
         assert_eq!(
             excluded_text(text),
             vec!["<colgroup lang=\"en\"><col><col><tbody>"]
+        );
+    }
+
+    #[test]
+    fn a_repeated_lang_keeps_the_first_one() {
+        // HTML drops a duplicate attribute, so the first value is what a
+        // browser parses. Taking the last one inverted both of these.
+        assert!(
+            !excluded_text("<span lang=\"en\" lang=\"zh-TW\">x</span>").is_empty(),
+            "the first lang, en, decides: the run is foreign"
+        );
+        assert!(
+            excluded_text("<span lang=\"zh-TW\" lang=\"en\">x</span>").is_empty(),
+            "the first lang, zh-TW, decides: the run stays scanned"
         );
     }
 

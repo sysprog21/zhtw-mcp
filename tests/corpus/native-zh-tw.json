@@ -895,6 +895,48 @@
       "detect_ai": true,
       "expected_fixed": "> - [ ] 檢查是否使用了值得注意的是\n",
       "expected_issues": []
+    },
+    {
+      "id": "native_latin_clause_quoted",
+      "repeat": 30,
+      "input": "審查者只回了「I agree, 但這樣還不夠完整」，於是我們補上了測試計畫。",
+      "expected_fixed": "審查者只回了「I agree, 但這樣還不夠完整」，於是我們補上了測試計畫。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_latin_clause_line_end",
+      "repeat": 30,
+      "input": "Write programs that do one thing and do it well,\n\n這句話出自 Unix 哲學，也是命令列工具的設計準則。",
+      "expected_fixed": "Write programs that do one thing and do it well,\n\n這句話出自 Unix 哲學，也是命令列工具的設計準則。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_latin_clause_question",
+      "repeat": 30,
+      "input": "工程師問「Are you sure this works?」我們才決定重新跑一次整合測試。",
+      "expected_fixed": "工程師問「Are you sure this works?」我們才決定重新跑一次整合測試。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_latin_clause_colon",
+      "repeat": 30,
+      "input": "記錄檔只留下 file not found: 請先確認掛載點是否正確。",
+      "expected_fixed": "記錄檔只留下 file not found: 請先確認掛載點是否正確。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_latin_clause_semicolon",
+      "repeat": 30,
+      "input": "他寫下 make it work; 之後才談效能與可讀性。",
+      "expected_fixed": "他寫下 make it work; 之後才談效能與可讀性。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_latin_numeric_separators",
+      "repeat": 30,
+      "input": "這批伺服器共 1,200 臺，平均延遲約 3.14 毫秒。",
+      "expected_fixed": "這批伺服器共 1,200 臺，平均延遲約 3.14 毫秒。",
+      "expected_issues": []
     }
   ]
 }

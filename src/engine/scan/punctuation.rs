@@ -49,12 +49,10 @@ impl Scanner {
                 b',' => {
                     // Guard: digit on both sides → thousands separator (e.g.
                     // 1,000).
-                    let digit_before = i > 0 && bytes[i - 1].is_ascii_digit();
-                    let digit_after = i + 1 < len && bytes[i + 1].is_ascii_digit();
-                    if digit_before && digit_after {
+                    if digits_both_sides(bytes, i) {
                         continue;
                     }
-                    if !adjacent_cjk(text, i, true) && !adjacent_cjk(text, i + 1, false) {
+                    if !mark_is_chinese_owned(text, i, excluded) {
                         continue;
                     }
                     issues.push(punct_issue(
@@ -77,6 +75,11 @@ impl Scanner {
                     if i + 1 < len && bytes[i + 1].is_ascii_alphanumeric() {
                         continue;
                     }
+
+                    // One-sided, and that is what leaves the period out of
+                    // mark_is_chinese_owned: CJK before it is what a Chinese
+                    // sentence's period has, and no Latin run can supply it, so
+                    // the embedded-clause test below it would never fire.
                     if !adjacent_cjk(text, i, true) {
                         continue;
                     }
@@ -93,7 +96,7 @@ impl Scanner {
                     if b == b'!' && i + 1 < len && bytes[i + 1] == b'[' {
                         continue;
                     }
-                    if !adjacent_cjk(text, i, true) && !adjacent_cjk(text, i + 1, false) {
+                    if !mark_is_chinese_owned(text, i, excluded) {
                         continue;
                     }
                     let (found, suggestion, context) = match b {
@@ -144,51 +147,10 @@ impl Scanner {
                     if !cfg.colon_enforcement {
                         continue;
                     }
-                    // Guard: digit on both sides → time format (e.g. 12:30).
-                    let digit_before = i > 0 && bytes[i - 1].is_ascii_digit();
-                    let digit_after = i + 1 < len && bytes[i + 1].is_ascii_digit();
-                    if digit_before && digit_after {
+                    if colon_is_notation(bytes, i) {
                         continue;
                     }
-                    // Guard: followed by // → protocol (e.g. http://).
-                    if i + 2 < len && bytes[i + 1] == b'/' && bytes[i + 2] == b'/' {
-                        continue;
-                    }
-
-                    // Guard: ]: → Markdown reference/footnote definition
-                    // ([^id]: text, [id]: url).
-                    if i > 0 && bytes[i - 1] == b']' {
-                        continue;
-                    }
-
-                    // Guard: definition-list colon, ": " at the start of a line
-                    // (possibly indented) is Markdown structural markup.
-                    // Pattern: (BOF or \n)(spaces/tabs)*": ".
-                    if i + 1 < len && bytes[i + 1] == b' ' {
-                        let line_start = if i == 0 {
-                            true
-                        } else {
-                            // Walk backwards over spaces/tabs to find \n or
-                            // BOF.
-                            let mut j = i - 1;
-                            loop {
-                                if bytes[j] == b'\n' {
-                                    break true;
-                                }
-                                if bytes[j] != b' ' && bytes[j] != b'\t' {
-                                    break false;
-                                }
-                                if j == 0 {
-                                    break true; // BOF after only whitespace
-                                }
-                                j -= 1;
-                            }
-                        };
-                        if line_start {
-                            continue;
-                        }
-                    }
-                    if !adjacent_cjk(text, i, true) && !adjacent_cjk(text, i + 1, false) {
+                    if !mark_is_chinese_owned(text, i, excluded) {
                         continue;
                     }
                     issues.push(punct_issue(
@@ -417,14 +379,7 @@ impl Scanner {
                     continue;
                 }
                 // Guard: Markdown list bullet, skip if - is at line start.
-                let is_line_start = {
-                    let mut j = i;
-                    while j > 0 && (bytes[j - 1] == b' ' || bytes[j - 1] == b'\t') {
-                        j -= 1;
-                    }
-                    j == 0 || bytes[j - 1] == b'\n' || bytes[j - 1] == b'\r'
-                };
-                if is_line_start {
+                if at_line_start(bytes, i) {
                     continue;
                 }
                 // Only flag when both adjacent non-whitespace chars are CJK.
@@ -508,4 +463,195 @@ fn paren_partner_is_convertible(
         }
     }
     false
+}
+
+/// How many Latin words the run ending at a mark has to carry before the mark
+/// is read as the English text's own punctuation rather than the surrounding
+/// Chinese sentence's.
+///
+/// Two is where a clause parts from a term. "I agree" and "do it well" are
+/// clauses that punctuate themselves; "Docker", "Node.js", "Windows 11" and
+/// "3.14" are single terms a Chinese sentence borrows and then punctuates in
+/// its own script, and none of them reaches two words. The corpus picked the
+/// number: one costs thirty true positives on the AI corpus, three and four
+/// leave standing the false positives this guard exists to remove.
+const LATIN_CLAUSE_WORDS: usize = 2;
+
+/// How far back to look for the run's start. It bounds the walk the way
+/// [`PAREN_PARTNER_SEARCH_BYTES`] bounds its own, and it is a distance
+/// heuristic besides: a clause half a kilobyte away is not the clause the mark
+/// trails, so the words inside the bound are the ones that answer. No English
+/// sentence reaches this far.
+const LATIN_RUN_SEARCH_BYTES: usize = 512;
+
+/// Whether the period at "index" joins a term rather than ending a sentence.
+///
+/// A period between two ASCII alphanumerics is inside one word and a run
+/// reaches through it. Anywhere else it closes the run.
+///
+/// Not `sentence::is_latin_sentence_end`, which asks a different question: it
+/// splits sentences for the detectors, so it wants whitespace and a capital
+/// after the period and consults an abbreviation list. Here the question is
+/// only whether the period is inside a word, and Dr. Smith, wants the run to
+/// close so that the comma trails a name rather than a clause.
+fn is_dotted_term_period(bytes: &[u8], index: usize) -> bool {
+    index > 0
+        && bytes[index - 1].is_ascii_alphanumeric()
+        && bytes.get(index + 1).is_some_and(u8::is_ascii_alphanumeric)
+}
+
+/// Whether the byte at "index" closes a Latin run reaching back through it.
+///
+/// A run is ASCII: letters, digits, spaces, tabs and punctuation. Testing
+/// bytes rather than chars is safe because every run character is one byte, so
+/// any byte of a Chinese character or a full-width mark closes the run, and so
+/// does a newline.
+///
+/// A mark closes it as well, because a mark ends the clause it trails and the
+/// words beyond it answer for that clause rather than for this one: in
+/// nginx, Google Chrome, the second comma follows a proper name however
+/// ordinary the word the first one followed.
+fn closes_latin_run(bytes: &[u8], index: usize) -> bool {
+    match bytes[index] {
+        b',' | b';' | b':' | b'!' | b'?' => true,
+        b'.' => !is_dotted_term_period(bytes, index),
+        b' ' | b'\t' => false,
+        byte => !byte.is_ascii_graphic(),
+    }
+}
+
+/// Whether the byte at "index" is preceded on its line by nothing but blanks.
+///
+/// Shared by the marks whose Markdown role depends on it: a hyphen opening a
+/// line is a list bullet, and ": " opening one is a definition-list marker.
+/// Text that starts with the indentation counts, which is the None arm.
+fn at_line_start(bytes: &[u8], index: usize) -> bool {
+    bytes[..index]
+        .iter()
+        .rev()
+        .find(|&&byte| byte != b' ' && byte != b'\t')
+        .is_none_or(|&byte| byte == b'\n' || byte == b'\r')
+}
+
+/// Whether the mark at "index" separates two digits, which makes it notation
+/// rather than punctuation: 1,000 and 12:30, not a comma or a colon in prose.
+fn digits_both_sides(bytes: &[u8], index: usize) -> bool {
+    index > 0
+        && bytes[index - 1].is_ascii_digit()
+        && bytes.get(index + 1).is_some_and(u8::is_ascii_digit)
+}
+
+/// Whether the colon at "index" carries a notation rather than prose.
+///
+/// Three shapes, none of which a Chinese sentence punctuates: a time, 12:30; a
+/// Markdown reference or footnote definition, [id]: url and [^id]: text; and a
+/// definition-list marker, ": " opening a line. Everything else is a colon in
+/// running text and goes on to the ownership test.
+///
+/// A URL scheme needs no shape here. Its colon sits inside the range RE_URL
+/// (`src/engine/excluded.rs`) matches, and the walk skips an excluded byte
+/// before it ever reaches this arm; a scheme with nothing after it fails the
+/// ownership test anyway, since neither neighbour is CJK.
+fn colon_is_notation(bytes: &[u8], index: usize) -> bool {
+    digits_both_sides(bytes, index)
+        || (index > 0 && bytes[index - 1] == b']')
+        || (bytes.get(index + 1) == Some(&b' ') && at_line_start(bytes, index))
+}
+
+/// Whether the Chinese around the mark at "index" owns it, rather than an
+/// embedded English clause the Chinese happens to quote.
+///
+/// The two halves of the question: Chinese on one side or the other, and a run
+/// before it that is not a clause of its own. Three marks in this scan ask it,
+/// , and ! ? ; and :. The period asks a one-sided version inline, the brackets
+/// have their own pairing model in [`paren_partner_is_convertible`], and the
+/// range indicators and the ellipsis pass ask only the first half; TODO item
+/// 38 records what that costs them.
+fn mark_is_chinese_owned(text: &str, index: usize, excluded: &[ByteRange]) -> bool {
+    (adjacent_cjk(text, index, true) || adjacent_cjk(text, index + 1, false))
+        && !in_latin_clause(text, index, excluded)
+}
+
+/// How far back the Latin run may reach before it meets content this scan does
+/// not judge: the end of the nearest excluded range before "index", or 0 when
+/// there is none.
+///
+/// An inline code span, a URL and a path are excluded because they are not
+/// prose, and a stretch of text that is not prose is not an English clause
+/// either. Without this, a code span spelling npm run build reads as three
+/// lower-case words and takes the comma after it, when that comma is the
+/// Chinese sentence's and the code span is only a term the sentence borrowed.
+///
+/// The ranges are sorted and non-overlapping, so their ends ascend and the last
+/// one starting before the mark is the nearest. The "is_excluded" test in the
+/// walk above already established that no range covers the mark itself, so that
+/// end cannot pass it; the min is there for a caller that has not.
+fn excluded_run_floor(index: usize, excluded: &[ByteRange]) -> usize {
+    let after = excluded.partition_point(|range| range.start < index);
+    if after == 0 {
+        0
+    } else {
+        excluded[after - 1].end.min(index)
+    }
+}
+
+/// Whether the mark at "index" ends a run of Latin text long enough to be a
+/// clause of its own.
+///
+/// The run is the stretch ending at the mark that [`closes_latin_run`] and
+/// [`excluded_run_floor`] bound, so an embedded English clause is measured on
+/// its own: not on the Chinese around it, not on whatever preceded the mark
+/// before it, and not on a code span or a URL this scan already declined to
+/// read as prose. ASCII only, and deliberately so: a run of Latin script
+/// carrying its own diacritics closes
+/// on the first one, so el esta bien reads as a clause and "él está bien" does
+/// not. English is what the embedded runs in zh-TW technical prose are, and
+/// widening the character class would widen this guard's reach with no corpus
+/// to say by how much.
+///
+/// A word is a whitespace-delimited token holding at least one ASCII letter,
+/// which keeps a term whole however it is spelled. Counting letter runs
+/// instead would split Node.js in two and read a lone term as a clause.
+///
+/// Reaching the count is not enough on its own: one word has to begin in lower
+/// case. A borrowed multi-word term is a proper name, Visual Studio Code,
+/// Google Chrome, New York, and carries none, while a clause is built out of
+/// ordinary words, "I agree", "file not found", "do one thing and do it well".
+/// The cost is at the two edges the case signal cannot read: a title-cased or
+/// shouted clause, "I Agree," and "FILE NOT FOUND:", keeps its mark converted,
+/// and a lower-case brand, iPhone Pro Max, keeps its own. Both are rarer in
+/// zh-TW prose than the multi-word product name the signal buys back.
+///
+/// Reading forward as well would silence 他說, I agree, where the comma
+/// follows Chinese and the English merely comes after it.
+fn in_latin_clause(text: &str, index: usize, excluded: &[ByteRange]) -> bool {
+    let bytes = text.as_bytes();
+    let floor = index
+        .saturating_sub(LATIN_RUN_SEARCH_BYTES)
+        .max(excluded_run_floor(index, excluded));
+
+    // Every step back crosses one ASCII byte, so the start stays on a character
+    // boundary and the slice below is always valid. Stopping on the floor keeps
+    // it: the walk only reaches the floor after reading the byte there and
+    // finding it an ASCII one that does not close the run.
+    let mut start = index;
+    while start > floor && !closes_latin_run(bytes, start - 1) {
+        start -= 1;
+    }
+
+    let mut words = 0usize;
+    let mut has_lower_case_word = false;
+
+    // The first letter of the token, not its first byte: a leading quote or
+    // bracket says nothing about the word's case, and a token holding no letter
+    // at all is no word.
+    for first in text[start..index]
+        .split_ascii_whitespace()
+        .filter_map(|token| token.bytes().find(u8::is_ascii_alphabetic))
+    {
+        words += 1;
+        has_lower_case_word |= first.is_ascii_lowercase();
+    }
+
+    words >= LATIN_CLAUSE_WORDS && has_lower_case_word
 }

@@ -7,7 +7,7 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
-# Read by default.  Only `publish-latest` widens this, and only for itself, so
+# Read by default.  Only "publish-latest" widens this, and only for itself, so
 # no job that executes pull-request-controlled code ever holds a write token.
 permissions:
   contents: read
@@ -54,13 +54,13 @@ jobs:
       with:
         python-version: "3.x"
 
-    # `make check` runs black through scripts/indent.sh, and the runner image
+    # "make check" runs black through scripts/indent.sh, and the runner image
     # does not carry black.  Only this job needs it; the build jobs run the
     # table generator, which black never sees.
     - name: Install black
       run: pip install black
 
-    # The shell lanes of `make check`.  shfmt takes its style from
+    # The shell lanes of "make check".  shfmt takes its style from
     # .editorconfig, so installing it here is the whole configuration.  Linux
     # only, and that is deliberate: formatting does not vary by platform, and
     # checking it on one runner is what the other two would repeat.  Both lanes
@@ -77,12 +77,12 @@ jobs:
     # failure, so this step is what the formatting gate stands on.
     #
     # Built from a pinned revision rather than downloaded from the release
-    # tagged `latest`.  That tag is rolling, so the asset behind it moves, and a
+    # tagged "latest".  That tag is rolling, so the asset behind it moves, and a
     # digest read from the same release metadata proves the transfer arrived
     # intact without saying anything about which build arrived.  A commit is
     # immutable and readable; bumping it is an edit to this line, which is
     # exactly the review a formatter that rewrites every comment in the tree
-    # deserves.  It also drops the `sudo` and the write into /usr/local/bin that
+    # deserves.  It also drops the "sudo" and the write into /usr/local/bin that
     # the tarball needed: cargo installs into ~/.cargo/bin, which is on PATH.
     #
     # The cost is about a minute of compile on a cold cache, and rust-cache
@@ -110,13 +110,13 @@ jobs:
         ZHTW_REQUIRE_TOOLS: ${{ matrix.os == 'ubuntu-24.04' && '1' || '' }}
       run: make check
 
-    # `make` is not dependable on the Windows runner (see build-latest's
-    # "Build and package" step below), so run the same checks `make check`
+    # "make" is not dependable on the Windows runner (see build-latest's
+    # "Build and package" step below), so run the same checks "make check"
     # would directly instead.  Two of them are missing here on purpose:
     # scripts/indent.sh and the hook suite drive tar, mktemp, git worktrees and
     # four hook wrappers through whatever sh the runner happens to provide, and
     # neither a formatting rule nor a commit rule varies by platform.  The Linux
-    # leg is where both run; the direct `cargo fmt --check` and `black --check`
+    # leg is where both run; the direct "cargo fmt --check" and "black --check"
     # below are what this leg keeps of the formatter chain.
     #
     # The rest of the list is what caught #124 and #126 turning
@@ -137,20 +137,20 @@ jobs:
         python scripts/check-ruleset.py --lint
 
   # The commit-msg hook binds whoever installed it.  This binds everyone else: a
-  # rebase, an amend, `--no-verify`, or a subject typed into the GitHub merge box
+  # rebase, an amend, "--no-verify", or a subject typed into the GitHub merge box
   # all reach the branch unread otherwise.  It runs the same script the pre-push
   # hook runs, so a contributor with hooks and a contributor without are judged
   # by one list.
   #
-  # Pull requests only, and deliberately.  `base.sha..HEAD` is the work being
+  # Pull requests only, and deliberately.  "base.sha..HEAD" is the work being
   # proposed, which is the thing these rules are about.  The push event's range
   # is not: a merge to main replays every commit of the merged branch, so a rule
   # this log only started following recently would reject history rather than the
   # change in front of it.
   #
-  # Its own job rather than a step in `check`: it needs the full history, and the
-  # check matrix would otherwise pay for a deep clone on three runners to run one
-  # second of shell on one of them.
+  # Its own job rather than a step in "check": commit messages do not vary by
+  # platform, so folding it into that matrix would run one second of shell three
+  # times, and this is skipped outside a pull request while "check" is not.
   commit-log:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
@@ -261,8 +261,8 @@ jobs:
 
   # Builds the WASM scanner, runs the extension's own tests, and packages the
   # unpacked and zipped extension.  It lives here rather than in a workflow of
-  # its own because the zip ships on the same `latest` release as the binaries,
-  # and one release wants one owner: `publish-latest` below checksums it,
+  # its own because the zip ships on the same "latest" release as the binaries,
+  # and one release wants one owner: "publish-latest" below checksums it,
   # uploads it, and verifies it alongside everything else.
   package-extension:
     runs-on: ubuntu-24.04
@@ -287,7 +287,7 @@ jobs:
       with:
         node-version: "22"
 
-    # Prebuilt, like cargo-audit above.  `cargo install wasm-pack` builds it
+    # Prebuilt, like cargo-audit above.  "cargo install wasm-pack" builds it
     # from source, which only stayed cheap because rust-cache happened to carry
     # ~/.cargo/bin across runs.
     - name: Install wasm-pack
@@ -316,7 +316,7 @@ jobs:
         cp extension/icons/icon-{16,32,48,128}.png "$EXTENSION_PACKAGE_DIR"/icons/
         (cd extension-package && zip -r "../$EXTENSION_ZIP" zhtw-mcp-extension)
 
-    # Deliberately NOT named `zhtw-mcp-*`: publish-latest downloads that
+    # Deliberately NOT named "zhtw-mcp-*": publish-latest downloads that
     # pattern into ./dist, and an unpacked tree there would be checksummed and
     # uploaded file by file.
     - name: Upload unpacked extension artifact
@@ -333,7 +333,7 @@ jobs:
         path: ${{ env.EXTENSION_ZIP }}
         if-no-files-found: error
 
-  # Rolling binaries for the `latest` tag.  This is the project's release: it
+  # Rolling binaries for the "latest" tag.  This is the project's release: it
   # is not a prerelease, so it carries the "Latest" badge and /releases/latest
   # resolves to it.  Nothing here needs a version tag to be pushed.
   build-latest:
@@ -384,7 +384,7 @@ jobs:
     # Runs the generator directly rather than through make, which is not
     # dependable on the Windows runner.  Unlike the Makefile's $(S2T_STAMP)
     # recipe this skips rustfmt and the stamp: nothing here fmt-checks, and the
-    # minimal toolchain has no rustfmt.  `python` not `python3` is for Windows;
+    # minimal toolchain has no rustfmt.  "python" not "python3" is for Windows;
     # setup-python provides both elsewhere.
     - name: Build and package
       shell: bash
@@ -433,9 +433,9 @@ jobs:
         path: dist
         merge-multiple: true
 
-    # This never *moves* the `latest` git tag.  A download URL keys on the
+    # This never *moves* the "latest" git tag.  A download URL keys on the
     # release's tag name, not on the commit the ref points at, so force-moving
-    # the ref on every build bought nothing.  `gh release create` does create
+    # the ref on every build bought nothing.  "gh release create" does create
     # the tag when it is missing, and --target applies only in that case; if the
     # tag already exists the release adopts wherever it points, which is why the
     # commit a build came from is recorded in the notes instead.
@@ -463,7 +463,7 @@ jobs:
         # concurrently, and gh warns that a failed upload loses the originals,
         # so the whole set is briefly absent and can stay that way.  Hence the
         # retry, and the verification below.  --draft=false also recovers a
-        # release left as a draft by a `create` that died mid-upload.
+        # release left as a draft by a "create" that died mid-upload.
         notes="Automated build of $GITHUB_SHA on $(date -u +%Y-%m-%d)."
         upload_rc=0
         if gh release view latest >/dev/null 2>&1; then

@@ -60,6 +60,21 @@ Unified lint / fix / gate for zh-TW text.
 | `output` | `"full"` / `"compact"` / `"tabular"` / `"summary"` | Output verbosity |
 | `include_telemetry` | boolean | Include estimated token, cache, and Tier 2 resolution metrics in JSON responses (`full`, `compact`, `summary`) |
 | `verify` | boolean | Anchor-verify findings via Google Translate. Requires the `translate` feature (on by default) and sends text off the machine: see [Network access](#network-access-and-zhtw_no_network) below |
+| `exempt_blockquotes` | boolean | Treat Markdown blockquotes as quoted material rather than content |
+| `detect_ai` | boolean | AI-filler detection; overrides the profile default |
+| `detect_translationese` | boolean | Translationese (翻譯腔 / 歐化) detection; overrides the profile default |
+| `detect_style` | boolean | Composite three-axis scorecard (ai, translationese, regional_density) |
+| `translationese_domain` | `"general"` / `"technical"` / `"literary"` / `"news"` | Per-domain calibration for translationese thresholds |
+| `document_genre` | `"casual"` / `"technical"` / `"financial"` | How strictly sourcing is expected for unsupported authority attributions. Requires `detect_ai` |
+| `register` | `"auto"` / `"formal"` / `"casual"` | Register the prose is written in. `auto` reads it off the text; `formal` licenses the forms a 公文 mandates. Suppression only |
+| `rhythm` | boolean | Advisory 氣口 checks. Never applied by any fix tier |
+| `ai_threshold` | `"low"` / `"medium"` / `"high"` | AI detection sensitivity. Requires `detect_ai` |
+
+`document_genre` and `register` are different questions. The genre is a claim
+the caller makes about the subject matter, and it selects what to advise about
+an unsourced attribution. The register is a property of the prose, and it
+decides which detectors stay quiet: a 公文 writes 予以核准 and 因為…所以
+because the form demands them, so reporting those is reporting the form.
 
 Lint only (default):
 

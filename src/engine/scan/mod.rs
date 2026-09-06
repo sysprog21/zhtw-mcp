@@ -46,8 +46,8 @@ use serde::{Deserialize, Serialize};
 
 use super::zhtype::ChineseType;
 use crate::rules::ruleset::{
-    CaseRule, Issue, IssueType, PhaseFamily, PhasePass, Profile, ProfileConfig, RuleType, Severity,
-    SpellingRule,
+    CaseRule, Issue, IssueType, PhaseFamily, PhasePass, Profile, ProfileConfig, Register, RuleType,
+    Severity, SpellingRule,
 };
 
 use self::ellipsis::scan_ellipsis;
@@ -620,6 +620,21 @@ pub(crate) fn effective_suggestions(rule: &SpellingRule) -> Vec<String> {
         Some(e) if !e.is_empty() => vec![e.to_string()],
         _ => Vec::new(),
     }
+}
+
+/// Slice up to `n` characters from a byte offset, char-boundary safe.
+/// Returns the byte range that covers up to n chars from start_byte.
+/// Out-of-range or non-char-boundary `start_byte` is clamped to `text.len()`
+/// to keep all callers panic-free.
+pub(crate) fn char_bounded_end(text: &str, start_byte: usize, n_chars: usize) -> usize {
+    if start_byte >= text.len() || !text.is_char_boundary(start_byte) {
+        return text.len();
+    }
+    text[start_byte..]
+        .char_indices()
+        .nth(n_chars)
+        .map(|(i, _)| start_byte + i)
+        .unwrap_or(text.len())
 }
 
 /// Returns true if ch is a CJK ideograph (unified, extensions A-I,
@@ -1620,12 +1635,22 @@ fn run_structural_passes(
     content_type: ContentType,
     guards: &rule_ir::GuardRules,
 ) -> Vec<ByteRange> {
+    // Resolved once for the document and handed to every detector that asks, so
+    // that two detectors cannot disagree about the same page. Detecting it
+    // costs a pass per anchor, so skip that when no consumer is enabled, the
+    // same reason the boundary index below is built on demand.
+    let register = if cfg.grammar_checks || cfg.translationese_detection {
+        resolve_register(text, excluded, cfg.register)
+    } else {
+        Register::Casual
+    };
+
     // One emitter for the whole stage: every check below reads this document
     // through this mask and writes into this list.
     let mut em = Emitter::new(text, excluded, issues);
 
     if cfg.grammar_checks {
-        grammar::scan_grammar(&mut em);
+        grammar::scan_grammar(&mut em, register);
     }
 
     // Build boundaries only when an AI structural or translationese detector
@@ -1658,12 +1683,13 @@ fn run_structural_passes(
                 idx,
                 cfg.translationese_domain,
                 cfg.rhythm,
+                register,
             );
         }
 
         // Substring-only translationese detectors (ZY1a/ZY2a/ZY3a/ZY4a), which
         // need no boundary index.
-        grammar::scan_translationese_lexical(&mut em);
+        grammar::scan_translationese_lexical(&mut em, register);
         dedup_translationese_phase_duplicates(em.issues);
     }
 
@@ -1677,6 +1703,40 @@ fn run_structural_passes(
     }
 
     mentions
+}
+
+/// Resolve automatic register detection from the same prose that scanners see.
+///
+/// Excluded spans are replaced rather than removed so an anchor on either side
+/// cannot join across code, markup, or a suppression range.
+fn resolve_register(
+    text: &str,
+    excluded: &[ByteRange],
+    mode: crate::rules::ruleset::RegisterMode,
+) -> Register {
+    if mode != crate::rules::ruleset::RegisterMode::Auto {
+        return mode.resolve(text);
+    }
+    if excluded.is_empty() {
+        return mode.resolve(text);
+    }
+
+    let mut visible = String::with_capacity(text.len());
+    let mut range = 0;
+    for (at, ch) in text.char_indices() {
+        while range < excluded.len() && excluded[range].end <= at {
+            range += 1;
+        }
+        if excluded
+            .get(range)
+            .is_some_and(|span| span.start <= at && at < span.end)
+        {
+            visible.push(if ch.is_whitespace() { ch } else { ' ' });
+        } else {
+            visible.push(ch);
+        }
+    }
+    mode.resolve(&visible)
 }
 
 /// Drop style findings that name a phrase rather than use it.

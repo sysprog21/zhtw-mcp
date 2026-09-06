@@ -890,6 +890,68 @@
     }
 
     #[test]
+    fn auto_register_ignores_formal_anchor_in_excluded_markdown_code() {
+        let scanner = Scanner::new(sample_spelling_rules(), vec![]);
+        let md = "```text\n敬啟者：\n```\n我們予以處理。\n";
+        let issues = scanner
+            .scan_for_content_type(md, ContentType::Markdown, Profile::Base)
+            .issues;
+        assert!(
+            issues.iter().any(|issue| issue.found == "予以處理"),
+            "a formal anchor in excluded code must not suppress prose findings: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn auto_register_ignores_formal_anchor_in_excluded_yaml_key() {
+        let scanner = Scanner::new(sample_spelling_rules(), vec![]);
+        let yaml = "敬啟者: 範例\n內容: 我們予以處理。\n";
+        let issues = scanner
+            .scan_for_content_type(yaml, ContentType::Yaml, Profile::Base)
+            .issues;
+        assert!(
+            issues.iter().any(|issue| issue.found == "予以處理"),
+            "a formal anchor in an excluded YAML key must not suppress prose findings: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn auto_register_does_not_suppress_prose_about_a_contract() {
+        let scanner = Scanner::new(sample_spelling_rules(), vec![]);
+        let text = "這篇文章討論合約與契約的差異。我們予以處理。";
+        let issues = scanner.scan_profiled(text, Profile::Base).issues;
+        assert!(
+            issues.iter().any(|issue| issue.found == "予以處理"),
+            "a bare contract noun must not suppress prose findings: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn auto_register_suppresses_indexed_connective_in_formal_prose() {
+        let scanner = Scanner::new(sample_spelling_rules(), vec![]);
+        let text = "敬啟者：因為下雨了，所以我們待在屋裡。";
+        let issues = scanner.scan_profiled(text, Profile::Base).issues;
+        assert!(
+            !issues.iter().any(|issue| {
+                issue.phase_family
+                    == Some((PhaseFamily::Connective, PhasePass::Indexed))
+            }),
+            "auto-detected formal prose must suppress ZY2b: {issues:?}"
+        );
+
+        // The counterfactual, so the assertion above cannot pass because the
+        // detector stopped firing rather than because the register silenced it.
+        let plain = "因為下雨了，所以我們待在屋裡。";
+        let issues = scanner.scan_profiled(plain, Profile::Base).issues;
+        assert!(
+            issues.iter().any(|issue| {
+                issue.phase_family == Some((PhaseFamily::Connective, PhasePass::Indexed))
+            }),
+            "without the anchor ZY2b must fire: {issues:?}"
+        );
+    }
+
+    #[test]
     fn markdown_table_cell_coordinates_attached() {
         // Issues inside a Markdown table cell get (row, col) coordinates for
         // editor integration / SARIF region output.

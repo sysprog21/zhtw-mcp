@@ -176,13 +176,13 @@ fn fix_verdict<'a>(
     }
 
     // Rhythm is taste, and the fixer is not. The findings carry no suggestion,
-    // so the arity test below would decline them anyway; this says it at the
-    // top so that adding a suggestion to one later cannot quietly make it
-    // writable. Skip rather than Decline: an advisory the fixer was never meant
-    // to act on is out of scope, not a judgment call it lost.
+    // so the arity test below would skip them anyway; this says it at the top
+    // so that adding a suggestion to one later cannot quietly make it writable.
+    // Skip rather than Decline: an advisory the fixer was never meant to act on
+    // is out of scope, not a judgment call it lost.
     if issue
         .phase_family
-        .is_some_and(|(family, _)| family.is_rhythm())
+        .is_some_and(|(family, _)| family.is_advisory())
     {
         return Verdict::Skip;
     }

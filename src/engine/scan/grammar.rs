@@ -20,10 +20,11 @@ use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
 use super::emit::Emitter;
 use crate::engine::excluded::{is_excluded, ByteRange};
-use crate::engine::scan::is_cjk_ideograph;
 use crate::engine::scan::rule_ir::StructuralGuard;
+use crate::engine::scan::{char_bounded_end, is_cjk_ideograph};
 use crate::rules::ruleset::{
-    DocumentGenre, Issue, IssueType, PhaseFamily, PhasePass, Severity, StructuralFamily,
+    AttributionGenre, Issue, IssueType, PhaseFamily, PhasePass, Register, Severity,
+    StructuralFamily,
 };
 
 // Common verb-final suffixes that indicate a verb phrase precedes 和.
@@ -101,8 +102,11 @@ const TRANSITIVE_VERB_PREPOSITION_PAIRS: &[(&str, &str, &str)] = &[
 ];
 
 // Bureaucratic verbal prefixes (English 'conduct/carry out' calque). "進行討論"
-// → "討論", "加以分析" → "分析", "予以處理" → "處理"
-const BUREAUCRATIC_PREFIXES: &[&str] = &["進行", "加以", "予以"];
+// → "討論", "加以分析" → "分析", "予以處理" → "處理" The flag is the formal
+// register's licence: 予以核准 is what a 公文 writes, and telling its author to
+// write 核准 is telling them to stop writing 公文. The other two carry no such
+// licence, because 進行討論 is padding in a letter as much as in a blog post.
+const BUREAUCRATIC_PREFIXES: &[(&str, bool)] = &[("進行", false), ("加以", false), ("予以", true)];
 
 // Verbs commonly nominalized after bureaucratic prefixes.
 const NOMINALIZED_VERBS: &[&str] = &[
@@ -228,7 +232,7 @@ fn build_grammar_ac() -> (AhoCorasick, Vec<(GrammarCheckType, usize)>) {
     }
 
     // Bureaucratic prefixes
-    for (i, prefix) in BUREAUCRATIC_PREFIXES.iter().enumerate() {
+    for (i, &(prefix, _)) in BUREAUCRATIC_PREFIXES.iter().enumerate() {
         patterns.push(prefix);
         metadata.push((GrammarCheckType::BureaucraticNominalization, i));
     }
@@ -465,10 +469,19 @@ fn validate_redundant_preposition(
 }
 
 /// Validate a bureaucratic nominalization hit.
-fn validate_bureaucratic_nominalization(em: &mut Emitter<'_>, abs_pos: usize, prefix_end: usize) {
+fn validate_bureaucratic_nominalization(
+    em: &mut Emitter<'_>,
+    abs_pos: usize,
+    prefix_end: usize,
+    pattern_index: usize,
+    register: Register,
+) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
 
     if is_excluded(abs_pos, prefix_end, excluded) {
+        return;
+    }
+    if register == Register::Formal && BUREAUCRATIC_PREFIXES[pattern_index].1 {
         return;
     }
 
@@ -954,7 +967,7 @@ fn any_position_in(positions: &[usize], start: usize, end: usize) -> bool {
 
 pub(crate) fn scan_ai_bare_attribution(
     em: &mut Emitter<'_>,
-    genre: DocumentGenre,
+    genre: AttributionGenre,
     guard: Option<&StructuralGuard>,
 ) {
     let (text, excluded) = (em.text, em.excluded);
@@ -985,7 +998,7 @@ fn validate_bare_attribution(
     em: &mut Emitter<'_>,
     abs_pos: usize,
     phrase: &str,
-    genre: DocumentGenre,
+    genre: AttributionGenre,
     index: &AttributionIndex,
 ) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
@@ -1029,10 +1042,10 @@ fn validate_bare_attribution(
     // fixer's delete sentinel, and deleting the attribution off the front of a
     // sentence leaves text like "多位，本次修法將影響地方財政".
     let context = match genre {
-        DocumentGenre::Casual => {
+        AttributionGenre::Casual => {
             "vague authority attribution; name the source or rewrite the clause without it"
         }
-        DocumentGenre::Technical | DocumentGenre::Financial => {
+        AttributionGenre::Technical | AttributionGenre::Financial => {
             "citation missing for this authority attribution; name the source (do not invent one)"
         }
     };
@@ -1306,10 +1319,13 @@ fn scan_redundant_preposition(em: &mut Emitter<'_>) {
 // Detect bureaucratic nominalization: 進行/加以/予以 + verb. These are calques
 // of English "conduct/carry out + noun" and are verbose.
 #[cfg(test)]
-fn scan_bureaucratic_nominalization(em: &mut Emitter<'_>) {
+fn scan_bureaucratic_nominalization(em: &mut Emitter<'_>, register: Register) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
 
-    for prefix in BUREAUCRATIC_PREFIXES {
+    for &(prefix, formal_licenses_prefix) in BUREAUCRATIC_PREFIXES {
+        if register == Register::Formal && formal_licenses_prefix {
+            continue;
+        }
         let prefix_len = prefix.len();
         let mut search_start = 0;
         while let Some(pos) = text[search_start..].find(prefix) {
@@ -2514,21 +2530,6 @@ fn scan_ai_tricolon(em: &mut Emitter<'_>, idx: &crate::engine::sentence::Boundar
             }
         }
     }
-}
-
-/// Slice up to `n` characters from a byte offset, char-boundary safe.
-/// Returns the byte range that covers up to n chars from start_byte.
-/// Out-of-range or non-char-boundary `start_byte` is clamped to `text.len()`
-/// to keep all callers panic-free.
-fn char_bounded_end(text: &str, start_byte: usize, n_chars: usize) -> usize {
-    if start_byte >= text.len() || !text.is_char_boundary(start_byte) {
-        return text.len();
-    }
-    text[start_byte..]
-        .char_indices()
-        .nth(n_chars)
-        .map(|(i, _)| start_byte + i)
-        .unwrap_or(text.len())
 }
 
 // Negative parallel: 不只是/不僅是 plus 而是/更是 within 30 chars.
@@ -4193,7 +4194,7 @@ fn starts_another_dang_word(rest: &str) -> bool {
     rest.chars().next().is_some_and(|c| SKIP_NEXT.contains(&c))
 }
 
-fn scan_zy2a_connective_calques(em: &mut Emitter<'_>) {
+fn scan_zy2a_connective_calques(em: &mut Emitter<'_>, register: Register) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
 
     // (opener, closer, max_chars_between, label). Distance budget per opener:
@@ -4205,13 +4206,11 @@ fn scan_zy2a_connective_calques(em: &mut Emitter<'_>) {
         ("如果", "那麼", 40, "如果…那麼"),
     ];
 
-    // Register markers signalling formal-letter or contract templates where the
-    // paired connective is template-mandatory. Skip when these appear in the
-    // document head (first 100 chars, char-boundary safe).
-    const FORMAL_MARKERS: &[&str] = &["敬啟者", "謹此", "茲就", "謹啟", "合約", "契約"];
-    let head_end = char_bounded_end(text, 0, 100);
-    let in_formal_register = FORMAL_MARKERS.iter().any(|m| text[..head_end].contains(m));
-    if in_formal_register {
+    // A formal letter or contract template mandates the paired connective, so
+    // reporting it there is reporting the form itself. The marker list this
+    // used to read for itself now lives in engine::register, where the
+    // bureaucratic detector can read it too.
+    if register == Register::Formal {
         return;
     }
 
@@ -5289,7 +5288,7 @@ fn emit_zy5_span_if_qualifies(
 /// `s` does not start with such a marker followed by whitespace.
 ///
 /// Handles multi-digit numbers (10., 12)), not just single digits.
-pub(super) fn numbered_list_marker_len(s: &str) -> Option<usize> {
+pub(crate) fn numbered_list_marker_len(s: &str) -> Option<usize> {
     let bytes = s.as_bytes();
     let digits = bytes.iter().take_while(|b| b.is_ascii_digit()).count();
     if digits == 0 {
@@ -5517,9 +5516,9 @@ pub(crate) fn scan_ai_structural_phase2(
 // calque pass:
 //   ZY1a 之一 superlative calque, ZY2a EN connective bounded calques,
 //   ZY3a finite nominalization patterns, ZY4a false-friend lexical pairs.
-pub(crate) fn scan_translationese_lexical(em: &mut Emitter<'_>) {
+pub(crate) fn scan_translationese_lexical(em: &mut Emitter<'_>, register: Register) {
     scan_zy1a_superlative_yi_zhi(em);
-    scan_zy2a_connective_calques(em);
+    scan_zy2a_connective_calques(em, register);
     scan_zy3a_finite_nominalization(em);
     scan_zy4a_false_friends(em);
 }
@@ -5554,9 +5553,12 @@ pub(crate) fn scan_translationese_indexed(
     boundary_index: &crate::engine::sentence::BoundaryIndex,
     domain: crate::engine::translationese_score::TranslationeseDomain,
     rhythm: bool,
+    register: Register,
 ) {
     scan_zy1b_yi_zhi_density(em, boundary_index, domain);
-    scan_zy2b_sentence_bounded_connectives(em, boundary_index);
+    if register != Register::Formal {
+        scan_zy2b_sentence_bounded_connectives(em, boundary_index);
+    }
     scan_zy3b_nominalization_chain(em, boundary_index, domain);
     scan_zy5_long_premodifier(em, boundary_index, domain, rhythm);
 }
@@ -5777,6 +5779,7 @@ pub(crate) fn scan_rhythm(em: &mut Emitter<'_>, idx: &crate::engine::sentence::B
 
 // Entry point for AI writing detection grammar checks. Gated by
 // ProfileConfig::ai_semantic_safety, NOT called from scan_grammar.
+
 pub(crate) fn scan_ai_grammar(em: &mut Emitter<'_>) {
     scan_ai_semantic_safety(em);
     scan_ai_copula_avoidance(em);
@@ -5790,7 +5793,7 @@ pub(crate) fn scan_ai_grammar(em: &mut Emitter<'_>) {
 // A single Aho-Corasick pass finds all trigger patterns, then dispatches each
 // hit to the appropriate validator. This is O(N + H) instead of the old O(P*N)
 // where P = total patterns across 8 scanners.
-pub(crate) fn scan_grammar(em: &mut Emitter<'_>) {
+pub(crate) fn scan_grammar(em: &mut Emitter<'_>, register: Register) {
     let text = em.text;
 
     let (ac, metadata) = grammar_ac();
@@ -5814,7 +5817,7 @@ pub(crate) fn scan_grammar(em: &mut Emitter<'_>) {
                 validate_redundant_preposition(em, start, end, pattern_index);
             }
             GrammarCheckType::BureaucraticNominalization => {
-                validate_bureaucratic_nominalization(em, start, end);
+                validate_bureaucratic_nominalization(em, start, end, pattern_index, register);
             }
             GrammarCheckType::VerboseAction => {
                 validate_verbose_action(em, start, end);
@@ -5831,12 +5834,12 @@ pub(crate) fn scan_grammar(em: &mut Emitter<'_>) {
 
 // Old scan_grammar entry point retained for differential testing.
 #[cfg(test)]
-fn scan_grammar_legacy(em: &mut Emitter<'_>) {
+fn scan_grammar_legacy(em: &mut Emitter<'_>, register: Register) {
     scan_a_not_a_ma(em);
     scan_he_connecting_clauses(em);
     scan_bare_shi_adjective(em);
     scan_redundant_preposition(em);
-    scan_bureaucratic_nominalization(em);
+    scan_bureaucratic_nominalization(em, register);
     scan_verbose_action(em);
     scan_dui_jinxing(em);
     scan_double_attribution(em);
@@ -5849,7 +5852,7 @@ mod tests {
 
     fn scan(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_grammar(&mut Emitter::new(text, &[], &mut issues));
+        scan_grammar(&mut Emitter::new(text, &[], &mut issues), Register::Casual);
         issues
     }
 
@@ -7091,7 +7094,7 @@ mod tests {
         let mut issues = Vec::new();
         scan_ai_bare_attribution(
             &mut Emitter::new(text, excluded, &mut issues),
-            DocumentGenre::Casual,
+            AttributionGenre::Casual,
             Some(&attribution_guard()),
         );
         issues
@@ -7127,7 +7130,7 @@ mod tests {
 
     #[test]
     fn standalone_research_shows_in_technical_or_financial_prose_needs_a_citation() {
-        for genre in [DocumentGenre::Technical, DocumentGenre::Financial] {
+        for genre in [AttributionGenre::Technical, AttributionGenre::Financial] {
             let mut issues = Vec::new();
             scan_ai_bare_attribution(
                 &mut Emitter::new("研究顯示成果很好", &[], &mut issues),
@@ -7459,7 +7462,10 @@ mod tests {
             end: text.len(),
         }];
         let mut issues = Vec::new();
-        scan_grammar(&mut Emitter::new(text, &excluded, &mut issues));
+        scan_grammar(
+            &mut Emitter::new(text, &excluded, &mut issues),
+            Register::Casual,
+        );
         assert!(issues.is_empty());
     }
 
@@ -7471,7 +7477,10 @@ mod tests {
             end: text.len(),
         }];
         let mut issues = Vec::new();
-        scan_grammar(&mut Emitter::new(text, &excluded, &mut issues));
+        scan_grammar(
+            &mut Emitter::new(text, &excluded, &mut issues),
+            Register::Casual,
+        );
         assert!(issues.is_empty());
     }
 
@@ -7483,7 +7492,10 @@ mod tests {
             end: text.len(),
         }];
         let mut issues = Vec::new();
-        scan_grammar(&mut Emitter::new(text, &excluded, &mut issues));
+        scan_grammar(
+            &mut Emitter::new(text, &excluded, &mut issues),
+            Register::Casual,
+        );
         assert!(issues.is_empty());
     }
 
@@ -7493,7 +7505,10 @@ mod tests {
         let text = "你是不是學生嗎？";
         let excluded = vec![ByteRange { start: 0, end: 3 }];
         let mut issues = Vec::new();
-        scan_grammar(&mut Emitter::new(text, &excluded, &mut issues));
+        scan_grammar(
+            &mut Emitter::new(text, &excluded, &mut issues),
+            Register::Casual,
+        );
         // 是不是 starts at byte 3 (after 你), should still be detected.
         assert_eq!(issues.len(), 1);
     }
@@ -8646,11 +8661,17 @@ mod tests {
     /// before comparing.
     fn assert_ac_matches_legacy(text: &str) {
         let mut ac_issues = Vec::new();
-        scan_grammar(&mut Emitter::new(text, &[], &mut ac_issues));
+        scan_grammar(
+            &mut Emitter::new(text, &[], &mut ac_issues),
+            Register::Casual,
+        );
         ac_issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(a.found.cmp(&b.found)));
 
         let mut legacy_issues = Vec::new();
-        scan_grammar_legacy(&mut Emitter::new(text, &[], &mut legacy_issues));
+        scan_grammar_legacy(
+            &mut Emitter::new(text, &[], &mut legacy_issues),
+            Register::Casual,
+        );
         legacy_issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(a.found.cmp(&b.found)));
 
         assert_eq!(
@@ -8748,7 +8769,7 @@ mod tests {
 
     fn scan_lex(text: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
-        scan_translationese_lexical(&mut Emitter::new(text, &[], &mut issues));
+        scan_translationese_lexical(&mut Emitter::new(text, &[], &mut issues), Register::Casual);
         issues
     }
 
@@ -9049,7 +9070,10 @@ mod tests {
             start: 0,
             end: "實際上".len(),
         }];
-        scan_translationese_lexical(&mut Emitter::new(text, excluded, &mut issues));
+        scan_translationese_lexical(
+            &mut Emitter::new(text, excluded, &mut issues),
+            Register::Casual,
+        );
 
         // The remaining 基本上 should NOT fire because its only same-clause
         // companion (實際上) is now excluded.
@@ -9074,7 +9098,10 @@ mod tests {
             start: paren_start,
             end: paren_end,
         }];
-        scan_translationese_lexical(&mut Emitter::new(text, excluded, &mut issues));
+        scan_translationese_lexical(
+            &mut Emitter::new(text, excluded, &mut issues),
+            Register::Casual,
+        );
         assert!(
             !issues
                 .iter()
@@ -9143,6 +9170,7 @@ mod tests {
             &idx,
             domain,
             rhythm,
+            Register::Casual,
         );
         issues
     }
@@ -9240,6 +9268,26 @@ mod tests {
     }
 
     #[test]
+    fn zy2b_is_suppressed_in_formal_register() {
+        // ZY2a returns early on a formal register, and leaving the indexed pass
+        // to report the same 因為…所以 would make that gate invisible.
+        let text = "因為下雨了，所以我們待在屋裡。";
+        let idx = BoundaryIndex::build(text, &[]);
+        let mut issues = Vec::new();
+        scan_translationese_indexed(
+            &mut Emitter::new(text, &[], &mut issues),
+            &idx,
+            crate::engine::translationese_score::TranslationeseDomain::General,
+            false,
+            Register::Formal,
+        );
+        assert!(
+            !fires(&issues, (PhaseFamily::Connective, PhasePass::Indexed)),
+            "formal register must suppress ZY2b: {issues:?}"
+        );
+    }
+
+    #[test]
     fn zy2b_does_not_fire_across_sentence_boundary() {
         // 因為 in sentence 1, 所以 in sentence 2: must NOT fire.
         let text = "他停下來，因為下雨了。所以大家紛紛回家了。";
@@ -9308,6 +9356,7 @@ mod tests {
             &idx,
             crate::engine::translationese_score::TranslationeseDomain::General,
             false,
+            Register::Casual,
         );
         let zy1b: Vec<_> = issues
             .iter()

@@ -1630,7 +1630,8 @@ fn run_structural_passes(
 
     // Build boundaries only when an AI structural or translationese detector
     // needs them. This costs one pass over the text.
-    let needs_boundary_index = cfg.ai_structural_patterns || cfg.translationese_detection;
+    let needs_boundary_index =
+        cfg.ai_structural_patterns || cfg.translationese_detection || cfg.rhythm;
     let boundary_index = if needs_boundary_index {
         Some(BoundaryIndex::build(text, excluded))
     } else {
@@ -1652,13 +1653,27 @@ fn run_structural_passes(
             // Boundary-aware translationese detectors (ZY1b/ZY2b/ZY3b/ZY5).
             // cfg.translationese_domain selects the per-domain threshold table
             // that drives firing behavior at scan time.
-            grammar::scan_translationese_indexed(&mut em, idx, cfg.translationese_domain);
+            grammar::scan_translationese_indexed(
+                &mut em,
+                idx,
+                cfg.translationese_domain,
+                cfg.rhythm,
+            );
         }
 
         // Substring-only translationese detectors (ZY1a/ZY2a/ZY3a/ZY4a), which
         // need no boundary index.
         grammar::scan_translationese_lexical(&mut em);
         dedup_translationese_phase_duplicates(em.issues);
+    }
+
+    // Rhythm (氣口), advisory and opt-in. Independent of
+    // translationese_detection on purpose: rhythm composes with any profile,
+    // including one that has the translationese pass switched off.
+    if cfg.rhythm {
+        if let Some(ref idx) = boundary_index {
+            grammar::scan_rhythm(&mut Emitter::new(text, excluded, issues), idx);
+        }
     }
 
     mentions

@@ -4888,22 +4888,54 @@ fn walk_zy3b_chain(s: &str, start: usize) -> (usize, usize) {
 // one sentence, find each maximal span bounded by "，、。；：" (no internal
 // commas) that ends in "的<noun>". Flag when char-length ≥zy5_min_chars AND the
 // span contains ≥zy5_min_de_count 的 occurrences.
+//
+// The rhythm flag relaxes the second condition to what the span already
+// guarantees. The 的-count gate is the only thing between this detector and a
+// general 氣口 check: a 25-character run with one 的 is the same unbroken
+// breath as one with three, and the count is there to keep the default pass
+// conservative rather than because a single 的 makes the span acceptable.
+//
+// Removing a gate needs a gate put back, or a Latin identifier run and a
+// parenthetical aside both start counting as breathless prose. The rhythm
+// axis's own fragment test takes over: it counts CJK ideographs only and treats
+// brackets and dashes as the pauses they are, neither of which ZY5's own
+// character count and SPAN_BREAKERS list do.
+//
+// The relaxation reaches ZY5 only when the translationese pass is running,
+// because a threshold cannot relax a detector that is switched off. Both
+// shipped profiles run it, so in practice the flag alone is enough.
 fn scan_zy5_long_premodifier(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
     domain: crate::engine::translationese_score::TranslationeseDomain,
+    rhythm: bool,
 ) {
     let text = em.text;
 
     const SPAN_BREAKERS: &[char] = &['，', '、', '。', '；', '：', ',', ';', ':'];
     let thresholds = domain.thresholds();
     let min_chars = thresholds.zy5_min_chars;
-    let min_de = thresholds.zy5_min_de_count;
+
+    // Every candidate is defined by a 的, so 1 is a bypass rather than a
+    // different threshold, and a zero-length run is a floor no span can fail.
+    let gate = if rhythm {
+        Zy5Gate {
+            min_chars,
+            min_de: 1,
+            min_pause_free_run: RHYTHM_MIN_FRAGMENT_CJK,
+        }
+    } else {
+        Zy5Gate {
+            min_chars,
+            min_de: thresholds.zy5_min_de_count,
+            min_pause_free_run: 0,
+        }
+    };
 
     for sent in &idx.sentences {
         let s = &text[sent.byte_start..sent.byte_end];
         let mut emit = |start, end| {
-            emit_zy5_span_if_qualifies(em, s, sent.byte_start, start, end, min_chars, min_de);
+            emit_zy5_span_if_qualifies(em, s, sent.byte_start, start..end, gate);
         };
         // Walk the sentence, splitting at SPAN_BREAKERS.
         let mut span_start = 0usize;
@@ -5024,16 +5056,33 @@ const PREDICATE_MARKERS: &[&str] = &[
     "也", "就", "才", "卻", "便", "可以", "應該", "必須", "已經", "正在",
 ];
 
+/// What a span has to clear before ZY5 will report it.
+///
+/// Three numbers that move together: the rhythm flag relaxes min_de to 1 and
+/// buys the gate back with min_pause_free_run, so a caller that set one without
+/// the other would get a detector nobody calibrated.
+#[derive(Clone, Copy)]
+struct Zy5Gate {
+    min_chars: usize,
+    min_de: usize,
+    /// Zero is a floor no span can fail, which is the flag being off.
+    min_pause_free_run: usize,
+}
+
 fn emit_zy5_span_if_qualifies(
     em: &mut Emitter<'_>,
     sent_text: &str,
     sent_offset: usize,
-    span_start: usize,
-    span_end: usize,
-    min_chars: usize,
-    min_de: usize,
+    span_bytes: std::ops::Range<usize>,
+    gate: Zy5Gate,
 ) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let Zy5Gate {
+        min_chars,
+        min_de,
+        min_pause_free_run,
+    } = gate;
+    let (span_start, span_end) = (span_bytes.start, span_bytes.end);
 
     const PREDICATE_VERBS: &[&str] = &[
         "看到", "看見", "遇到", "聽到", "找到", "收到", "發現", "認識", "帶著", "帶到", "帶來",
@@ -5206,6 +5255,13 @@ fn emit_zy5_span_if_qualifies(
     let Some((candidate_end, char_count, de_count)) = best_candidate else {
         return;
     };
+
+    // The gate that replaces the relaxed 的 count. Applied to the winning
+    // candidate rather than inside the walk: it decides only whether to report,
+    // and the walk picks the same candidate either way.
+    if longest_pause_free_run(&span[..candidate_end]) < min_pause_free_run {
+        return;
+    }
     let abs_start = sent_offset + span_start;
     let abs_end = sent_offset + span_start + candidate_end;
     issues.push(
@@ -5497,11 +5553,226 @@ pub(crate) fn scan_translationese_indexed(
     em: &mut Emitter<'_>,
     boundary_index: &crate::engine::sentence::BoundaryIndex,
     domain: crate::engine::translationese_score::TranslationeseDomain,
+    rhythm: bool,
 ) {
     scan_zy1b_yi_zhi_density(em, boundary_index, domain);
     scan_zy2b_sentence_bounded_connectives(em, boundary_index);
     scan_zy3b_nominalization_chain(em, boundary_index, domain);
-    scan_zy5_long_premodifier(em, boundary_index, domain);
+    scan_zy5_long_premodifier(em, boundary_index, domain, rhythm);
+}
+
+// Rhythm (氣口) advisory axis, gated by ProfileConfig::rhythm and off by
+// default. good-writing-tw measures four things; ZY5 already covers the stacked
+// pre-modifier and sentence-length variability is measured elsewhere and
+// deliberately unscored, so the two checks here are the ones nothing in the
+// tree performs: a sentence that never pauses, and a run of sentences that all
+// close on the same particle.
+//
+// There is no cross-guard against the AI score. The guard earlier drafts asked
+// for suppressed the advisory in a paragraph whose sentence-length sigma sat
+// near a floor, and ai_score.rs no longer has that floor: variability is
+// computed and serialized but contributes nothing, so splitting long sentences
+// into uniform short ones cannot raise the AI score for the guard to prevent.
+// Reviving variability as a signal needs a coefficient of variation and a
+// long-form corpus to calibrate it, neither of which exists. Until then this
+// axis ships unguarded, and 均質化本身就是新的 AI tell stays a warning in the
+// docs rather than a threshold in the code.
+
+// A sentence past this many CJK characters has not offered the reader a breath.
+const RHYTHM_MAX_SENTENCE_CJK: usize = 30;
+
+// A pause-free fragment shorter than this is not a violation however long the
+// sentence around it is. good-writing-tw spends more words on the exemptions
+// than on the rule, and this is what they amount to: a terminology run, a 頓號
+// list, a parenthetical aside and a dash-introduced fragment all already
+// contain the pause the rule is asking for.
+const RHYTHM_MIN_FRAGMENT_CJK: usize = 15;
+
+// Everything that gives the reader somewhere to breathe. Enumeration commas,
+// brackets and dashes are here for the reason the exemption list names them:
+// the aside they open is itself the pause. Treating them as breakers rather
+// than as whole-sentence exemptions keeps a genuinely runaway sentence
+// reportable when it happens to contain one bracket.
+const RHYTHM_PAUSE_BREAKERS: &[char] = &[
+    '，', '、', '；', '：', '。', '！', '？', ',', ';', ':', '.', '!', '?', '（', '）', '(', ')',
+    '「', '」', '『', '』', '【', '】', '〔', '〕', '《', '》', '〈', '〉', '—', '－', '-', '…',
+    '"', '\u{201C}', '\u{201D}', '\u{2018}', '\u{2019}',
+];
+
+// Particles that end a sentence flatly enough that three in a row read as one
+// tune played three times.
+const RHYTHM_MONOTONE_ENDINGS: &[char] = &['的', '了', '呢'];
+
+// Consecutive sentences on the same ending particle before it is monotony
+// rather than coincidence.
+const RHYTHM_MONOTONY_RUN: usize = 3;
+
+/// Count the CJK ideographs in `s`.
+///
+/// This is the "after stripping Latin, digits and punctuation" measurement the
+/// exemption list asks for, done by counting what is left rather than by
+/// building a stripped copy: a 40-byte identifier or a version number is not a
+/// clause the reader has to hold in their head.
+fn rhythm_cjk_len(s: &str) -> usize {
+    s.chars().filter(|&ch| is_cjk_ideograph(ch)).count()
+}
+
+/// The longest run of CJK characters in `s` uninterrupted by a pause breaker.
+///
+/// Shared with ZY5's relaxed path, which is why it lives beside the constants
+/// rather than inside the long-sentence check: relaxing ZY5's 的 gate hands
+/// this the job of deciding whether the span is really one breath.
+fn longest_pause_free_run(s: &str) -> usize {
+    let mut longest = 0usize;
+    let mut current = 0usize;
+    for ch in s.chars() {
+        if RHYTHM_PAUSE_BREAKERS.contains(&ch) {
+            longest = longest.max(current);
+            current = 0;
+        } else if is_cjk_ideograph(ch) {
+            current += 1;
+        }
+    }
+    longest.max(current)
+}
+
+// Rhythm check 1: a single sentence that runs past RHYTHM_MAX_SENTENCE_CJK
+// characters without a pause long enough to count as one.
+fn scan_rhythm_long_sentence(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    for sent in &idx.sentences {
+        if is_excluded(sent.byte_start, sent.byte_end, excluded) {
+            continue;
+        }
+        let raw = &text[sent.byte_start..sent.byte_end];
+        let total = rhythm_cjk_len(raw);
+        if total <= RHYTHM_MAX_SENTENCE_CJK {
+            continue;
+        }
+        if longest_pause_free_run(raw) < RHYTHM_MIN_FRAGMENT_CJK {
+            continue;
+        }
+
+        // The anchor names the sentence, so it stops where the sentence does. A
+        // sentence this long always has eight characters to spare, but the
+        // bound means the next reader does not have to work that out.
+        let start = sent.byte_start + (raw.len() - raw.trim_start().len());
+        let end = char_bounded_end(text, start, 8).min(sent.byte_end);
+        if start >= end {
+            continue;
+        }
+        issues.push(
+            Issue::new(
+                start,
+                end - start,
+                &text[start..end],
+                vec![],
+                IssueType::Translationese,
+                Severity::Info,
+            )
+            .with_phase_family(PhaseFamily::RhythmLongSentence, PhasePass::Indexed)
+            .with_context(format!(
+                "氣口：長句 — 單句 {total} 字未換氣，建議拆句或補標點"
+            )),
+        );
+    }
+}
+
+// What may sit between the last spoken character and the end of a sentence:
+// whitespace, the terminal mark itself, and any bracket or quote closing around
+// it. Anything else is content, and a sentence ending in content is not ending
+// on a particle however recently one appeared.
+const RHYTHM_SENTENCE_CLOSERS: &[char] = &[
+    '。', '！', '？', '；', '，', '、', '…', '.', '!', '?', ';', ',', '」', '』', '）', ')', '】',
+    '〕', '》', '〉', '"', '\u{201D}', '\u{2019}',
+];
+
+/// The sentence-final particle of `s`, or `None` when the sentence does not
+/// end on one.
+///
+/// The scan stops at the first character that is not a closer rather than
+/// hunting backwards for a CJK ideograph: 他來了 v2 and 他來了（v2）end on a
+/// version number, and reading them as 了-endings would build a monotony run
+/// out of sentences that do not rhyme.
+fn rhythm_ending_particle(s: &str) -> Option<char> {
+    s.trim_end_matches(|ch: char| ch.is_whitespace() || RHYTHM_SENTENCE_CLOSERS.contains(&ch))
+        .chars()
+        .next_back()
+        .filter(|ch| RHYTHM_MONOTONE_ENDINGS.contains(ch))
+}
+
+// Rhythm check 2: RHYTHM_MONOTONY_RUN or more consecutive sentences closing on
+// the same particle. Runs are maximal, so a paragraph of five 了-endings is one
+// finding rather than three overlapping ones.
+fn scan_rhythm_ending_monotony(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
+    // Paragraph by paragraph: a paragraph break is a change of subject, and the
+    // tune restarting there is not monotony.
+    for para in &idx.paragraphs {
+        let mut run_particle: Option<char> = None;
+        let mut run_start = 0usize;
+        let mut run_limit = 0usize;
+        let mut run_len = 0usize;
+
+        // The anchor names the first sentence of the run, so it stops where
+        // that sentence does rather than running into the next one.
+        let flush = |particle: Option<char>,
+                     start: usize,
+                     limit: usize,
+                     len: usize,
+                     issues: &mut Vec<Issue>| {
+            let (Some(particle), true) = (particle, len >= RHYTHM_MONOTONY_RUN) else {
+                return;
+            };
+            let end = char_bounded_end(text, start, 8).min(limit);
+            if start >= end {
+                return;
+            }
+            issues.push(
+                Issue::new(
+                    start,
+                    end - start,
+                    &text[start..end],
+                    vec![],
+                    IssueType::Translationese,
+                    Severity::Info,
+                )
+                .with_phase_family(PhaseFamily::RhythmMonotony, PhasePass::Indexed)
+                .with_context(format!(
+                    "氣口：句尾單調 — 連續 {len} 句以「{particle}」結尾，建議換句式"
+                )),
+            );
+        };
+
+        for sent in idx.sentence_slice(para) {
+            if is_excluded(sent.byte_start, sent.byte_end, excluded) {
+                flush(run_particle, run_start, run_limit, run_len, issues);
+                run_particle = None;
+                run_len = 0;
+                continue;
+            }
+            let raw = &text[sent.byte_start..sent.byte_end];
+            let particle = rhythm_ending_particle(raw);
+            if particle.is_some() && particle == run_particle {
+                run_len += 1;
+                continue;
+            }
+            flush(run_particle, run_start, run_limit, run_len, issues);
+            run_particle = particle;
+            run_len = usize::from(particle.is_some());
+            run_start = sent.byte_start + (raw.len() - raw.trim_start().len());
+            run_limit = sent.byte_end;
+        }
+        flush(run_particle, run_start, run_limit, run_len, issues);
+    }
+}
+
+// Entry point for the rhythm axis. Gated by ProfileConfig::rhythm, which is off
+// in every profile, so this runs only when the user asks for it.
+pub(crate) fn scan_rhythm(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    scan_rhythm_long_sentence(em, idx);
+    scan_rhythm_ending_monotony(em, idx);
 }
 
 // Entry point for AI writing detection grammar checks. Gated by
@@ -8857,9 +9128,29 @@ mod tests {
         text: &str,
         domain: crate::engine::translationese_score::TranslationeseDomain,
     ) -> Vec<Issue> {
+        scan_indexed_with_rhythm(text, domain, false)
+    }
+
+    fn scan_indexed_with_rhythm(
+        text: &str,
+        domain: crate::engine::translationese_score::TranslationeseDomain,
+        rhythm: bool,
+    ) -> Vec<Issue> {
         let idx = BoundaryIndex::build(text, &[]);
         let mut issues = Vec::new();
-        scan_translationese_indexed(&mut Emitter::new(text, &[], &mut issues), &idx, domain);
+        scan_translationese_indexed(
+            &mut Emitter::new(text, &[], &mut issues),
+            &idx,
+            domain,
+            rhythm,
+        );
+        issues
+    }
+
+    fn scan_rhythm_only(text: &str) -> Vec<Issue> {
+        let idx = BoundaryIndex::build(text, &[]);
+        let mut issues = Vec::new();
+        scan_rhythm(&mut Emitter::new(text, &[], &mut issues), &idx);
         issues
     }
 
@@ -9016,6 +9307,7 @@ mod tests {
             &mut Emitter::new(&text, excluded, &mut issues),
             &idx,
             crate::engine::translationese_score::TranslationeseDomain::General,
+            false,
         );
         let zy1b: Vec<_> = issues
             .iter()
@@ -9380,5 +9672,223 @@ mod tests {
             crate::engine::translationese_score::TranslationeseDomain::General,
         );
         assert!(issues.is_empty());
+    }
+    // Rhythm (氣口) ---------------------------------------------------------
+
+    fn rhythm_fires(issues: &[Issue], family: PhaseFamily) -> bool {
+        issues
+            .iter()
+            .any(|i| i.phase_family == Some((family, PhasePass::Indexed)))
+    }
+
+    #[test]
+    fn rhythm_flags_a_sentence_that_never_pauses() {
+        // 38 CJK characters, no internal punctuation at all.
+        let text = "這份報告詳細說明了整個系統在過去一年之中所有功能的演進過程與後續規劃方向。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            rhythm_fires(&issues, PhaseFamily::RhythmLongSentence),
+            "expected a long-sentence finding: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_passes_a_long_sentence_made_of_short_clauses() {
+        // Same length, but every clause is under the fragment floor, so the
+        // reader has been given somewhere to breathe.
+        let text = "這份報告很詳細，內容很完整，結構也清楚，讀起來很順，結論相當明確，值得參考。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmLongSentence),
+            "clauses under the fragment floor are not a rhythm violation: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_passes_a_dunhao_terminology_list() {
+        let text = "支援的格式包含純文字、標記語言、設定檔、資料交換格式、樣式表、指令稿。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmLongSentence),
+            "a 頓號 list already contains its pauses: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_measures_after_stripping_latin_and_digits() {
+        // Long in bytes and in characters, but only 12 CJK characters: a
+        // terminology run is not a breathless sentence.
+        let text = "設定值為 MAX_CONNECTION_RETRY_INTERVAL_SECONDS=3600 而預設是 300 秒。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmLongSentence),
+            "Latin and digits do not count toward sentence length: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_flags_a_long_sentence_that_pauses_only_once() {
+        // Boundary case for the chosen semantics: one 頓號 in a 40-character
+        // sentence is a pause, but it leaves a 20-character run on one side, so
+        // the sentence is still reported. The mark alone does not exempt.
+        let text =
+            "這份報告詳細說明了整個系統的演進過程、以及後續維護時應該特別留意的每一項注意事項。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            rhythm_fires(&issues, PhaseFamily::RhythmLongSentence),
+            "one mark in a long sentence is not an exemption: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_treats_a_parenthetical_aside_as_the_pause_it_is() {
+        // The other side of the same boundary: the aside splits the sentence
+        // into runs that are all under the fragment floor.
+        let text = "這份報告寫得很清楚（補充說明在附錄）內容也很完整，讀來相當順暢。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmLongSentence),
+            "an aside is a pause: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_monotony_ignores_a_sentence_ending_in_content() {
+        // 了 followed by a version number is not a 了-ending. Reading it as one
+        // built runs out of sentences that do not rhyme.
+        let text = "他來了 v2。她也走了 v3。天氣變好了 v4。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmMonotony),
+            "a trailing identifier is content, not a closer: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_monotony_looks_through_a_closing_bracket() {
+        let text = "他來了（真的）。她也走了「大概」。天氣變好了。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmMonotony),
+            "the bracketed word is what these sentences end on: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_flags_three_sentences_closing_on_the_same_particle() {
+        let text = "他來了。她也走了。天氣變好了。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            rhythm_fires(&issues, PhaseFamily::RhythmMonotony),
+            "expected a monotony finding: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_reports_one_finding_per_run() {
+        let text = "他來了。她也走了。天氣變好了。事情辦完了。大家散了。";
+        let issues = scan_rhythm_only(text);
+        let count = issues
+            .iter()
+            .filter(|i| i.phase_family == Some((PhaseFamily::RhythmMonotony, PhasePass::Indexed)))
+            .count();
+        assert_eq!(
+            count, 1,
+            "a run of five is one finding, not three: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_monotony_needs_the_same_particle() {
+        let text = "他來了。這是我的。你在做什麼呢。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmMonotony),
+            "three different particles are variety, not monotony: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_monotony_does_not_cross_a_paragraph_break() {
+        let text = "他來了。她也走了。\n\n天氣變好了。事情辦完了。";
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmMonotony),
+            "a paragraph break restarts the tune: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn rhythm_findings_carry_no_suggestion() {
+        // The fixer's write condition is a single suggestion, so an empty list
+        // is what keeps rhythm out of every tier. Asserted here as well as in
+        // the fixer, because this is where it could be lost.
+        let text = "這份報告詳細說明了整個系統在過去一年之中所有功能的演進過程與後續規劃方向。\
+                    他來了。她也走了。天氣變好了。";
+        let issues = scan_rhythm_only(text);
+        assert!(!issues.is_empty());
+        assert!(
+            issues
+                .iter()
+                .all(|i| i.suggestions.is_empty() && i.severity == Severity::Info),
+            "rhythm findings are advisory and unfixable: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn zy5_de_gate_relaxes_only_under_rhythm() {
+        // 21 chars, one 的: below the general domain's zy5_min_de_count of 2.
+        let text = "那個在車站外面等了三個小時的男人終於放棄了。";
+        let domain = crate::engine::translationese_score::TranslationeseDomain::General;
+        let off = scan_indexed_with_rhythm(text, domain, false);
+        let on = scan_indexed_with_rhythm(text, domain, true);
+        assert!(
+            !fires(&off, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+            "one 的 is below the default gate: {off:?}"
+        );
+        assert!(
+            fires(&on, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+            "rhythm should bypass the 的 gate: {on:?}"
+        );
+    }
+
+    #[test]
+    fn zy5_under_rhythm_still_respects_the_fragment_floor() {
+        // 13 chars: under the rhythm axis's own floor, so relaxing the 的 gate
+        // must not let it through.
+        let text = "在車站外面等待的男人放棄了。";
+        let domain = crate::engine::translationese_score::TranslationeseDomain::Literary;
+        let on = scan_indexed_with_rhythm(text, domain, true);
+        assert!(
+            !fires(&on, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+            "a span under the fragment floor is not a rhythm violation: {on:?}"
+        );
+    }
+
+    #[test]
+    fn zy5_under_rhythm_does_not_count_latin_toward_the_floor() {
+        // Long enough for ZY5's own character count, which counts everything in
+        // the span, and nowhere near it once only CJK is counted. Relaxing the
+        // 的 gate must not turn an identifier run into a finding.
+        let text = "在 MAX_CONNECTION_RETRY_INTERVAL 裡設定的數值。";
+        let domain = crate::engine::translationese_score::TranslationeseDomain::General;
+        let on = scan_indexed_with_rhythm(text, domain, true);
+        assert!(
+            !fires(&on, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+            "an identifier is not a pre-modifier: {on:?}"
+        );
+    }
+
+    #[test]
+    fn zy5_under_rhythm_exempts_a_span_broken_by_an_aside() {
+        // ZY5's SPAN_BREAKERS know nothing about brackets, so without the
+        // rhythm fragment test this span would read as one unbroken breath.
+        let text = "那個在車站外面（下著雨）等了三個小時的男人放棄了。";
+        let domain = crate::engine::translationese_score::TranslationeseDomain::General;
+        let on = scan_indexed_with_rhythm(text, domain, true);
+        assert!(
+            !fires(&on, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+            "the aside is a pause: {on:?}"
+        );
     }
 }

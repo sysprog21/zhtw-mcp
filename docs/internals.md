@@ -29,6 +29,7 @@ The scanner detects Traditional vs. Simplified Chinese by counting exclusive cha
 - Persistent judgment cache (`~/.config/zhtw-mcp/judgment_cache.json`) stores LLM disambiguation results keyed on a 9-field blake3-hashed composite (ruleset_hash, prompt/disambig versions, profile, content type, normalized context, term, candidate set hash, english anchor). 30-day TTL, 10000-entry cap, atomic writes (tempfile + rename), schema-versioned with backup-and-reset. Eliminates repeated LLM calls across sessions.
 - Incremental scan cache (BLAKE3-keyed, 24h TTL, 2000-entry cap) skips re-scanning unchanged files in lint-only CLI mode. Disabled for `--fix`, `--verify`, and stdin. MCP path does not use the cache (stateless by design).
 - Built-in SC→TC converter (`s2t.rs` + `s2t_data.rs`) eliminates the OpenCC runtime dependency for the `convert` subcommand.
+- The rhythm (氣口) axis is a capability flag on `ProfileConfig`, not a profile: `--rhythm` composes with `base` or `strict` instead of replacing one. Its findings carry `IssueType::Translationese` with a rhythm `PhaseFamily`, which is what keeps them out of the translationese score's issue-density signal and out of every fix tier. An opt-in taste flag must not move a calibrated number or rewrite a document.
 - Anchor calibration (`translate.rs`) annotates ambiguous issues with `anchor_match: Option<bool>` (confirmed/unconfirmed/no-signal) via synonym table and LCP stem matching. Fails open on API error (severity preserved).
 
 ## Corpus evaluation

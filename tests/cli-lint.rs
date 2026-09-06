@@ -2469,3 +2469,88 @@ fn cli_a_guarded_attribution_rule_can_be_retired_by_override() {
         "the citation guard must still suppress a cited attribution"
     );
 }
+
+/// The rhythm (氣口) axis is opt-in, advisory, and outside every fix tier.
+///
+/// Three properties in one test because they are one contract: without the
+/// flag the output is byte-identical to what it was before the axis existed,
+/// with the flag the two new checks report, and no tier of `--fix` acts on
+/// what they report.
+#[test]
+fn cli_lint_rhythm_is_opt_in_advisory_and_never_fixed() {
+    let bad = include_str!("fixtures/translationese/rhythm_bad.txt");
+    let good = include_str!("fixtures/translationese/rhythm_good.txt");
+
+    let issues = |args: &[&str], text: &str| -> Vec<String> {
+        let out = run_lint_stdin(args, text);
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("JSON output");
+        json["issues"]
+            .as_array()
+            .expect("issues array")
+            .iter()
+            .map(|i| i.to_string())
+            .collect()
+    };
+
+    // Off by default: the flag is the only thing that can add a finding. Byte
+    // identity against the pre-change binary was measured out of band over 214
+    // runs (every corpus and fixture file crossed with the profiles, renderers,
+    // fix tiers and convert) and recorded in DONE.md; what a test can hold is
+    // that nothing rhythm-shaped reaches the default path.
+    let plain = issues(&["--format", "json"], bad);
+    let rhythm = issues(&["--rhythm", "--format", "json"], bad);
+    for issue in &plain {
+        assert!(
+            !issue.contains("氣口"),
+            "a rhythm finding reached the default path: {issue}"
+        );
+    }
+    assert!(
+        rhythm.len() > plain.len(),
+        "--rhythm reported nothing new on the fixture: {rhythm:?}"
+    );
+    for issue in &plain {
+        assert!(
+            rhythm.contains(issue),
+            "--rhythm dropped a finding the default run made: {issue}"
+        );
+    }
+    let added: Vec<&String> = rhythm.iter().filter(|i| !plain.contains(i)).collect();
+    assert_eq!(
+        added.len(),
+        2,
+        "expected the long-sentence and the monotony finding: {added:?}"
+    );
+    for issue in &added {
+        assert!(
+            issue.contains("氣口"),
+            "--rhythm added a finding that is not a rhythm finding: {issue}"
+        );
+    }
+
+    // Prose that breathes gets nothing, flag or no flag: a 頓號 list, an
+    // identifier run and three different sentence endings are all exempt.
+    assert_eq!(
+        issues(&["--rhythm", "--format", "json"], good),
+        issues(&["--format", "json"], good),
+        "--rhythm fired on prose that already breathes"
+    );
+
+    // Rhythm is taste, and the fixer is not: every tier must leave it alone.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("rhythm.txt");
+    for args in [
+        vec!["--rhythm", "--fix=orthographic"],
+        vec!["--rhythm", "--fix"],
+        vec!["--rhythm", "--fix=lexical_contextual"],
+    ] {
+        std::fs::write(&path, bad).expect("write");
+        let p = path.to_string_lossy().into_owned();
+        let mut argv = args.clone();
+        argv.push(p.as_str());
+        run_lint_args(&argv);
+        let after = std::fs::read_to_string(&path).expect("read back");
+        assert_eq!(after, bad, "--fix rewrote a rhythm finding with {args:?}");
+    }
+}

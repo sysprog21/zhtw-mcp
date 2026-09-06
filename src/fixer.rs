@@ -175,6 +175,18 @@ fn fix_verdict<'a>(
         return Verdict::Decline;
     }
 
+    // Rhythm is taste, and the fixer is not. The findings carry no suggestion,
+    // so the arity test below would decline them anyway; this says it at the
+    // top so that adding a suggestion to one later cannot quietly make it
+    // writable. Skip rather than Decline: an advisory the fixer was never meant
+    // to act on is out of scope, not a judgment call it lost.
+    if issue
+        .phase_family
+        .is_some_and(|(family, _)| family.is_rhythm())
+    {
+        return Verdict::Skip;
+    }
+
     // Orthographic tier: skip all lexical issues.
     if mode == FixMode::Orthographic && !orthographic {
         return Verdict::Skip;
@@ -597,7 +609,7 @@ pub fn suppress_convergent_issues(issues: &mut Vec<Issue>, applied_fixes: &[Appl
 mod tests {
     use super::*;
     use crate::engine::scan::surrounding_window;
-    use crate::rules::ruleset::{IssueType, Severity};
+    use crate::rules::ruleset::{IssueType, PhaseFamily, PhasePass, Severity};
 
     fn make_issue(offset: usize, found: &str, suggestions: Vec<&str>) -> Issue {
         Issue::new(
@@ -672,6 +684,59 @@ mod tests {
         let result = apply_fixes(text, &[issue], FixMode::LexicalSafe, &[]);
         assert_eq!(result.text, text);
         assert_eq!(result.applied, 0);
+    }
+
+    /// A rhythm (氣口) finding as the scanner emits it, identified by its
+    /// family rather than by the empty suggestion list that follows from it.
+    /// `rhythm_findings_carry_no_suggestion` in the grammar scanner proves the
+    /// real detectors produce this shape; here is the fixer's side.
+    fn make_rhythm_issue(offset: usize, found: &str, family: PhaseFamily) -> Issue {
+        Issue::new(
+            offset,
+            found.len(),
+            found,
+            Vec::new(),
+            IssueType::Translationese,
+            Severity::Info,
+        )
+        .with_phase_family(family, PhasePass::Indexed)
+    }
+
+    #[test]
+    fn rhythm_issues_are_never_fixed_at_any_tier() {
+        let text = "這份報告詳細說明了整個系統在過去一年之中所有功能的演進過程。";
+        for family in [PhaseFamily::RhythmLongSentence, PhaseFamily::RhythmMonotony] {
+            // The second issue carries a lone suggestion, which is the write
+            // condition for every other issue type. The family has to be what
+            // stops it, or a future detector that offers a rewrite hint would
+            // start editing prose on taste alone.
+            let issues = vec![
+                make_rhythm_issue(0, "這份報告", family),
+                Issue::new(
+                    text.find("演進過程").unwrap(),
+                    "演進過程".len(),
+                    "演進過程",
+                    vec!["演進".to_string()],
+                    IssueType::Translationese,
+                    Severity::Info,
+                )
+                .with_phase_family(family, PhasePass::Indexed),
+            ];
+            for mode in [
+                FixMode::None,
+                FixMode::Orthographic,
+                FixMode::LexicalSafe,
+                FixMode::LexicalContextual,
+            ] {
+                let result = apply_fixes(text, &issues, mode, &[]);
+                assert_eq!(result.text, text, "rhythm was rewritten at {mode:?}");
+                assert_eq!(result.applied, 0, "rhythm was applied at {mode:?}");
+                assert_eq!(
+                    result.declined, 0,
+                    "an advisory the fixer never acts on is out of scope, not a judgment call, at {mode:?}"
+                );
+            }
+        }
     }
 
     #[test]

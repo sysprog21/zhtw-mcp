@@ -1,29 +1,11 @@
 use super::*;
-use std::sync::Arc;
 
 fn issue(rule_type: IssueType, severity: Severity, line: usize) -> Issue {
+    // Through the constructor, so a new field on Issue does not have to be
+    // added here too.
     Issue {
-        offset: 0,
-        length: 0,
         line,
-        col: 0,
-        found: "x".into(),
-        suggestions: Arc::from(Vec::<String>::new()),
-        suggested_rewrite: None,
-        rule_type,
-        severity,
-        context: None,
-        english: None,
-        context_clues: None,
-        anchor_match: None,
-        glossary_banned: false,
-        phase_family: None,
-        structural_family: None,
-        tier2_outcome: Default::default(),
-        llm_judged: false,
-        spelling_rule_idx: None,
-        table_cell: None,
-        editorial_confidence: None,
+        ..Issue::new(0, 0, "x", vec![], rule_type, severity)
     }
 }
 

@@ -52,6 +52,70 @@ fn basic_spelling_detection() {
 }
 
 #[test]
+fn a_heading_boosts_an_unpinned_info_finding() {
+    // The Warning -> Error arm is covered through the CLI; the Info -> Warning
+    // arm was not, so turning it into a no-op passed the whole suite. An
+    // ai_filler finding is Info by type and pins nothing, which is exactly the
+    // case the exemption must not swallow.
+    let rule = SpellingRule::new("研究顯示", vec![String::new()], RuleType::AiFiller);
+    let scanner = Scanner::new(vec![rule], vec![]);
+
+    let plain =
+        scanner.scan_for_content_type("研究顯示成果很好", ContentType::Markdown, Profile::Base);
+    let flat = plain
+        .issues
+        .iter()
+        .find(|i| i.found == "研究顯示")
+        .expect("reported outside a heading");
+    assert_eq!(flat.severity, Severity::Info, "Info away from a heading");
+
+    let heading =
+        scanner.scan_for_content_type("# 研究顯示成果很好", ContentType::Markdown, Profile::Base);
+    let boosted = heading
+        .issues
+        .iter()
+        .find(|i| i.found == "研究顯示")
+        .expect("reported inside a heading");
+    assert_eq!(
+        boosted.severity,
+        Severity::Warning,
+        "an Info finding that pinned nothing takes the heading boost"
+    );
+}
+
+#[test]
+fn variant_advisory_status_comes_from_configured_severity() {
+    let configured_info = SpellingRule {
+        severity: Some(Severity::Info),
+        ..SpellingRule::new("裏", vec!["裡".into()], RuleType::Variant)
+    };
+    let scanner = Scanner::new(vec![configured_info], vec![]);
+    assert!(scanner
+        .scan_with_config("裏", &[], Profile::Strict.config())
+        .issues[0]
+        .is_pinned_advisory());
+
+    let scanner = Scanner::new(
+        vec![SpellingRule::new(
+            "佈署",
+            vec!["部署".into()],
+            RuleType::Variant,
+        )],
+        vec![],
+    );
+    let issue = scanner
+        .scan_with_config("佈署", &[], Profile::Strict.config())
+        .issues
+        .pop()
+        .unwrap();
+    assert_eq!(issue.severity, Severity::Warning);
+    assert!(
+        !issue.is_pinned_advisory(),
+        "a rule that declared nothing pins nothing"
+    );
+}
+
+#[test]
 fn reusable_scratch_plain_api_remains_available() {
     let scanner = Scanner::new(sample_spelling_rules(), vec![]);
     let cfg = Profile::Base.config();

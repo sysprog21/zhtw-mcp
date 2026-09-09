@@ -52,6 +52,7 @@ fn schema_facts() -> serde_json::Value {
         positional_clues: Some(Vec::new()),
         context_suggestions: Some(Vec::new()),
         tags: Some(Vec::new()),
+        severity: Some(Severity::Info),
         editorial_confidence: Some(EditorialConfidence::Low),
         structural_guard: Some(String::new()),
         ..SpellingRule::new("x", vec!["y".into()], RuleType::CrossStrait)
@@ -84,22 +85,32 @@ fn schema_facts() -> serde_json::Value {
             | RuleType::Translationese => (),
         }
     }
-    let name = |rt: RuleType| {
-        serde_json::to_value(rt)
-            .expect("RuleType serializes")
+
+    // Through serde, never a hand-written name: the linter validates values the
+    // deserializer produced, so a second spelling here could accept what the
+    // loader rejects.
+    fn wire_name<T: serde::Serialize>(value: T) -> String {
+        serde_json::to_value(value)
+            .expect("enum serializes")
             .as_str()
             .expect("string enum")
             .to_string()
-    };
+    }
 
     let confidences = [
         EditorialConfidence::High,
         EditorialConfidence::Medium,
         EditorialConfidence::Low,
     ];
+    let severities = [Severity::Info, Severity::Warning, Severity::Error];
     for ec in confidences {
         match ec {
             EditorialConfidence::High | EditorialConfidence::Medium | EditorialConfidence::Low => {}
+        }
+    }
+    for severity in severities {
+        match severity {
+            Severity::Info | Severity::Warning | Severity::Error => {}
         }
     }
 
@@ -112,22 +123,14 @@ fn schema_facts() -> serde_json::Value {
         "spelling_fields": keys(&sample),
         "structural_guards": KNOWN_STRUCTURAL_GUARDS,
         "case_fields": keys(&case),
-        "rule_types": all.iter().map(|rt| name(*rt)).collect::<Vec<_>>(),
+        "rule_types": all.iter().map(wire_name).collect::<Vec<_>>(),
         "orthographic_rule_types": all
             .iter()
             .filter(|rt| rt.is_orthographic())
-            .map(|rt| name(*rt))
+            .map(wire_name)
             .collect::<Vec<_>>(),
-        "editorial_confidence": confidences
-            .iter()
-            .map(|ec| {
-                serde_json::to_value(ec)
-                    .expect("EditorialConfidence serializes")
-                    .as_str()
-                    .expect("string enum")
-                    .to_string()
-            })
-            .collect::<Vec<_>>(),
+        "editorial_confidence": confidences.iter().map(wire_name).collect::<Vec<_>>(),
+        "severities": severities.iter().map(wire_name).collect::<Vec<_>>(),
     })
 }
 

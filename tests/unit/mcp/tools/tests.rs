@@ -42,6 +42,48 @@ fn explain_meta_high_confidence_for_unambiguous_cross_strait() {
     assert!(!meta.needs_review);
 }
 
+#[test]
+fn explain_meta_configured_info_variant_remains_safe_without_review() {
+    let mut issue = Issue::new(
+        0,
+        "裏".len(),
+        "裏",
+        vec!["裡".into()],
+        IssueType::Variant,
+        Severity::Info,
+    );
+    issue.configured_severity = Some(Severity::Info);
+    let meta = derive_explain_meta(&issue);
+    assert!(matches!(
+        meta.editorial_confidence,
+        EditorialConfidence::High
+    ));
+    assert!(meta.auto_fix_safe);
+    assert!(!meta.needs_review);
+}
+
+/// A user suppression changes the displayed severity, not the rule's
+/// configured severity. It must not make a normally-warning variant look
+/// like a ruleset-pinned advisory in explain output.
+#[test]
+fn explain_meta_suppressed_variant_requires_review() {
+    let issue = Issue::new(
+        0,
+        "佈署".len(),
+        "佈署",
+        vec!["部署".into()],
+        IssueType::Variant,
+        Severity::Info,
+    );
+    let meta = derive_explain_meta(&issue);
+    assert!(matches!(
+        meta.editorial_confidence,
+        EditorialConfidence::Low
+    ));
+    assert!(!meta.auto_fix_safe);
+    assert!(meta.needs_review);
+}
+
 /// Rule-tagged low confidence (e.g. `優化`, `算法`, `場景`
 /// in `assets/ruleset.json`) surfaces as `low` so reviewers know
 /// they are editorial preference, not binary error.  Invariant:
@@ -1125,6 +1167,32 @@ fn tools_call_explain_true_includes_explanation() {
     let issues = output["issues"].as_array().unwrap();
     assert!(!issues.is_empty());
     assert!(issues[0].get("explanation").is_some());
+}
+
+#[test]
+fn tools_call_explain_keeps_suppressed_variant_conservative() {
+    let (mut server, _dir) = make_initialized_server();
+    let resp = call_zhtw(
+        &mut server,
+        serde_json::json!({
+            "text": "佈署",
+            "profile": "strict",
+            "ignore_terms": ["佈署"],
+            "explain": true,
+            "output": "full"
+        }),
+    );
+    let output = assert_tool_success(&resp);
+    let issue = output["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|issue| issue["found"] == "佈署")
+        .unwrap();
+    assert_eq!(issue["severity"], "info");
+    assert_eq!(issue["explain_meta"]["editorial_confidence"], "low");
+    assert_eq!(issue["explain_meta"]["auto_fix_safe"], false);
+    assert_eq!(issue["explain_meta"]["needs_review"], true);
 }
 
 #[test]

@@ -1232,25 +1232,29 @@ fn attribution_guard() -> StructuralGuard {
     let ruleset: crate::rules::ruleset::Ruleset =
         serde_json::from_str(include_str!("../../../../../assets/ruleset.json"))
             .expect("embedded ruleset parses");
-    let phrases: Vec<String> = ruleset
+    let rules: Vec<crate::rules::ruleset::SpellingRule> = ruleset
         .spelling_rules
         .iter()
         .filter(|r| !r.disabled && r.structural_guard.as_deref() == Some("uncited_attribution"))
-        .map(|r| r.from.clone())
+        .cloned()
         .collect();
     assert!(
-        !phrases.is_empty(),
+        !rules.is_empty(),
         "the ruleset carries no uncited_attribution phrases"
     );
-    StructuralGuard::from_phrases(phrases)
+    StructuralGuard::from_rules(&rules)
 }
 
 fn scan_bare_with_excluded(text: &str, excluded: &[ByteRange]) -> Vec<Issue> {
+    scan_bare_with_guard(&attribution_guard(), text, excluded)
+}
+
+fn scan_bare_with_guard(guard: &StructuralGuard, text: &str, excluded: &[ByteRange]) -> Vec<Issue> {
     let mut issues = Vec::new();
     scan_ai_bare_attribution(
         &mut Emitter::new(text, excluded, &mut issues),
         AttributionGenre::Casual,
-        Some(&attribution_guard()),
+        Some(guard),
     );
     issues
 }
@@ -1281,6 +1285,60 @@ fn standalone_research_shows_in_casual_prose_is_reported_but_never_rewritten() {
         issues[0].suggestions.is_empty(),
         "a bare attribution must never carry a mechanical edit"
     );
+}
+
+#[test]
+fn guard_build_carries_the_rules_configured_severity() {
+    // Every shipped guarded rule is an ai_filler with no override, so this
+    // wiring is invisible on the real ruleset: hardcoding Info in
+    // GuardRules::build breaks nothing. This is the test that notices.
+    use crate::engine::scan::rule_ir::GuardRules;
+    use crate::rules::ruleset::{RuleType, SpellingRule};
+
+    let pinned = SpellingRule {
+        severity: Some(Severity::Warning),
+        structural_guard: Some("uncited_attribution".into()),
+        ..SpellingRule::new("研究顯示", vec![String::new()], RuleType::AiFiller)
+    };
+    let guards = GuardRules::build(std::slice::from_ref(&pinned));
+    let guard = guards
+        .get("uncited_attribution")
+        .expect("the rule declares this guard");
+
+    let issues = scan_bare_with_guard(guard, "研究顯示成果很好", &[]);
+    assert_eq!(issues.len(), 1);
+    assert_eq!(
+        issues[0].severity,
+        Severity::Warning,
+        "the guard must carry the severity its rule declared, not the type default"
+    );
+}
+
+/// A pin on a guarded rule has to mean what the same pin means on a lexical
+/// rule. Only the declared severity says so: the reported level is Info either
+/// way, and reading that instead would boost an advisory back to Warning the
+/// moment the phrase landed in a Markdown heading.
+#[test]
+fn bare_attribution_carries_the_pin_that_marks_an_advisory() {
+    use crate::rules::ruleset::{RuleType, SpellingRule};
+
+    let unpinned = SpellingRule::new("研究顯示", vec![String::new()], RuleType::AiFiller);
+    let guard = StructuralGuard::from_rules(std::slice::from_ref(&unpinned));
+    let issues = scan_bare_with_guard(&guard, "研究顯示成果很好", &[]);
+    assert_eq!(issues[0].severity, Severity::Info);
+    assert!(
+        !issues[0].is_pinned_advisory(),
+        "an ai_filler default is not a pin"
+    );
+
+    let pinned = SpellingRule {
+        severity: Some(Severity::Info),
+        ..SpellingRule::new("研究顯示", vec![String::new()], RuleType::AiFiller)
+    };
+    let guard = StructuralGuard::from_rules(std::slice::from_ref(&pinned));
+    let issues = scan_bare_with_guard(&guard, "研究顯示成果很好", &[]);
+    assert_eq!(issues[0].severity, Severity::Info);
+    assert!(issues[0].is_pinned_advisory(), "the rule pinned Info");
 }
 
 #[test]
@@ -2852,6 +2910,53 @@ fn ai_dash_overuse_ignores_excluded_markers() {
     assert!(
         dash_issues.is_empty(),
         "excluded code dashes should not create dash-overuse density: {dash_issues:?}"
+    );
+}
+
+#[test]
+fn ai_hedging_density_leaves_a_pinned_advisory_alone() {
+    // The second place severity is promoted. The heading boost learned to leave
+    // a pinned advisory alone; density has to agree, or the same pin is honored
+    // in one pass and overruled in the other.
+    let text = "在某種程度上，這段文字提供足夠長的段落內容，某種意義上可以說是一種測試，                從某個角度來看也算是，在一定程度上確實如此。";
+    let idx = BoundaryIndex::build(text, &[]);
+    let pinned = |offset: usize| {
+        let mut issue = Issue::new(
+            offset,
+            "在某種程度上".len(),
+            "在某種程度上",
+            vec![],
+            IssueType::AiStyle,
+            Severity::Info,
+        )
+        .with_context("AI hedging: 在某種程度上");
+        issue.configured_severity = Some(Severity::Info);
+        issue
+    };
+    let mut issues = vec![pinned(0)];
+    scan_ai_hedging_density(text, &[], &mut issues, &idx);
+    assert_eq!(
+        issues[0].severity,
+        Severity::Info,
+        "a pinned advisory is not promoted by hedging density"
+    );
+
+    // Same text, same density: an issue that pinned nothing is promoted, so the
+    // guard is an exemption and not a disabled pass.
+    let mut unpinned = vec![Issue::new(
+        0,
+        "在某種程度上".len(),
+        "在某種程度上",
+        vec![],
+        IssueType::AiStyle,
+        Severity::Info,
+    )
+    .with_context("AI hedging: 在某種程度上")];
+    scan_ai_hedging_density(text, &[], &mut unpinned, &idx);
+    assert_eq!(
+        unpinned[0].severity,
+        Severity::Warning,
+        "an unpinned hedging issue still takes the density promotion"
     );
 }
 

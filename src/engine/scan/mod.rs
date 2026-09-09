@@ -541,6 +541,9 @@ fn annotate_table_cells(
 /// Boost severity for issues fully contained in Markdown heading ranges.
 /// Info -> Warning, Warning -> Error.  Error stays Error.
 ///
+/// An issue the ruleset pinned to Info is exempt: the pin says the finding is
+/// advice rather than a defect, and a heading must not undo that.
+///
 /// Uses strict containment (not overlap) so that issues spanning heading
 /// boundaries (rare but possible across sectioned blocks) are not boosted.
 ///
@@ -550,6 +553,11 @@ fn annotate_table_cells(
 fn boost_heading_severity(issues: &mut [Issue], heading_ranges: &[ByteRange]) -> bool {
     let mut changed = false;
     for issue in issues.iter_mut() {
+        // Tested before the range scan: a pinned advisory is never boosted, so
+        // there is no reason to look for a heading around it.
+        if issue.is_pinned_advisory() {
+            continue;
+        }
         let issue_end = issue.offset.saturating_add(issue.length);
         let inside_heading = heading_ranges
             .iter()

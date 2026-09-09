@@ -74,9 +74,29 @@ jobs:
     # checking it on one runner is what the other two would repeat.  Both lanes
     # report a skip where the tool is absent, which is what the macOS and
     # Windows legs then do.
+    #
+    # The runner image carries an apt source for Google Chrome, and
+    # dl.google.com has served a Packages.gz whose hash disagrees with the
+    # InRelease indexing it.  apt-get update exits 100 when any source fails to
+    # fetch, so one third-party repository having a bad afternoon takes down a
+    # step that wants two packages out of the Ubuntu archives.  See
+    # actions/runner-images#14708.
+    #
+    # Nothing in this workflow installs Chrome from apt, so drop the source
+    # rather than teach apt to tolerate one that fails: an "|| true" would also
+    # swallow the archive outages worth failing on, and package-extension below
+    # has no apt-get call of its own to pass options to.  The glob is open at
+    # both ends because the file is a one-line ".list" on older images and a
+    # deb822 ".sources" on newer ones, and upstream removes only the former.
+    # It names chrome and not google, which would take the image's Google Cloud
+    # CLI source with it: dropping a working source nobody complained about is
+    # the same mistake as the "|| true" this is avoiding.
     - name: Install the shell checkers
       if: matrix.os == 'ubuntu-24.04'
-      run: sudo apt-get update && sudo apt-get install -y shellcheck shfmt
+      run: |
+        sudo rm -fv /etc/apt/sources.list.d/*chrome*
+        sudo apt-get update
+        sudo apt-get install -y shellcheck shfmt
 
     # commentflow settles comment width, which no other formatter here does:
     # rustfmt leaves a short-wrapped comment short and shfmt does not touch
@@ -338,8 +358,16 @@ jobs:
     - name: Install extension test dependencies
       run: npm ci --prefix extension
 
+    # Drops the Google Chrome apt source for the reason spelled out in the
+    # check job's "Install the shell checkers" step above.  This step has no
+    # apt-get of its own to guard: "--with-deps" runs apt-get update as root
+    # from inside playwright and inherits its exit 100.  The browser these
+    # tests drive is playwright's own Chromium download rather than anything
+    # out of that repository, so removing the source costs the job nothing.
     - name: Install headless Chromium
-      run: npx --prefix extension playwright install --with-deps chromium
+      run: |
+        sudo rm -fv /etc/apt/sources.list.d/*chrome*
+        npx --prefix extension playwright install --with-deps chromium
 
     # Prebuilt, like cargo-audit above.  "cargo install wasm-pack" builds it
     # from source, which only stayed cheap because rust-cache happened to carry

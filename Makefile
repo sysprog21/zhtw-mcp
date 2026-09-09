@@ -50,6 +50,11 @@ check: $(S2T_STAMP)
 # lock cargo audit reads.
 	cargo metadata --locked --format-version 1 >/dev/null
 	cargo test
+# src/wasm.rs is behind browser-wasm, which is not a default feature, so the
+# line above never compiles it and the clippy lane over it passes --lib, which
+# does not build cfg(test) code. Without this the extension's half of the
+# scanner contract has tests that no gate runs.
+	cargo test --lib --no-default-features --features browser-wasm
 # One script owns the lint lanes, so what the Windows leg of CI runs is what
 # this runs: the feature shapes and the profiles are a grid, and the shipped
 # cells of it live in one list rather than in two files that drift.

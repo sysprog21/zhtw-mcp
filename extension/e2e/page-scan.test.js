@@ -46,3 +46,32 @@ test("headless extension bundle loads its popup and initializes WASM", { timeout
     await rm(profile, { recursive: true, force: true });
   }
 });
+
+// The stored mode has to be in the select before a scan can send it, and the
+// read is asynchronous: the popup disables its own button until it lands.
+test("the popup restores the stored symbol handling mode", { timeout: 60_000 }, async () => {
+  const profile = await mkdtemp(path.join(tmpdir(), "zhtw-extension-"));
+  let context;
+
+  try {
+    context = await chromium.launchPersistentContext(profile, {
+      channel: "chromium",
+      headless: true,
+      args: [
+        `--disable-extensions-except=${extensionPath}`,
+        `--load-extension=${extensionPath}`,
+      ],
+    });
+    const worker = await extensionWorker(context);
+    await worker.evaluate(() => chrome.storage.sync.set({ symbol_handling: "off" }));
+
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${new URL(worker.url()).host}/popup.html`);
+
+    await popup.locator("#scan-button:not([disabled])").waitFor();
+    assert.equal(await popup.locator("#symbol-handling").inputValue(), "off");
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});

@@ -7,7 +7,13 @@ import {
 } from "./format.js";
 
 const latestResults = new Map();
-const DEFAULT_OPTIONS = { profile: "base", spacing: "require", relaxed: false, off: [] };
+const DEFAULT_OPTIONS = {
+  profile: "base",
+  spacing: "require",
+  relaxed: false,
+  off: [],
+  symbol_handling: "warn",
+};
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "RUN_SCAN_ACTIVE_TAB") {
@@ -56,7 +62,10 @@ async function runScanForActiveTab(options) {
   }
 
   await ensureContentScript(tab.id);
-  const collected = await sendTabMessage(tab.id, { type: "COLLECT_TEXT" });
+  const collected = await sendTabMessage(tab.id, {
+    type: "COLLECT_TEXT",
+    symbol_handling: options.symbol_handling || DEFAULT_OPTIONS.symbol_handling,
+  });
   if (!collected?.ok) {
     throw new Error(collected?.error || "Could not collect visible page text.");
   }
@@ -68,6 +77,7 @@ async function runScanForActiveTab(options) {
   const scanResult = await scanText(collected.text, {
     ...options,
     lang_spans: collected.lang_spans || [],
+    excluded_spans: collected.excluded_spans || [],
   });
   const highlighted = await sendTabMessage(tab.id, {
     type: "HIGHLIGHT_ISSUES",
@@ -102,7 +112,7 @@ async function ensureContentScript(tabId) {
   await chrome.scripting.insertCSS({ target, files: ["styles/content.css"] });
   await chrome.scripting.executeScript({
     target,
-    files: ["src/shared.js", "src/content.js"],
+    files: ["src/shared.js", "src/symbols.js", "src/editable.js", "src/content.js"],
   });
 }
 

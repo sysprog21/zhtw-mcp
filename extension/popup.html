@@ -39,6 +39,14 @@
           <span>UI 文案模式：放寬部分標點與文法規則</span>
         </label>
         <label class="field">
+          <span>輸入欄連續符號</span>
+          <select id="symbol-handling">
+            <option value="warn">Warn：顯示提醒</option>
+            <option value="remove">Remove：移除非功能性符號</option>
+            <option value="off">Off：不處理</option>
+          </select>
+        </label>
+        <label class="field">
           <span>停用的規則家族（可複選）</span>
           <select id="off" multiple size="5">
             <option value="spelling">spelling：用語與詞彙</option>

@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 // byte offsets and the lang runs content.js reports index the very string it
 // hands to the scanner, which no test over synthetic spans can show.
 import "../src/shared.js";
+import "../src/symbols.js";
+import "../src/editable.js";
 
 const { utf8ByteLength } = globalThis.ZhtwExtensionShared;
 
@@ -78,6 +80,7 @@ function installDom(body) {
   });
   globalThis.document = {
     body,
+    addEventListener: () => {},
     createTreeWalker(root, _whatToShow, filter) {
       // Elements and text in document order, the way content.js walks them now
       // that br carries a line break the flattened text has to keep.
@@ -219,6 +222,99 @@ test("an empty lang is reported rather than inherited", async () => {
   );
 });
 
+test("standalone repeated symbols are excluded without hiding prose ellipses", async () => {
+  const body = el(
+    "body",
+    {},
+    el("p", {}, txt("###")),
+    el("p", {}, txt("  :::  ")),
+    el("p", {}, txt("---")),
+    el("p", {}, txt("...")),
+    el("p", {}, txt("詳見第三章"), el("span", {}, txt("..."))),
+    el("p", {}, txt("前文\n---\n後文")),
+    el("p", {}, txt("他說...好吧")),
+  );
+
+  const collected = await collect(body);
+  const bytes = Buffer.from(collected.text, "utf8");
+  const excluded = collected.excluded_spans.map((span) =>
+    bytes.subarray(span.start, span.end).toString("utf8"),
+  );
+
+  assert.deepEqual(excluded, ["###", ":::", "---", "...", "---"]);
+  assert.equal(
+    collected.text,
+    "###\n  :::  \n---\n...\n詳見第三章...\n前文\n---\n後文\n他說...好吧",
+  );
+});
+
+// The exclusion exists for markup, and it silently narrows the scan for
+// anything it takes in.  Repeated punctuation is what the punctuation rules
+// are for, so a line of it has to stay in.
+test("a line of repeated punctuation stays in the scan", async () => {
+  const body = el(
+    "body",
+    {},
+    el("p", {}, txt("!!!")),
+    el("h2", {}, txt("???")),
+    el("p", {}, txt("///")),
+    el("p", {}, txt("```")),
+  );
+
+  const collected = await collect(body);
+  const bytes = Buffer.from(collected.text, "utf8");
+  const excluded = collected.excluded_spans.map((span) =>
+    bytes.subarray(span.start, span.end).toString("utf8"),
+  );
+
+  assert.deepEqual(excluded, ["```"]);
+});
+
+// A run only leaves the scan when the flattened text puts it alone on its
+// line.  That is what separates a truncation marker standing on its own from
+// an ellipsis sitting in a sentence, whichever script the sentence is in.
+test("an ellipsis in a sentence is prose, not a truncation marker", async () => {
+  const body = el(
+    "body",
+    {},
+    el("p", {}, txt("你好，"), el("span", {}, txt("..."))),
+    el("p", {}, txt("Truncated"), el("span", {}, txt("..."))),
+    el("p", {}, txt("...")),
+  );
+
+  const collected = await collect(body);
+  const bytes = Buffer.from(collected.text, "utf8");
+
+  assert.equal(collected.excluded_spans.length, 1);
+  const [span] = collected.excluded_spans;
+  assert.equal(bytes.subarray(span.start, span.end).toString("utf8"), "...");
+  // The one on a line of its own, at the tail.
+  assert.equal(span.end, bytes.length);
+});
+
+// An inline wrapper gives a marker a text node of its own without taking it
+// out of the sentence around it.  ::: mid-sentence is two half-width colons
+// the punctuation rules report, so excluding it would lose real findings.
+test("a marker wrapped inline mid-sentence stays in the scan", async () => {
+  const body = el(
+    "body",
+    {},
+    el("p", {}, txt("段落"), el("span", {}, txt(":::")), txt("註記")),
+    el("p", {}, txt("foo"), el("span", {}, txt("---")), txt("bar")),
+    el("p", {}, el("span", {}, txt(":::"))),
+  );
+
+  const collected = await collect(body);
+  const bytes = Buffer.from(collected.text, "utf8");
+  const excluded = collected.excluded_spans.map((span) =>
+    bytes.subarray(span.start, span.end).toString("utf8"),
+  );
+
+  // Only the one that really does stand alone on its line.
+  assert.deepEqual(excluded, [":::"]);
+  assert.equal(collected.text, "段落:::註記\nfoo---bar\n:::");
+});
+
 // A br is a line break the reader sees, so a marker sitting between two of
 // them is on a line of its own even though one block holds the lot.
 test("a br starts a new line in the flattened text", async () => {
@@ -230,8 +326,13 @@ test("a br starts a new line in the flattened text", async () => {
   );
 
   const collected = await collect(body);
+  const bytes = Buffer.from(collected.text, "utf8");
+  const excluded = collected.excluded_spans.map((span) =>
+    bytes.subarray(span.start, span.end).toString("utf8"),
+  );
 
   assert.equal(collected.text, "段落\n:::\n註記\n前\n後");
+  assert.deepEqual(excluded, [":::"]);
 });
 
 // A br only carries a break for text that is being collected.  Inside markup
@@ -246,6 +347,7 @@ test("a br inside skipped markup contributes no line break", async () => {
   const collected = await collect(body);
 
   assert.equal(collected.text, "前後");
+  assert.deepEqual(collected.excluded_spans, []);
 });
 
 // Two breaks are a blank line, and one closing a block is the break the block

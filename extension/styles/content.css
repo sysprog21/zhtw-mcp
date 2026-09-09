@@ -23,3 +23,20 @@ mark.zhtw-mcp-highlight--info {
   background: rgba(55, 93, 129, 0.14);
   text-decoration-color: #375d81;
 }
+
+/* Fixed rather than in flow: the field it belongs to can sit in a flex or grid
+   container, or inside a label, where an extra block child would move the page
+   around. */
+.zhtw-mcp-symbol-warning {
+  position: fixed;
+  z-index: 2147483647;
+  max-width: 24em;
+  padding: 0.25em 0.5em;
+  border: 1px solid #d8b26a;
+  border-radius: 3px;
+  background: #fff8e6;
+  color: #8a5a00;
+  font-size: 0.875em;
+  line-height: 1.4;
+  pointer-events: none;
+}

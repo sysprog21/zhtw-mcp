@@ -88,17 +88,43 @@
     const spans = [];
     let text = "";
     let byteCursor = 0;
+    // Elements are walked as well as text, for br alone: it is a line break the
+    // reader sees and the flattened text would otherwise lose, which would put
+    // a marker on a line of its own into the middle of the sentence around it.
     const walker = document.createTreeWalker(
       document.body,
-      NodeFilter.SHOW_TEXT,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
       { acceptNode },
     );
 
     let previousNode = null;
+    let previousBlock = null;
+    // A br closing the block the previous text sat in is the same break that
+    // block's boundary already reports, so the two do not add up.  One that
+    // sits in a later block is a line of its own before that block starts, and
+    // does.  Sorting them here is what keeps a trailing br from inventing a
+    // blank line and a leading one from losing a real one.
+    let trailingBreaks = 0;
+    let leadingBreaks = 0;
     while (walker.nextNode()) {
       const node = walker.currentNode;
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (previousBlock !== null && previousBlock === nearestBlock(node.parentElement)) {
+          trailingBreaks += 1;
+        } else {
+          leadingBreaks += 1;
+        }
+        continue;
+      }
       const value = node.nodeValue || "";
-      const separator = separatorBetween(previousNode, node);
+      const currentBlock = nearestBlock(node.parentElement);
+      const blockBreaks = previousNode && previousBlock !== currentBlock ? 1 : 0;
+      // Nothing to separate from before the first run, whatever came earlier.
+      const separator = previousNode
+        ? "\n".repeat(Math.max(trailingBreaks, blockBreaks) + leadingBreaks)
+        : "";
+      trailingBreaks = 0;
+      leadingBreaks = 0;
       if (separator) {
         text += separator;
         byteCursor += utf8ByteLength(separator);
@@ -125,6 +151,7 @@
       text += value;
       byteCursor += byteLength;
       previousNode = node;
+      previousBlock = currentBlock;
     }
 
     return { text, spans };
@@ -139,13 +166,50 @@
     return scope ? scope.getAttribute("lang") : null;
   }
 
+  // Every element the gate has answered for during this scan.  Answering it
+  // means walking that element's ancestors for a skipped tag and a computed
+  // style each, and prose returns to the same paragraph after every span it
+  // contains, so the repeats are the common case rather than the exception.
+  // The map is replaced per scan, since the answer describes the current DOM.
+  let elementGate = new WeakMap();
+
+  function elementAllowed(element) {
+    if (!element) {
+      return false;
+    }
+    let allowed = elementGate.get(element);
+    if (allowed === undefined) {
+      allowed = !shouldSkipElement(element) && isVisible(element);
+      elementGate.set(element, allowed);
+    }
+    return allowed;
+  }
+
   function acceptNode(node) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      // Skip rather than reject, so the walk still descends into everything
+      // else.  Skipping descends, so a br inside markup the text side excludes
+      // does arrive here, and would otherwise contribute a line break from
+      // content that reports nothing.
+      if (node.tagName !== "BR") {
+        return NodeFilter.FILTER_SKIP;
+      }
+      // A br can only be skipped where its parent is not through one of its own
+      // attributes, and almost none carry them, so the general test is kept for
+      // those and the rest take the parent's cached answer.  Visibility splits
+      // the same way: everything above the br is the parent's, leaving the br's
+      // own styles.
+      const carriesOwn = node.getAttribute("contenteditable") !== null;
+      const allowed = carriesOwn
+        ? !shouldSkipElement(node) && isVisible(node)
+        : elementAllowed(node.parentElement) && !hiddenInPlace(node);
+      return allowed ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    }
     const value = node.nodeValue || "";
     if (!value.trim()) {
       return NodeFilter.FILTER_REJECT;
     }
-    const element = node.parentElement;
-    if (!element || shouldSkipElement(element) || !isVisible(element)) {
+    if (!elementAllowed(node.parentElement)) {
       return NodeFilter.FILTER_REJECT;
     }
     return NodeFilter.FILTER_ACCEPT;
@@ -165,20 +229,24 @@
 
   function isVisible(element) {
     for (let current = element; current && current !== document.body; current = current.parentElement) {
-      if (current.hidden || current.getAttribute("aria-hidden") === "true") {
-        return false;
-      }
-      const style = getComputedStyle(current);
-      if (
-        style.display === "none" ||
-        style.visibility === "hidden" ||
-        style.visibility === "collapse" ||
-        Number(style.opacity) === 0
-      ) {
+      if (hiddenInPlace(current)) {
         return false;
       }
     }
     return true;
+  }
+
+  function hiddenInPlace(element) {
+    if (element.hidden || element.getAttribute("aria-hidden") === "true") {
+      return true;
+    }
+    const style = getComputedStyle(element);
+    return (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse" ||
+      Number(style.opacity) === 0
+    );
   }
 
   function highlightIssues(issues) {
@@ -249,15 +317,6 @@
       parent.removeChild(mark);
       parent.normalize();
     }
-  }
-
-  function separatorBetween(previousNode, node) {
-    if (!previousNode) {
-      return "";
-    }
-    return nearestBlock(previousNode.parentElement) === nearestBlock(node.parentElement)
-      ? ""
-      : "\n";
   }
 
   function nearestBlock(element) {

@@ -12,6 +12,15 @@
     utf8ByteLength,
   } = window.ZhtwExtensionShared;
 
+  const { isAloneOnItsLine, isFunctionalSymbolRun, repeatedAsciiSymbolRuns } =
+    window.ZhtwExtensionSymbols;
+
+  // The editable-field half of the extension: what the user types, rather than
+  // what the page already says.  It shares no state with the collection and
+  // highlighting below, so it lives in its own file and is reached through two
+  // entry points.
+  const { refreshFocusedWarning, setSymbolHandling } = window.ZhtwExtensionEditable;
+
   const BLOCK_TAGS = new Set([
     "ADDRESS",
     "ARTICLE",
@@ -58,6 +67,11 @@
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     try {
       if (message?.type === "COLLECT_TEXT") {
+        // The mode rides on this message rather than on one of its own.  A tab
+        // still holding a content script from before this feature answers it
+        // the same way it always did, where a second message type it does not
+        // know would leave the port closing on the sender.
+        setSymbolHandling(message.symbol_handling);
         clearHighlights();
         const collected = collectVisibleText();
         lastTextMap = collected.spans;
@@ -66,7 +80,9 @@
           text: collected.text,
           node_count: collected.spans.length,
           lang_spans: langSpans(collected.spans),
+          excluded_spans: collected.excludedSpans,
         });
+        refreshFocusedWarning();
         return true;
       }
 
@@ -85,26 +101,67 @@
   });
 
   function collectVisibleText() {
+    // The gate below answers for the DOM as it stands now, so a scan starts
+    // with an empty cache rather than one the previous scan left behind.
+    elementGate = new WeakMap();
     const spans = [];
+    const structuralCandidates = [];
     let text = "";
     let byteCursor = 0;
+    let textCursor = 0;
+    // Elements are walked as well as text, for br alone: it is a line break the
+    // reader sees and the flattened text would otherwise lose, which would put
+    // a marker on a line of its own into the middle of the sentence around it.
     const walker = document.createTreeWalker(
       document.body,
-      NodeFilter.SHOW_TEXT,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
       { acceptNode },
     );
 
     let previousNode = null;
+    let previousBlock = null;
+    // A br closing the block the previous text sat in is the same break that
+    // block's boundary already reports, so the two do not add up.  One that
+    // sits in a later block is a line of its own before that block starts, and
+    // does.  Sorting them here is what keeps a trailing br from inventing a
+    // blank line and a leading one from losing a real one.
+    let trailingBreaks = 0;
+    let leadingBreaks = 0;
     while (walker.nextNode()) {
       const node = walker.currentNode;
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (previousBlock !== null && previousBlock === nearestBlock(node.parentElement)) {
+          trailingBreaks += 1;
+        } else {
+          leadingBreaks += 1;
+        }
+        continue;
+      }
       const value = node.nodeValue || "";
-      const separator = separatorBetween(previousNode, node);
+      const currentBlock = nearestBlock(node.parentElement);
+      const blockBreaks = previousNode && previousBlock !== currentBlock ? 1 : 0;
+      // Nothing to separate from before the first run, whatever came earlier.
+      const separator = previousNode
+        ? "\n".repeat(Math.max(trailingBreaks, blockBreaks) + leadingBreaks)
+        : "";
+      trailingBreaks = 0;
+      leadingBreaks = 0;
       if (separator) {
         text += separator;
         byteCursor += utf8ByteLength(separator);
+        textCursor += separator.length;
       }
 
       const byteLength = utf8ByteLength(value);
+      for (const functionalSymbolRange of standaloneSymbolRuns(value)) {
+        structuralCandidates.push({
+          start: byteCursor + utf8ByteLength(value.slice(0, functionalSymbolRange.start)),
+          end: byteCursor + utf8ByteLength(value.slice(0, functionalSymbolRange.end)),
+          textStart: textCursor + functionalSymbolRange.start,
+          textEnd: textCursor + functionalSymbolRange.end,
+          value: value.slice(functionalSymbolRange.start, functionalSymbolRange.end),
+        });
+      }
       spans.push({
         node,
         byteStart: byteCursor,
@@ -124,10 +181,42 @@
       });
       text += value;
       byteCursor += byteLength;
+      textCursor += value.length;
       previousNode = node;
+      previousBlock = currentBlock;
     }
 
-    return { text, spans };
+    const excludedSpans = structuralCandidates
+      .filter((candidate) => excludeFromScan(text, candidate))
+      .map(({ start, end }) => ({ start, end }));
+    return { text, spans, excludedSpans };
+  }
+
+  // Only a functional marker leaves the scan, plus the truncation ellipsis,
+  // which on a line of its own is page furniture the same way a rule or a fence
+  // is.  Everything else, !!! and ??? among them, is punctuation the linter has
+  // a rule for, and taking it out here would narrow the scan without anyone
+  // asking for it.  Asking this before the line test keeps the candidate record
+  // to the runs that could still be excluded.
+  function excludableRun(run) {
+    return isFunctionalSymbolRun(run) || run.value[0] === ".";
+  }
+
+  // Alone on its line in the flattened text, not merely alone in its own node.
+  // An inline wrapper puts a marker in a node of its own without taking it out
+  // of the sentence around it, and ::: mid-sentence is two half-width colons
+  // the punctuation rules report.
+  function excludeFromScan(text, candidate) {
+    return isAloneOnItsLine(text, { start: candidate.textStart, end: candidate.textEnd });
+  }
+
+  // The runs in one text node that stand alone on their line, which is the
+  // same question excludeFromScan then asks of the flattened text.  Asking it
+  // with the same predicate is what keeps the two from drifting apart.
+  function standaloneSymbolRuns(value) {
+    return repeatedAsciiSymbolRuns(value).filter(
+      (run) => excludableRun(run) && isAloneOnItsLine(value, run),
+    );
   }
 
   // The lang the nearest ancestor declared, or null when none did.  An
@@ -139,13 +228,52 @@
     return scope ? scope.getAttribute("lang") : null;
   }
 
+  // Every element the gate has answered for during this scan.  Answering it
+  // means walking that element's ancestors for a skipped tag and a computed
+  // style each, and prose returns to the same paragraph after every span it
+  // contains, so the repeats are the common case rather than the exception.
+  // The map is replaced per scan, since the answer describes the current DOM.
+  let elementGate = new WeakMap();
+
+  function elementAllowed(element) {
+    if (!element) {
+      return false;
+    }
+    let allowed = elementGate.get(element);
+    if (allowed === undefined) {
+      allowed = !shouldSkipElement(element) && isVisible(element);
+      elementGate.set(element, allowed);
+    }
+    return allowed;
+  }
+
   function acceptNode(node) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      // Skip rather than reject, so the walk still descends into everything
+      // else.  Skipping descends, so a br inside markup the text side excludes
+      // does arrive here, and would otherwise contribute a line break from
+      // content that reports nothing.
+      if (node.tagName !== "BR") {
+        return NodeFilter.FILTER_SKIP;
+      }
+      // A br can only be skipped where its parent is not through one of its own
+      // attributes, and almost none carry them, so the general test is kept for
+      // those and the rest take the parent's cached answer.  Visibility splits
+      // the same way: everything above the br is the parent's, leaving the br's
+      // own styles.
+      const carriesOwn =
+        node.getAttribute("data-zhtw-mcp-ui") !== null ||
+        node.getAttribute("contenteditable") !== null;
+      const allowed = carriesOwn
+        ? !shouldSkipElement(node) && isVisible(node)
+        : elementAllowed(node.parentElement) && !hiddenInPlace(node);
+      return allowed ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    }
     const value = node.nodeValue || "";
     if (!value.trim()) {
       return NodeFilter.FILTER_REJECT;
     }
-    const element = node.parentElement;
-    if (!element || shouldSkipElement(element) || !isVisible(element)) {
+    if (!elementAllowed(node.parentElement)) {
       return NodeFilter.FILTER_REJECT;
     }
     return NodeFilter.FILTER_ACCEPT;
@@ -154,7 +282,7 @@
   function shouldSkipElement(element) {
     if (
       element.closest(
-        "script,style,noscript,textarea,input,select,option,button,code,pre,kbd,samp,var",
+        "script,style,noscript,textarea,input,select,option,button,code,pre,kbd,samp,var,[data-zhtw-mcp-ui]",
       )
     ) {
       return true;
@@ -165,20 +293,24 @@
 
   function isVisible(element) {
     for (let current = element; current && current !== document.body; current = current.parentElement) {
-      if (current.hidden || current.getAttribute("aria-hidden") === "true") {
-        return false;
-      }
-      const style = getComputedStyle(current);
-      if (
-        style.display === "none" ||
-        style.visibility === "hidden" ||
-        style.visibility === "collapse" ||
-        Number(style.opacity) === 0
-      ) {
+      if (hiddenInPlace(current)) {
         return false;
       }
     }
     return true;
+  }
+
+  function hiddenInPlace(element) {
+    if (element.hidden || element.getAttribute("aria-hidden") === "true") {
+      return true;
+    }
+    const style = getComputedStyle(element);
+    return (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse" ||
+      Number(style.opacity) === 0
+    );
   }
 
   function highlightIssues(issues) {
@@ -249,15 +381,6 @@
       parent.removeChild(mark);
       parent.normalize();
     }
-  }
-
-  function separatorBetween(previousNode, node) {
-    if (!previousNode) {
-      return "";
-    }
-    return nearestBlock(previousNode.parentElement) === nearestBlock(node.parentElement)
-      ? ""
-      : "\n";
   }
 
   function nearestBlock(element) {

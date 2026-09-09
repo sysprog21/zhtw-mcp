@@ -28,6 +28,9 @@ struct ScanOptions {
     /// lang attribute; which languages that takes out of the scan is decided
     /// here, so there is one definition of it rather than one per side.
     lang_spans: Vec<LangSpan>,
+    /// Ranges the page identified as structural symbols rather than prose.
+    /// They use the same byte coordinate system as language runs.
+    excluded_spans: Vec<ExcludedSpan>,
 }
 
 /// One run of the flattened page text and the language declared over it.
@@ -39,6 +42,13 @@ struct LangSpan {
     /// The lang attribute value, verbatim.  An empty one means "unknown" in
     /// HTML rather than "not Chinese", which excludes returns false for.
     lang: String,
+}
+
+/// A half-open byte range supplied by the browser content script.
+#[derive(Debug, Deserialize)]
+struct ExcludedSpan {
+    start: usize,
+    end: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -95,15 +105,7 @@ pub fn scan_text(text: &str, options_json: Option<String>) -> Result<String, JsV
     }
     config = config.with_disabled(&options.off);
 
-    let excluded: Vec<ByteRange> = options
-        .lang_spans
-        .iter()
-        .filter(|span| excludes(&span.lang))
-        .map(|span| ByteRange {
-            start: span.start,
-            end: span.end,
-        })
-        .collect();
+    let excluded = extra_excluded(text, &options);
 
     let scanner = scanner()?;
     let output = scanner.scan_for_content_type_with_extra_excluded(
@@ -136,6 +138,34 @@ pub fn scan_text(text: &str, options_json: Option<String>) -> Result<String, JsV
 
     serde_json::to_string(&result)
         .map_err(|err| JsValue::from_str(&format!("serialize scan result: {err}")))
+}
+
+fn extra_excluded(text: &str, options: &ScanOptions) -> Vec<ByteRange> {
+    let mut excluded: Vec<ByteRange> = options
+        .lang_spans
+        .iter()
+        .filter(|span| excludes(&span.lang))
+        .map(|span| ByteRange {
+            start: span.start,
+            end: span.end,
+        })
+        .collect();
+    excluded.extend(options.excluded_spans.iter().map(|span| ByteRange {
+        start: span.start,
+        end: span.end,
+    }));
+
+    // Clipped rather than dropped, which is what the scanner already does with
+    // a range that runs past the end of the text. Only a range that cannot be
+    // mapped at all, because an endpoint falls inside a character, is
+    // discarded: honouring half of it would move the exclusion.
+    excluded.retain_mut(|span| {
+        span.end = span.end.min(text.len());
+        span.start < span.end
+            && text.is_char_boundary(span.start)
+            && text.is_char_boundary(span.end)
+    });
+    excluded
 }
 
 fn parse_options(options_json: Option<String>) -> Result<ScanOptions, JsValue> {
@@ -177,3 +207,7 @@ impl From<&Issue> for BrowserIssue {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/wasm/tests.rs"]
+mod tests;

@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import * as format from "../src/format.js";
 import "../src/shared.js";
+import "../src/symbols.js";
+import "../src/editable.js";
 
 const src = (name) =>
   readFileSync(fileURLToPath(new URL(`../src/${name}`, import.meta.url)), "utf8");
@@ -68,30 +70,55 @@ for (const file of ["background.js", "popup.js"]) {
   });
 }
 
-test("every name content.js destructures from the shared global exists", () => {
-  // shared.js is injected as a classic script, so this is a plain property
-  // read at runtime: a missing name is `undefined` and fails on first call,
-  // not at load.
-  const names = destructuredFrom(src("content.js"), "window.ZhtwExtensionShared");
+// Both are injected as classic scripts, so a destructure is a plain property
+// read at runtime: a missing name is `undefined` and fails on first call, not
+// at load.
+const GLOBAL_MODULES = [
+  { global: "ZhtwExtensionShared", file: "shared.js" },
+  { global: "ZhtwExtensionSymbols", file: "symbols.js" },
+  { global: "ZhtwExtensionEditable", file: "editable.js" },
+];
 
-  assert.ok(names.length > 0, "content.js should destructure the shared global");
-  for (const name of names) {
-    assert.equal(
-      typeof globalThis.ZhtwExtensionShared[name],
-      "function",
-      `shared.js does not export ${name}, but content.js destructures it`,
-    );
-  }
-});
+for (const { global, file } of GLOBAL_MODULES) {
+  test(`every name content.js destructures from ${global} exists`, () => {
+    const names = destructuredFrom(src("content.js"), `window.${global}`);
 
-test("shared.js and format.js do not both define the same helper", () => {
-  // The pair drifted before: shared.js owned badge helpers that only its test
+    assert.ok(names.length > 0, `content.js should destructure ${global}`);
+    for (const name of names) {
+      assert.equal(
+        typeof globalThis[global][name],
+        "function",
+        `${file} does not export ${name}, but content.js destructures it`,
+      );
+    }
+  });
+
+  // Every classic script has to be injected, and executeScript takes them in
+  // order: a file added here and not there is undefined at content.js load.
+  test(`background.js injects ${file}`, () => {
+    assert.match(src("background.js"), new RegExp(`"src/${quote(file)}"`));
+  });
+}
+
+test("the injected globals do not define the same helper twice", () => {
+  // The set drifted before: shared.js owned badge helpers that only its test
   // used, while background.js carried live copies of the same rules.
-  const overlap = Object.keys(globalThis.ZhtwExtensionShared).filter(
-    (name) => name in format,
-  );
+  const surfaces = [
+    ["format.js", format],
+    ...GLOBAL_MODULES.map(({ global, file }) => [file, globalThis[global]]),
+  ];
 
-  assert.deepEqual(overlap, [], `defined in both shared.js and format.js: ${overlap}`);
+  for (const [nameA, a] of surfaces) {
+    for (const [nameB, b] of surfaces) {
+      if (nameA >= nameB) {
+        continue;
+      }
+      // Own properties only: a helper named toString or valueOf would
+      // otherwise look like it collided with every other module.
+      const overlap = Object.keys(a).filter((key) => Object.hasOwn(b, key));
+      assert.deepEqual(overlap, [], `defined in both ${nameA} and ${nameB}: ${overlap}`);
+    }
+  }
 });
 
 // The lang payload crosses into Rust through serde, which ignores a field the
@@ -232,3 +259,57 @@ for (const { select, field, names, senders, rustName } of SELECT_CONTRACTS) {
     }
   });
 }
+
+test("the structural-symbol exclusions cross from content collection to WASM", () => {
+  assert.match(src("content.js"), /excluded_spans\s*:/);
+  assert.match(src("background.js"), /excluded_spans\s*:/);
+  assert.match(wasmSource, /excluded_spans\s*:/);
+});
+
+test("the symbol handling mode crosses from the popup to the content script", () => {
+  assert.match(src("popup.js"), /symbol_handling\s*:/);
+  // It rides on COLLECT_TEXT rather than on a message of its own, so a tab
+  // still holding an older content script answers the scan instead of leaving
+  // the port to close on the sender.
+  assert.match(src("background.js"), /type:\s*"COLLECT_TEXT",\s*\n\s*symbol_handling\s*:/);
+  assert.match(src("content.js"), /message\.symbol_handling/);
+  assert.match(src("editable.js"), /SYMBOL_HANDLING_MODES\.includes/);
+  assert.doesNotMatch(src("background.js"), /CONFIGURE_SYMBOL_HANDLING/);
+});
+
+// The one select whose values never reach Rust, so the contracts above cannot
+// see it.  popup.html offers the modes, popup.js validates what it restores
+// from storage, and content.js validates what arrives on the wire; a mode added
+// to one and not the others is not an error, it silently becomes "warn".
+test("the popup offers exactly the symbol handling modes both sides accept", () => {
+  const modesIn = (file) => {
+    const match = /const SYMBOL_HANDLING_MODES = \[([^\]]*)\]/.exec(src(file));
+    assert.ok(match, `${file} does not declare SYMBOL_HANDLING_MODES`);
+    return [...match[1].matchAll(/"([a-z]+)"/g)].map((entry) => entry[1]).sort();
+  };
+
+  const offered = optionValuesOf(popupHtml, "symbol-handling").sort();
+  assert.deepEqual(offered, modesIn("popup.js"), "popup.html and popup.js disagree");
+  assert.deepEqual(offered, modesIn("editable.js"), "popup.html and editable.js disagree");
+  // The default the two validators fall back to has to be one of them.
+  assert.ok(offered.includes("warn"), "warn is the fallback and must be offered");
+});
+
+// editable.js puts its overlay in the page, and collectVisibleText walks the
+// page: the marker one writes has to be the one the other skips, or the warning
+// text joins the scan and reports itself.
+test("the collector skips the overlay editable.js marks", () => {
+  const marker = /dataset\.([A-Za-z]+)\s*=/.exec(src("editable.js"));
+  assert.ok(marker, "editable.js should mark its overlay with a data attribute");
+  const attribute = marker[1].replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+  assert.match(src("content.js"), new RegExp(`\\[data-${attribute}\\]`));
+});
+
+// The stored mode arrives asynchronously, so a scan started before the read
+// lands would send the visible default instead of what the user chose.
+test("the popup waits for the stored mode before it scans", () => {
+  assert.match(src("popup.js"), /await symbolHandlingLoad;\s*\n\s*await runScan\(\);/);
+  // And the read has to settle rather than reject, or that await throws on
+  // every press and the scan never runs at all.
+  assert.match(src("popup.js"), /catch \(error\) \{[\s\S]*?\}\s*finally \{/);
+});

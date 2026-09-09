@@ -16,8 +16,13 @@
   const { changedRange, removableSymbolRuns, runsTheEditProduced } =
     root.ZhtwExtensionSymbols;
 
+  // The text-like inputs whose selection can be addressed.  email and number
+  // are deliberately absent: setSelectionRange throws InvalidStateError on
+  // both, and deleteFieldRange calls it, so including them would break removal
+  // rather than extend it.  password is absent because it is never read.
   const NATIVE_TEXT_FIELD_SELECTOR =
-    "textarea, input:not([type]), input[type=text], input[type=search]";
+    "textarea, input:not([type]), input[type=text], input[type=search], " +
+    "input[type=url], input[type=tel]";
   // contenteditable="false" is deliberately not here.  It marks a region the
   // page has taken out of its own editor, and treating it as a field would put
   // extension UI inside the document the user is about to save.
@@ -305,11 +310,20 @@
       warningNode.dataset.zhtwMcpUi = "true";
       warningNode.textContent = "偵測到連續符號，請確認是否為必要標記。";
     }
-    if (warningNode.parentNode !== document.body) {
-      document.body.append(warningNode);
+    const host = warningHost();
+    if (warningNode.parentNode !== host) {
+      host.append(warningNode);
     }
     warningField = field;
     positionWarning();
+  }
+
+  // document.body is the usual host, but a page can make the body itself the
+  // editing host, and then appending to it would put this overlay into the
+  // document the user saves.  The root element is outside what collectVisibleText
+  // walks either way.
+  function warningHost() {
+    return document.body.isContentEditable ? document.documentElement : document.body;
   }
 
   // Scroll fires far faster than the frame rate, and each pass reads a layout
@@ -325,7 +339,13 @@
   }
 
   function positionWarning() {
-    if (!warningNode?.isConnected || !warningField?.isConnected) {
+    if (!warningNode?.isConnected) {
+      return;
+    }
+    // The page can take the field away while its warning is up, and an overlay
+    // anchored to a box that no longer exists is worse than no warning at all.
+    if (!warningField?.isConnected) {
+      hideWarning();
       return;
     }
     const box = warningField.getBoundingClientRect();

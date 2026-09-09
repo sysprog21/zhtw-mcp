@@ -29,17 +29,21 @@
     "|",
   ]);
 
-  // Read as character codes.  This is the inner loop of both the page scan and
-  // the per-field check, and indexing a string allocates a one-character string
-  // for every character it walks past.  Only ASCII reaches the second test, so
-  // it covers the whitespace \s does: tab through carriage return, and space.
-  function isAlphanumericOrSpace(code) {
+  // Printable ASCII that is not a letter or a digit.  Read as a character code
+  // because this is the inner loop of both the page scan and the per-field
+  // check, and indexing a string allocates a one-character string for every
+  // character it walks past.  Control characters fall outside it deliberately:
+  // they are not punctuation anyone can see, so three of them are neither a run
+  // to warn about nor a run to delete.
+  const WHITESPACE = /\s/;
+
+  function isSymbolCode(code) {
     return (
-      (code >= 0x30 && code <= 0x39) ||
-      (code >= 0x41 && code <= 0x5a) ||
-      (code >= 0x61 && code <= 0x7a) ||
-      code === 0x20 ||
-      (code >= 0x09 && code <= 0x0d)
+      code >= 0x21 &&
+      code <= 0x7e &&
+      !(code >= 0x30 && code <= 0x39) &&
+      !(code >= 0x41 && code <= 0x5a) &&
+      !(code >= 0x61 && code <= 0x7a)
     );
   }
 
@@ -48,7 +52,7 @@
     let index = 0;
     while (index < value.length) {
       const code = value.charCodeAt(index);
-      if (code > 0x7f || isAlphanumericOrSpace(code)) {
+      if (!isSymbolCode(code)) {
         index += 1;
         continue;
       }
@@ -70,45 +74,55 @@
     return FUNCTIONAL_SYMBOLS.has(run.value[0]);
   }
 
-  // A functional run only counts as markup when it stands alone on its line.
-  // A fence or a thematic break occupies a line of its own, while the same
-  // characters inside a sentence, as in 訂單---取消, are repeated punctuation.
   function removableSymbolRuns(value) {
     return repeatedAsciiSymbolRuns(value).filter(
-      (run) => !(isFunctionalSymbolRun(run) && isAloneOnItsLine(value, run)),
+      (run) => !(isFunctionalSymbolRun(run) && startsItsLine(value, run)),
     );
   }
 
   function isAloneOnItsLine(value, run) {
-    return (
-      !value.slice(lineStartBefore(value, run.start), run.start).trim() &&
-      !value.slice(run.end, lineEndAfter(value, run.end)).trim()
-    );
+    return blankBefore(value, run.start) && blankAfter(value, run.end);
   }
 
-  // Both scan to the nearest break rather than over the whole value.  The page
-  // side asks this of the entire flattened text once per candidate, where
-  // lastIndexOf for a carriage return that DOM text never contains read every
-  // preceding character before returning nothing, and slicing the remainder to
-  // search it forward copied the rest of the document for every candidate.
-  function lineStartBefore(value, index) {
+  // Markup opens a line.  A heading, a fence carrying a language tag, and a
+  // fenced note all start one, and what follows is the content they mark
+  // rather than more punctuation, so asking for the whole line would read
+  // "### Heading" as three repeated hashes and delete them as they were typed.
+  // The same characters inside a sentence, as in 訂單---取消, have prose in
+  // front of them and are the repeated punctuation this feature is for.
+  function startsItsLine(value, run) {
+    return blankBefore(value, run.start);
+  }
+
+  // Whitespace all the way to the line break, answered by scanning only as far
+  // as the answer.  The page side asks this of the whole flattened text once
+  // per candidate, and a field can hold one long line carrying a run every few
+  // characters, so reaching the break regardless would cost that line's length
+  // for every run on it.
+  function blankBefore(value, index) {
     for (let at = index - 1; at >= 0; at -= 1) {
       const code = value.charCodeAt(at);
       if (code === 0x0a || code === 0x0d) {
-        return at + 1;
+        return true;
+      }
+      if (!WHITESPACE.test(value[at])) {
+        return false;
       }
     }
-    return 0;
+    return true;
   }
 
-  function lineEndAfter(value, index) {
+  function blankAfter(value, index) {
     for (let at = index; at < value.length; at += 1) {
       const code = value.charCodeAt(at);
       if (code === 0x0a || code === 0x0d) {
-        return at;
+        return true;
+      }
+      if (!WHITESPACE.test(value[at])) {
+        return false;
       }
     }
-    return value.length;
+    return true;
   }
 
   // The half-open span of `next` that differs from `previous`.  Removal is

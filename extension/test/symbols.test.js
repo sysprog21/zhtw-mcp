@@ -25,13 +25,32 @@ test("repeated punctuation is removable even when it stands alone", () => {
   }
 });
 
-// A fence occupies a line of its own; the same characters inside a sentence
-// are the repeated punctuation this feature is for.
-test("a functional symbol inside a line is not exempt", () => {
+// Markup opens a line and what follows it is content, so the run survives with
+// text after it.  The same characters with prose in front are punctuation.
+test("a functional symbol is exempt where it opens the line", () => {
+  for (const line of ["### Heading", "```rust", "::: note", "--- ", "  ---  "]) {
+    assert.deepEqual(removableSymbolRuns(line), [], line);
+  }
   assert.deepEqual(removableSymbolRuns("訂單---取消"), [
     { start: 2, end: 5, value: "---" },
   ]);
-  assert.deepEqual(removableSymbolRuns("  ---  "), []);
+  assert.deepEqual(removableSymbolRuns("前言\n### 標題"), []);
+});
+
+// Three of a character nobody can see are not punctuation to report, and
+// deleting them would be deleting something the user cannot even point at.
+test("repeated control characters are not a symbol run", () => {
+  for (const code of [0x00, 0x01, 0x1f, 0x7f]) {
+    const value = "a" + String.fromCharCode(code, code, code) + "b";
+    assert.deepEqual(repeatedAsciiSymbolRuns(value), [], "code " + code);
+  }
+  // The printable neighbours of that range still are.
+  assert.deepEqual(repeatedAsciiSymbolRuns("a!!!b"), [
+    { start: 1, end: 4, value: "!!!" },
+  ]);
+  assert.deepEqual(repeatedAsciiSymbolRuns("a~~~b"), [
+    { start: 1, end: 4, value: "~~~" },
+  ]);
 });
 
 test("editable symbol handling identifies repeated nonfunctional symbols", () => {

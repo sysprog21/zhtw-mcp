@@ -17,6 +17,8 @@ const srcDir = path.resolve(import.meta.dirname, "..", "src");
 const PAGE = `<!doctype html><meta charset="utf-8"><body>
   <label>native <textarea id="native"></textarea></label>
   <input id="line" type="text" />
+  <input id="tel" type="tel" />
+  <input id="url" type="url" />
   <input id="guarded" type="text" readonly value="請等等..." />
   <div id="host" contenteditable="true"><p id="para">先寫點字</p>
     <p id="second">另一段..</p>
@@ -315,6 +317,58 @@ test("remove mode keeps a run the edit only extended", { timeout: 60_000 }, asyn
     });
     await page.keyboard.type(".");
     assert.equal(await field.inputValue(), "....");
+  });
+});
+
+// Markup opens a line, and the heading's text follows it there.  The marker
+// has to be completed against that text to reach the case: typed left to right
+// the run stands alone at the moment it is produced, and is exempt whatever the
+// rule says about what may follow it.
+test("remove mode leaves a heading marker alone", { timeout: 60_000 }, async () => {
+  await withPage("remove", async (page) => {
+    const field = page.locator("#native");
+    await field.click();
+    await page.keyboard.type("標題");
+    await page.keyboard.press("Home");
+    await page.keyboard.type("###");
+    assert.equal(await field.inputValue(), "###標題");
+
+    // A fence carrying a language tag is the same shape.
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("rust");
+    await page.keyboard.press("Home");
+    await page.keyboard.type("```");
+    assert.equal(await field.inputValue(), "###標題\n```rust");
+  });
+});
+
+// url and tel are text the user types like any other.  email and number are
+// not here on purpose: setSelectionRange throws on them, which removal needs.
+test("remove mode reaches the other text-like inputs", { timeout: 60_000 }, async () => {
+  await withPage("remove", async (page) => {
+    for (const id of ["tel", "url"]) {
+      await page.locator(`#${id}`).click();
+      await page.keyboard.type("12...");
+      assert.equal(await page.locator(`#${id}`).inputValue(), "12", id);
+    }
+  });
+});
+
+// The overlay exists so that nothing of the extension's ends up in what the
+// user saves, which a contenteditable body would undo.
+test("the overlay stays out of a contenteditable body", { timeout: 60_000 }, async () => {
+  await withPage("warn", async (page) => {
+    await page.evaluate(() => document.body.setAttribute("contenteditable", "true"));
+    await page.locator("#native").click();
+    await page.keyboard.type("真的嗎???");
+    await page.locator(".zhtw-mcp-symbol-warning").waitFor({ state: "attached" });
+
+    const placement = await page.evaluate(() => {
+      const node = document.querySelector(".zhtw-mcp-symbol-warning");
+      return { inBody: document.body.contains(node), onRoot: node.parentElement === document.documentElement };
+    });
+    assert.deepEqual(placement, { inBody: false, onRoot: true });
   });
 });
 

@@ -31,3 +31,16 @@ The extension uses `activeTab`, so it scans only after a user gesture and only f
 ```sh
 npm test --prefix extension
 ```
+
+## Test the unpacked extension headlessly
+
+The browser test loads the real Manifest V3 extension into Playwright's bundled
+Chromium, opens its popup page, and initializes the WASM module. Build the WASM
+bundle and install the pinned test dependency first:
+
+```sh
+sh extension/build-wasm.sh
+npm ci --prefix extension
+npx --prefix extension playwright install chromium
+npm run test:all --prefix extension
+```

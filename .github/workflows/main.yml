@@ -335,6 +335,12 @@ jobs:
       with:
         node-version: "22"
 
+    - name: Install extension test dependencies
+      run: npm ci --prefix extension
+
+    - name: Install headless Chromium
+      run: npx --prefix extension playwright install --with-deps chromium
+
     # Prebuilt, like cargo-audit above.  "cargo install wasm-pack" builds it
     # from source, which only stayed cheap because rust-cache happened to carry
     # ~/.cargo/bin across runs.
@@ -344,8 +350,8 @@ jobs:
     - name: Build scanner WASM
       run: sh extension/build-wasm.sh
 
-    - name: Test extension helpers
-      run: npm test --prefix extension
+    - name: Test extension
+      run: npm run test:all --prefix extension
 
     - name: Assemble distributable extension
       run: |

@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "icons": "sh scripts/generate-icons.sh",
-    "test": "node --test test/*.test.js"
+    "test": "npm run test:unit",
+    "test:all": "npm run test:unit && npm run test:headless",
+    "test:headless": "node --test e2e/*.test.js",
+    "test:unit": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }

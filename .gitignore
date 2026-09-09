@@ -14,6 +14,7 @@ src/engine/s2t_data.rs
 data/opencc/
 extension/dist/*
 !extension/dist/README.md
+extension/node_modules/
 .DS_Store
 
 AGENTS.md

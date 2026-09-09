@@ -41,9 +41,9 @@ Automatically check and correct zh-TW text produced by AI, catching cross-strait
 
 - Half-width punctuation (`,` `.` `:`) that should be full-width (`，` `。` `：`)
 - Mainland-style `""` curly quotes replaced with Taiwan-style `「」` corner brackets
-- Missing or extra CJK-Latin/digit spacing
+- Missing or extra CJK-Latin/digit spacing when the project's spacing policy requires it
 - Mainland vocabulary -- 軟件→軟體, 內存→記憶體, 默認→預設, etc.
-- Non-standard character variants -- 裏→裡, 着→著 per MoE standard forms
+- Non-standard character variants -- 裏→裡, 着→著 per MoE standard forms in the strict profile; form preferences are advisory
 - Politically colored terms -- 祖國, 內地
 - Casing -- JavaScript, GitHub, macOS
 

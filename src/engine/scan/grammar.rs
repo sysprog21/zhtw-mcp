@@ -20,7 +20,7 @@ use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
 use super::emit::Emitter;
 use crate::engine::excluded::{is_excluded, ByteRange};
-use crate::engine::scan::rule_ir::StructuralGuard;
+use crate::engine::scan::rule_ir::{GuardPhrase, StructuralGuard};
 use crate::engine::scan::{char_bounded_end, is_cjk_ideograph};
 use crate::rules::ruleset::{
     AttributionGenre, Issue, IssueType, PhaseFamily, PhasePass, Register, Severity,
@@ -1011,25 +1011,21 @@ pub(crate) fn scan_ai_bare_attribution(
     let mut index = None;
     for mat in guard.find_iter(text) {
         let index = index.get_or_insert_with(|| AttributionIndex::build(text, excluded));
-        validate_bare_attribution(
-            em,
-            mat.start(),
-            guard.phrase(mat.pattern().as_usize()),
-            genre,
-            index,
-        );
+        let phrase = guard.matched_rule(mat.pattern().as_usize());
+        validate_bare_attribution(em, mat.start(), phrase, genre, index);
     }
 }
 
 fn validate_bare_attribution(
     em: &mut Emitter<'_>,
     abs_pos: usize,
-    phrase: &str,
+    rule: &GuardPhrase,
     genre: AttributionGenre,
     index: &AttributionIndex,
 ) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
 
+    let phrase = rule.text.as_str();
     let end = abs_pos + phrase.len();
     let (sentence_start, sentence_end) = index.sentence_bounds(abs_pos, text.len());
 
@@ -1076,17 +1072,14 @@ fn validate_bare_attribution(
             "citation missing for this authority attribution; name the source (do not invent one)"
         }
     };
-    issues.push(
-        Issue::new(
-            abs_pos,
-            phrase.len(),
-            phrase,
-            Vec::new(),
-            IssueType::AiStyle,
-            Severity::Info,
-        )
-        .with_context(context),
-    );
+    let mut issue = ai_style_issue(abs_pos, phrase, "", context, rule.severity);
+
+    // The declared level, not the reported one, travels with the issue: it is
+    // what marks a pinned advisory, and without it a guarded rule that pins
+    // Info would still be boosted to Warning inside a Markdown heading while
+    // the same pin on a lexical rule is exempt.
+    issue.configured_severity = rule.configured_severity;
+    issues.push(issue);
 }
 
 // Legacy scanners for the parity differential tests live outside the production

@@ -786,6 +786,7 @@
       "from": "佈署",
       "to": ["部署"],
       "type": "variant",
+      "severity": "warning",
       "context": "MoE 標準用字為「部署」。s2t 表把「布署」轉成「佈署」，本規則收尾。exceptions 排除「公佈／宣佈」後接「署長／署理」的切分",
       "english": "deploy",
       "source": "native_lexical_trap_bushu_gongbu",
@@ -1305,6 +1306,7 @@
       "from": "僞",
       "to": ["偽"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (假、不真實的意思)",
       "english": "false / pseudo (char variant)"
     },
@@ -2839,6 +2841,7 @@
       "from": "台中",
       "to": ["臺中"],
       "type": "variant",
+      "severity": "warning",
       "context": "地名 (@in tw) MoE 標準用字 (地名用「臺」)",
       "english": "Taichung"
     },
@@ -2846,6 +2849,7 @@
       "from": "台北",
       "to": ["臺北"],
       "type": "variant",
+      "severity": "warning",
       "context": "地名 (@in tw) MoE 標準用字 (地名用「臺」)",
       "english": "Taipei"
     },
@@ -2853,6 +2857,7 @@
       "from": "台南",
       "to": ["臺南"],
       "type": "variant",
+      "severity": "warning",
       "context": "地名 (@in tw) MoE 標準用字 (地名用「臺」)",
       "english": "Tainan"
     },
@@ -2860,6 +2865,7 @@
       "from": "台大",
       "to": ["臺大"],
       "type": "variant",
+      "severity": "warning",
       "context": "MoE 標準用字 (地名用「臺」，國立臺灣大學簡稱)",
       "english": "National Taiwan University"
     },
@@ -2882,6 +2888,7 @@
       "from": "台東",
       "to": ["臺東"],
       "type": "variant",
+      "severity": "warning",
       "context": "地名 (@in tw) MoE 標準用字 (地名用「臺」)",
       "english": "Taitung"
     },
@@ -2889,6 +2896,7 @@
       "from": "台灣",
       "to": ["臺灣"],
       "type": "variant",
+      "severity": "warning",
       "context": "MoE 標準用字 (地名用「臺」)",
       "english": "Taiwan"
     },
@@ -3084,6 +3092,7 @@
       "from": "啓",
       "to": ["啟"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 開啟、啟發)",
       "english": "open / start (char variant)"
     },
@@ -3121,6 +3130,7 @@
       "from": "喫",
       "to": ["吃"],
       "type": "variant",
+      "severity": "warning",
       "context": "MoE 標準字體 (古體「喫」為文言用法)",
       "english": "eat (char variant)"
     },
@@ -4117,6 +4127,7 @@
       "from": "嫺",
       "to": ["嫻"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 嫻雅、嫻熟)",
       "english": "refined / elegant (char variant)"
     },
@@ -4124,6 +4135,7 @@
       "from": "嬀",
       "to": ["媯"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (姓氏)",
       "english": "Gui (river name, char variant)"
     },
@@ -4853,6 +4865,7 @@
       "from": "峯",
       "to": ["峰"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 山峰、高峰)",
       "english": "peak (char variant)"
     },
@@ -5100,6 +5113,7 @@
       "from": "幺",
       "to": ["么"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (「幺」為異體)",
       "english": "one / tiny (char variant)"
     },
@@ -6311,6 +6325,7 @@
       "from": "擡",
       "to": ["抬"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 抬頭、抬舉)",
       "english": "lift / raise (char variant)"
     },
@@ -7444,6 +7459,7 @@
       "from": "棱",
       "to": ["稜"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 稜角、稜線)",
       "english": "edge / ridge (char variant)"
     },
@@ -7696,6 +7712,7 @@
       "from": "檐",
       "to": ["簷"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 屋簷)",
       "english": "eave (char variant)"
     },
@@ -7999,6 +8016,7 @@
       "from": "污",
       "to": ["汙"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 汙染、汙水)",
       "english": "pollute (char variant)"
     },
@@ -8067,6 +8085,7 @@
       "from": "泄",
       "to": ["洩"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 洩漏、洩氣)",
       "english": "leak (char variant)"
     },
@@ -8481,6 +8500,7 @@
       "from": "潙",
       "to": ["溈"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (水名)",
       "english": "Wei (river name, char variant)"
     },
@@ -8498,6 +8518,7 @@
       "from": "潨",
       "to": ["潀"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (水流匯聚)",
       "english": "Cong (water name, char variant)"
     },
@@ -8656,6 +8677,7 @@
       "from": "爲",
       "to": ["為"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (古體「爲」為異體)",
       "english": "be / do (char variant)"
     },
@@ -8721,6 +8743,7 @@
       "from": "牀",
       "to": ["床"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 床鋪、病床)",
       "english": "bed (char variant)"
     },
@@ -9162,6 +9185,7 @@
       "from": "痹",
       "to": ["痺"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 麻痺)",
       "english": "numbness (char variant)"
     },
@@ -9169,6 +9193,7 @@
       "from": "癡",
       "to": ["痴"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 痴迷、痴情)",
       "english": "infatuated (char variant)"
     },
@@ -9226,6 +9251,7 @@
       "from": "皁",
       "to": ["皂"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 肥皂)",
       "english": "soap (char variant)"
     },
@@ -9385,6 +9411,7 @@
       "from": "着",
       "to": ["著"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (助詞用法統一為「著」)",
       "english": "particle (char variant)"
     },
@@ -9392,6 +9419,7 @@
       "from": "睾",
       "to": ["睪"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 睪丸)",
       "english": "testicle (char variant)"
     },
@@ -9554,6 +9582,7 @@
       "from": "祕",
       "to": ["秘"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 秘密、神秘)",
       "english": "secret (char variant)"
     },
@@ -9972,6 +10001,7 @@
       "from": "竈",
       "to": ["灶"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 灶台、灶神)",
       "english": "stove (char variant)"
     },
@@ -10153,6 +10183,7 @@
       "from": "糉",
       "to": ["粽"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 粽子)",
       "english": "zongzi / rice dumpling (char variant)"
     },
@@ -10365,6 +10396,7 @@
       "from": "綫",
       "to": ["線"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體：「綫」為異體，正體作「線」",
       "english": "line / thread",
       "source": "tests/fixtures/variant/moe_variant_forms.txt",
@@ -10592,6 +10624,7 @@
       "from": "繮",
       "to": ["韁"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 韁繩)",
       "english": "rein (char variant)"
     },
@@ -10606,6 +10639,7 @@
       "from": "纔",
       "to": ["才"],
       "type": "variant",
+      "severity": "warning",
       "context": "MoE 標準字體 (「纔」為古體)",
       "english": "just / only then (char variant)"
     },
@@ -10656,6 +10690,7 @@
       "from": "羣",
       "to": ["群"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 群組、群眾)",
       "english": "group (char variant)"
     },
@@ -10860,6 +10895,7 @@
       "from": "脣",
       "to": ["唇"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 嘴唇)",
       "english": "lip (char variant)"
     },
@@ -11184,6 +11220,7 @@
       "from": "蔘",
       "to": ["參"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 人參)。「參」另有參加、參考之義",
       "english": "ginseng (char variant)"
     },
@@ -11191,6 +11228,7 @@
       "from": "蔿",
       "to": ["蒍"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (植物名)",
       "english": "Wei (plant name, char variant)"
     },
@@ -11305,6 +11343,7 @@
       "from": "衆",
       "to": ["眾"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 眾人、大眾)",
       "english": "multitude (char variant)"
     },
@@ -11430,6 +11469,7 @@
       "from": "裏",
       "to": ["裡"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 裡面、心裡)",
       "english": "inside (char variant)"
     },
@@ -11546,6 +11586,7 @@
       "from": "覈",
       "to": ["核"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 審核、核實)",
       "english": "verify / check (char variant)"
     },
@@ -12378,6 +12419,7 @@
       "from": "踊",
       "to": ["踴"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 踴躍)",
       "english": "leap / eager (char variant)"
     },
@@ -12834,6 +12876,7 @@
       "from": "遥控器",
       "to": ["遙控器"],
       "type": "variant",
+      "severity": "warning",
       "context": "簡→繁字形。遥控器 → 遙控器",
       "english": "remote control"
     },
@@ -13075,6 +13118,7 @@
       "from": "鉢",
       "to": ["缽"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 衣缽)",
       "english": "alms bowl (char variant)"
     },
@@ -13089,6 +13133,7 @@
       "from": "銷燬",
       "to": ["銷毀"],
       "type": "variant",
+      "severity": "warning",
       "context": "MoE 標準字體：「毀」為正體，「燬」為異體字",
       "english": "destroy (char variant)"
     },
@@ -13131,6 +13176,7 @@
       "from": "鍼",
       "to": ["針"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 針灸、指南針)",
       "english": "needle (char variant)"
     },
@@ -14243,6 +14289,7 @@
       "from": "髮生",
       "to": ["發生"],
       "type": "variant",
+      "severity": "warning",
       "context": "OpenCC 轉換時可能誤植「發」為「髮」(hair)",
       "english": "occur/happen"
     },
@@ -14264,6 +14311,7 @@
       "from": "鮎",
       "to": ["鯰"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 鯰魚)",
       "english": "catfish (char variant)"
     },
@@ -14278,6 +14326,7 @@
       "from": "麪",
       "to": ["麵"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 麵條、麵粉)",
       "english": "noodle / flour (char variant)"
     },
@@ -14356,6 +14405,7 @@
       "from": "齶",
       "to": ["顎"],
       "type": "variant",
+      "severity": "info",
       "context": "MoE 標準字體 (@example 上顎、下顎)",
       "english": "palate / jaw (char variant)"
     },

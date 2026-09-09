@@ -87,6 +87,7 @@ _FACTS = _load_schema_facts()
 
 VALID_RULE_TYPES = set(_FACTS["rule_types"])
 VALID_EDITORIAL_CONFIDENCE = set(_FACTS["editorial_confidence"])
+VALID_SEVERITIES = set(_FACTS["severities"])
 # Guard names the engine implements. Generated from KNOWN_STRUCTURAL_GUARDS, so
 # a rule naming a guard this build lacks fails the lint instead of going inert.
 VALID_STRUCTURAL_GUARDS = set(_FACTS["structural_guards"])
@@ -155,6 +156,7 @@ SPELLING_FIELD_ORDER = [
     "from",
     "to",
     "type",
+    "severity",
     "disabled",
     "context",
     "english",
@@ -799,6 +801,34 @@ COMMON_SC2TC: dict[str, str] = {
 }
 
 
+def check_enum_field(
+    warnings: list[str],
+    frm: str,
+    field: str,
+    value: object,
+    valid: set[str],
+    prefix: str = "schema",
+) -> None:
+    """Warn when an enum field holds a value outside its set.
+
+    Five fields share this shape and their wording drifted apart before it was
+    written down. isinstance runs before the membership test because an
+    unhashable hand-edit such as ["low"] would raise TypeError from the set
+    rather than reporting the bad value.
+
+    None is a value like any other here, so an explicit `"type": null` is
+    reported rather than waved through. An optional field asks its own
+    question first: every caller of an optional field guards on `is not None`,
+    which is what makes the field optional rather than anything decided here.
+    """
+    if isinstance(value, str) and value in valid:
+        return
+    warnings.append(
+        f'{prefix}: "{frm}" has unknown {field} "{value}" '
+        f"(valid: {', '.join(sorted(valid))})"
+    )
+
+
 def detect_conflicts(
     spelling_rules: list[dict[str, Any]],
 ) -> tuple[list[str], list[str]]:
@@ -1016,28 +1046,33 @@ def detect_conflicts(
         if "type" not in rule:
             warnings.append(f"schema: \"{frm}\" missing required 'type' field")
         else:
-            rtype = rule["type"]
-            if rtype not in VALID_RULE_TYPES:
-                warnings.append(
-                    f'schema: "{frm}" has unknown type "{rtype}" '
-                    f"(valid: {', '.join(sorted(VALID_RULE_TYPES))})"
-                )
+            check_enum_field(warnings, frm, "type", rule["type"], VALID_RULE_TYPES)
         unknown = set(rule.keys()) - KNOWN_SPELLING_FIELDS
         if unknown:
             warnings.append(f'schema: "{frm}" has unknown fields: {sorted(unknown)}')
+        severity = rule.get("severity")
+        # The variant family covers two kinds of rule that want different
+        # levels: MoE glyph preferences, which are advice, and proper names
+        # and plain misspellings, which are defects. Neither is the obvious
+        # default, so a variant rule states which one it is rather than
+        # inheriting an answer that is right for only half the family.
+        if severity is None and rule.get("type") == "variant":
+            warnings.append(
+                f'schema: variant rule "{frm}" does not declare a severity '
+                "(info for a glyph preference, warning for a proper name or "
+                "a misspelling)"
+            )
+        if severity is not None:
+            check_enum_field(warnings, frm, "severity", severity, VALID_SEVERITIES)
         # editorial_confidence gates lexical judgment calls, so it only has
         # meaning on lexical rule types. The fixer guards its gate with
         # !orthographic, and variant rules classify as orthographic, so an
         # annotation there would be silently ignored and fixed at every tier.
         ec = rule.get("editorial_confidence")
         if ec is not None:
-            # isinstance first: an unhashable hand-edit such as ["low"] would
-            # raise TypeError from the set membership test instead of warning.
-            if not isinstance(ec, str) or ec not in VALID_EDITORIAL_CONFIDENCE:
-                warnings.append(
-                    f'schema: "{frm}" has unknown editorial_confidence "{ec}" '
-                    f"(valid: {', '.join(sorted(VALID_EDITORIAL_CONFIDENCE))})"
-                )
+            check_enum_field(
+                warnings, frm, "editorial_confidence", ec, VALID_EDITORIAL_CONFIDENCE
+            )
             if rule.get("type") in ORTHOGRAPHIC_RULE_TYPES:
                 warnings.append(
                     f'schema: "{frm}" sets editorial_confidence on type '
@@ -1335,11 +1370,9 @@ def detect_conflicts(
         geo_m = geo_re.match(ctx)
         if geo_m:
             geo_type = geo_m.group(1)
-            if geo_type not in VALID_GEO_TYPES:
-                warnings.append(
-                    f'geo-type: "{frm}" has unknown @geo type '
-                    f'"{geo_type}" (valid: {", ".join(sorted(VALID_GEO_TYPES))})'
-                )
+            check_enum_field(
+                warnings, frm, "@geo type", geo_type, VALID_GEO_TYPES, prefix="geo-type"
+            )
             continue  # has @geo -- skip further annotation checks
 
         # Detect malformed @geo (starts with @geo but regex didn't match).
@@ -1353,11 +1386,14 @@ def detect_conflicts(
         person_m = person_re.match(ctx)
         if person_m:
             person_type = person_m.group(1)
-            if person_type not in VALID_PERSON_TYPES:
-                warnings.append(
-                    f'person-type: "{frm}" has unknown @person type '
-                    f'"{person_type}" (valid: {", ".join(sorted(VALID_PERSON_TYPES))})'
-                )
+            check_enum_field(
+                warnings,
+                frm,
+                "@person type",
+                person_type,
+                VALID_PERSON_TYPES,
+                prefix="person-type",
+            )
             continue  # has @person -- skip further annotation checks
 
         # Detect malformed @person (starts with @person but regex didn't match).

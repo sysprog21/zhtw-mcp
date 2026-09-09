@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 // the serializer and the deserializer cannot drift. Re-exported here so every
 // existing crate::rules::ruleset::* path keeps resolving.
 pub use super::schema::{
-    CaseRule, ContextSuggestion, EditorialConfidence, RuleType, Ruleset, SpellingRule,
+    CaseRule, ContextSuggestion, EditorialConfidence, RuleType, Ruleset, Severity, SpellingRule,
     KNOWN_STRUCTURAL_GUARDS,
 };
 
@@ -702,14 +702,6 @@ impl ResolutionTier {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Severity {
-    Info,
-    Warning,
-    Error,
-}
-
 impl Severity {
     /// Human-readable lowercase name.
     pub fn name(self) -> &'static str {
@@ -764,6 +756,16 @@ impl RuleType {
 }
 
 impl SpellingRule {
+    /// The severity this rule reports at: its own override when it carries
+    /// one, otherwise the level its type establishes.
+    ///
+    /// One accessor rather than the fallback spelled at each site, so a rule
+    /// compiled for the lexical pass and the same rule compiled into a
+    /// structural guard cannot answer differently.
+    pub fn effective_severity(&self) -> Severity {
+        self.severity.unwrap_or(self.rule_type.default_severity())
+    }
+
     /// True when this rule is an AiFiller deletion (`to: [""]`): the matched
     /// phrase should be removed entirely, with the empty string as the fix.
     pub fn is_deletion_rule(&self) -> bool {
@@ -800,6 +802,7 @@ impl SpellingRule {
             from: from.into(),
             to,
             rule_type,
+            severity: None,
             disabled: false,
             context: None,
             english: None,
@@ -1022,6 +1025,18 @@ pub struct Issue {
     /// via `derive_explain_meta`.  `None` means heuristic derivation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editorial_confidence: Option<EditorialConfidence>,
+    /// Explicit severity from the spelling rule before suppressions or
+    /// presentation boosts mutate `severity`. Internal: it distinguishes a
+    /// ruleset-pinned advisory from an ordinary issue a user downgraded.
+    ///
+    /// Skipped by serde, so it does not survive the CLI scan cache, which
+    /// round-trips an issue through JSON. Every consumer today runs inside
+    /// the scan that set it: the heading boost, before the output is cached,
+    /// and the MCP explain path, which does not use that cache. A consumer
+    /// placed after a cache hit would read None and see no advisory at all,
+    /// so such a consumer needs the field serialized first.
+    #[serde(skip)]
+    pub(crate) configured_severity: Option<Severity>,
 }
 
 /// Markdown table cell coordinates: `(row, column)` are 0-based, with row 0
@@ -1096,6 +1111,7 @@ impl Issue {
             spelling_rule_idx: None,
             table_cell: None,
             editorial_confidence: None,
+            configured_severity: None,
         }
     }
 
@@ -1136,6 +1152,7 @@ impl Issue {
             spelling_rule_idx: Some(rule_idx),
             table_cell: None,
             editorial_confidence: None,
+            configured_severity: None,
         }
     }
 
@@ -1258,6 +1275,23 @@ pub fn is_delete_suggestion(suggestions: &[String]) -> bool {
 }
 
 impl Issue {
+    /// True when the ruleset itself pinned this issue to Info: a statement
+    /// that the finding is advice rather than a defect.
+    ///
+    /// Reads the severity the rule declared, never the one the issue now
+    /// carries, so an issue demoted to Info by `ignore_terms`, the
+    /// translation memory or Tier 2 suppression is not mistaken for advice
+    /// the ruleset chose to give.
+    ///
+    /// Deliberately says nothing about the rule type. Today only `variant`
+    /// rules pin Info, but the schema accepts `severity` on any rule, and a
+    /// predicate naming one type would silently escalate the next one that
+    /// used it: two passes have to agree on what a pin means, and neither
+    /// should have to be taught a new type name to keep agreeing.
+    pub(crate) fn is_pinned_advisory(&self) -> bool {
+        self.configured_severity == Some(Severity::Info)
+    }
+
     /// Compact suggestion string: first suggestion only, `+N` suffix for
     /// alternatives.
     /// Falls back to `english` field when no suggestions exist.

@@ -1122,6 +1122,69 @@ fn cli_lint_sarif_output() {
             .is_some(),
         "should have line number"
     );
+
+    // The severity mapping, on the process already running here rather than a
+    // spawn of its own. Info is the only level with no other coverage: a
+    // strict-profile MoE form preference is the shortest way to produce one.
+    let info = run_lint_stdin(&["--profile", "strict", "--format", "sarif"], "這裏的說明");
+    let parsed: serde_json::Value = serde_json::from_slice(&info.stdout).unwrap();
+    assert_eq!(
+        parsed["runs"][0]["results"][0]["level"], "note",
+        "Info maps to the SARIF note level"
+    );
+}
+
+#[test]
+fn cli_lint_strict_variant_preference_is_info_even_in_a_heading() {
+    // Through a .md file, not stdin: the heading boost only runs for Markdown
+    // content, and stdin with no file name is scanned as plain text, so a stdin
+    // fixture cannot reach the code this test is named after.
+    //
+    // Both headings sit in one file so the assertions share a single scan: the
+    // pinned form and the unpinned one are independent findings, and the pair
+    // is the point, since an exemption that swallowed both would look right
+    // from either half alone.
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("h.md");
+    std::fs::write(&file, "# 這裏的說明\n\n# 這佈署很好\n").unwrap();
+    let json = run_lint_args(&[
+        file.to_str().unwrap(),
+        "--profile",
+        "strict",
+        "--format",
+        "json",
+    ]);
+
+    // Not success: the second heading boosts a variant to error, which is the
+    // exit code an error-level finding earns. The first heading's pinned form
+    // stays advisory and contributes nothing to it, which is the whole point.
+    assert_eq!(
+        json.status.code(),
+        Some(1),
+        "an error-level finding exits 1"
+    );
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    let issues = report["issues"].as_array().unwrap();
+    let found = |term: &str| {
+        issues
+            .iter()
+            .find(|i| i["found"] == term)
+            .unwrap_or_else(|| panic!("{term} was not reported"))
+            .clone()
+    };
+    assert_eq!(
+        found("裏")["severity"],
+        "info",
+        "a configured-Info variant must not be boosted by its heading"
+    );
+
+    // The exemption is narrow: a variant that did not configure Info still
+    // takes the boost, so the guard cannot be a blanket variant exception.
+    assert_eq!(
+        found("佈署")["severity"],
+        "error",
+        "a variant that pinned nothing is boosted in a heading"
+    );
 }
 
 #[test]

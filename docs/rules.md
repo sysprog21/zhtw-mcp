@@ -115,7 +115,7 @@ Character variant normalization per the MoE Standard Form of National Characters
 | 着 | 著 | Particle usage; exception: chess term 下著, proper nouns |
 | 台 | 臺 | `strict` profile only; lexical contexts: 臺灣/臺北/臺中/臺南 |
 
-Variant rules use a separate engine pass (after spelling rules) with exception phrase checking.
+Variant rules are filtered inside the spelling scan, with exception phrase checking. The strict profile enables them. MoE forms are appropriate where a publisher requires them, including teaching material, government documents, and school publishing; elsewhere a glyph preference is advisory. Proper names and plain spelling errors in this family remain warnings.
 
 ## proper_noun
 
@@ -139,7 +139,13 @@ React  Linux  macOS
 
 ## Optional rule fields
 
-These apply to any lexical rule type, not just `cross_strait`. Seven rules currently carry `editorial_confidence`, and five of them are not `cross_strait`: one `confusable` and four `translationese`.
+These apply to more than `cross_strait`. `severity` and `tags` are valid on any rule type, and both already ship on `variant` rules; `editorial_confidence` is the one field this section restricts to the lexical rule types, and `--lint` enforces that. Seven rules currently carry `editorial_confidence`, and five of them are not `cross_strait`: one `confusable` and four `translationese`.
+
+### severity
+
+`"severity"` sets the issue level a rule reports at, overriding its type's default. It is valid on any rule type; omit it and the type default applies. Severity changes reporting and gate behavior, not whether an orthographic suggestion can be auto-fixed.
+
+Every `variant` rule declares one, and `scripts/check-ruleset.py --lint` fails on one that does not. The family holds two kinds of rule that want different levels: MoE glyph preferences take `"info"`, so they stay visible without failing warning gates, and proper names and plain misspellings take `"warning"`. Neither is the obvious default for the family, so each rule says which it is rather than inheriting an answer that suits only half of them.
 
 ### editorial_confidence
 
@@ -149,7 +155,7 @@ Use it sparingly; a rule that is simply wrong in zh-TW should carry no annotatio
 
 Only lexical rule types can carry the field. The fixer's gate is guarded on lexical issues, and `variant` rules classify as orthographic, so an annotation there would be silently ignored; `scripts/check-ruleset.py --lint` rejects that placement.
 
-The MCP `explain` output also reports `auto_fix_safe` and `needs_review`, but on a wider notion of low confidence: when a rule carries no annotation it falls back to a heuristic that treats translationese, AI-style, grammar, `Info`-severity, and anchor-rejected issues as low. That fallback decides what to tell a human reviewer, not what the fixer writes. Do not read `auto_fix_safe: false` as a prediction that `--fix=lexical_safe` will decline the issue; only the explicit ruleset annotation gates the fixer.
+The MCP `explain` output also reports `auto_fix_safe` and `needs_review`, but on a wider notion of low confidence: when a rule carries no annotation it falls back to a heuristic that treats translationese, AI-style, grammar, `Info`-severity, and anchor-rejected issues as low, with one exception: a rule whose ruleset entry pins `"severity": "info"` is giving advice rather than reporting a defect, so it stays safe to apply. The exception reads the configured severity, not the reported one, so an issue that only reached `Info` through `ignore_terms`, the translation memory, or Tier 2 suppression is still low. It reads the pin alone and not the rule type, so it holds for any rule that pins `info`, not only the `variant` family that uses it today. That fallback decides what to tell a human reviewer, not what the fixer writes. Do not read `auto_fix_safe: false` as a prediction that `--fix=lexical_safe` will decline the issue; only the explicit ruleset annotation gates the fixer.
 
 ### context_suggestions
 

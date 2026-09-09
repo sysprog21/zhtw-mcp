@@ -87,6 +87,7 @@ fn embedded_ruleset_matches_json() {
             from,
             to,
             rule_type,
+            severity,
             disabled,
             context,
             english,
@@ -105,6 +106,10 @@ fn embedded_ruleset_matches_json() {
         assert_eq!(
             *rule_type, p.rule_type,
             "spelling rule {i}: rule_type mismatch"
+        );
+        assert_eq!(
+            *severity, p.severity,
+            "spelling rule {i}: severity mismatch"
         );
         assert_eq!(
             *disabled, p.disabled,

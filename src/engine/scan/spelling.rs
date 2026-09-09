@@ -138,7 +138,7 @@ impl Scanner {
                             start,
                             end - start,
                             IssueType::from(compiled.rule_type),
-                            compiled.rule_type.default_severity(),
+                            compiled.severity,
                             compiled.rule_idx,
                         ));
                     }

@@ -2102,6 +2102,13 @@ pub(super) fn scan_ai_hedging_density(
             // Promote existing hedging Info issues in this paragraph to
             // Warning.
             for issue in issues.iter_mut() {
+                // A pinned advisory is never promoted, the same rule the
+                // heading boost follows: the ruleset said this finding is
+                // advice, and density is no more entitled to overrule that than
+                // prominence is.
+                if issue.is_pinned_advisory() {
+                    continue;
+                }
                 if issue.offset >= para.byte_start
                     && issue.offset < para.byte_end
                     && issue.rule_type == IssueType::AiStyle

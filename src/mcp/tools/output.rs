@@ -308,17 +308,21 @@ pub(super) struct ExplainMeta<'a> {
 }
 
 /// Heuristic fallback when an issue lacks a rule-level
-/// `editorial_confidence`.  Translationese / AI-style / grammar hits and
-/// any `Info`-severity or anchor-rejected issue are surfaced as `Low`;
+/// `editorial_confidence`.  Translationese / AI-style / grammar hits, any
+/// `Info`-severity issue, and anchor-rejected issues are surfaced as `Low`;
 /// hits with explicit context support climb to `Medium`; everything else
 /// is `High`.
+///
+/// An issue the ruleset pinned to Info is the exception among the `Info`
+/// findings: the pin is a statement about how much the finding matters, not
+/// doubt about the correction, so it stays safe to apply.
 fn heuristic_editorial_confidence(issue: &Issue) -> EditorialConfidence {
     use crate::rules::ruleset::{IssueType, Severity};
 
     let always_low = matches!(
         issue.rule_type,
         IssueType::Translationese | IssueType::AiStyle | IssueType::Grammar
-    ) || issue.severity == Severity::Info
+    ) || (issue.severity == Severity::Info && !issue.is_pinned_advisory())
         || issue.anchor_match == Some(false);
     if always_low {
         return EditorialConfidence::Low;

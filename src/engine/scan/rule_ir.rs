@@ -21,7 +21,7 @@ use daachorse::{CharwiseDoubleArrayAhoCorasickBuilder, MatchKind as DaacMatchKin
 use crate::engine::excluded::ByteRange;
 use crate::engine::segment::BoundaryBitmap;
 use crate::engine::zhtype::ChineseType;
-use crate::rules::ruleset::{Issue, IssueType, ProfileConfig, RuleType, SpellingRule};
+use crate::rules::ruleset::{Issue, IssueType, ProfileConfig, RuleType, Severity, SpellingRule};
 
 use super::spelling;
 use super::PositionalClue;
@@ -108,6 +108,8 @@ pub struct CompiledRule {
     pub predicates: Vec<MatchPredicate>,
     /// Cached rule type (avoids pointer chase through spelling_rules).
     pub rule_type: RuleType,
+    /// Severity after applying the rule-level override, if any.
+    pub severity: Severity,
 }
 
 /// A rule's context-selected suggestion groups, compiled for one pass.
@@ -487,7 +489,6 @@ pub fn eval_predicates(
     ctx: &mut MatchContext<'_>,
     segmenter: &super::super::segment::Segmenter,
 ) -> Option<Issue> {
-    let sr = &db.spelling_rules[rule.rule_idx];
     let mut end = ctx.end;
 
     for pred in &rule.predicates {
@@ -508,6 +509,11 @@ pub fn eval_predicates(
                 }
             }
             MatchPredicate::RequireStanceAllow => {
+                // The one predicate that needs the rule itself. Read here
+                // rather than up front: this is a random index into ~1958
+                // rules, and only political_coloring rules compile it, so the
+                // common path never pays for the lookup.
+                let sr = &db.spelling_rules[rule.rule_idx];
                 if !ctx.cfg.political_stance.allows_rule(&sr.from) {
                     return None;
                 }
@@ -596,8 +602,8 @@ pub fn eval_predicates(
     Some(Issue::deferred_spelling(
         ctx.start,
         end - ctx.start,
-        IssueType::from(sr.rule_type),
-        sr.rule_type.default_severity(),
+        IssueType::from(rule.rule_type),
+        rule.severity,
         rule.rule_idx,
     ))
 }
@@ -673,6 +679,7 @@ fn inflate_spelling_issues_inner(
                 .unwrap_or_else(|| db.spelling_suggestions[idx].clone());
             issue.refresh_suggested_rewrite();
             issue.editorial_confidence = db.spelling_editorial_confidence[idx];
+            issue.configured_severity = sr.severity;
             if !offset_only {
                 issue.context.clone_from(&db.spelling_contexts[idx]);
                 issue.english.clone_from(&db.spelling_english[idx]);
@@ -738,24 +745,73 @@ impl ProfileFilter {
 /// every other rule, while the detector keeps the structural guard the schema
 /// cannot express.
 pub struct StructuralGuard {
-    phrases: Vec<String>,
+    phrases: Vec<GuardPhrase>,
     ac: AhoCorasick,
 }
 
+/// A phrase that a structural detector owns, retaining the policy attached to
+/// its source rule instead of reconstructing it from the detector type.
+///
+/// Every guarded rule shipped today is an ai_filler with no override, so the
+/// severity here is Info for all of them, which is the constant the detector
+/// used to hardcode. It is carried per phrase anyway so that a guarded rule
+/// that does set one is honored, rather than being silently ignored on the
+/// one path that reconstructs severity from the type.
+///
+/// The declared severity travels beside the effective one because the two
+/// answer different questions. The effective level is what the finding reports
+/// at; the declared level is what `Issue::is_pinned_advisory` reads, so a
+/// guarded rule that pins Info is exempt from the heading boost exactly like
+/// the same pin on a lexical rule. Carrying only the effective level would let
+/// a pin of Info be boosted back to Warning inside a heading, which is the
+/// silent divergence this type exists to prevent.
+pub(crate) struct GuardPhrase {
+    pub(crate) text: String,
+    pub(crate) severity: Severity,
+    pub(crate) configured_severity: Option<Severity>,
+}
+
+impl GuardPhrase {
+    fn from_rule(rule: &SpellingRule) -> Self {
+        Self {
+            text: rule.from.clone(),
+            severity: rule.effective_severity(),
+            configured_severity: rule.severity,
+        }
+    }
+}
+
 impl StructuralGuard {
-    /// Build a guard straight from phrases, for tests that exercise the
-    /// detector without going through a ruleset.
-    #[cfg(test)]
-    pub fn from_phrases(phrases: Vec<String>) -> Self {
+    /// Build a guard from the rules that name it.
+    ///
+    /// Returns `None` when the automaton refuses the phrase set, which is the
+    /// same outcome `GuardRules::build` gives that guard: no detector rather
+    /// than a half-built one.
+    fn from_guard_phrases(mut phrases: Vec<GuardPhrase>) -> Option<Self> {
+        // Sorted so the automaton, and therefore pattern indices and match
+        // order, do not depend on the caller's or a hash map's ordering.
+        phrases.sort_unstable_by(|a, b| a.text.cmp(&b.text));
         let ac = AhoCorasickBuilder::new()
             .match_kind(MatchKind::LeftmostLongest)
-            .build(&phrases)
-            .expect("test guard patterns are valid");
-        Self { phrases, ac }
+            .build(phrases.iter().map(|phrase| phrase.text.as_str()))
+            .ok()?;
+        Some(Self { phrases, ac })
     }
 
-    /// The phrase behind a match, by pattern index.
-    pub fn phrase(&self, index: usize) -> &str {
+    /// Build a guard straight from rules, for tests that exercise the detector
+    /// without going through a whole ruleset.
+    ///
+    /// It takes rules rather than phrases and severities so a fixture cannot
+    /// state a policy the rule does not: the mapping from rule to phrase is the
+    /// one `GuardRules::build` uses, not a second spelling of it.
+    #[cfg(test)]
+    pub fn from_rules(rules: &[SpellingRule]) -> Self {
+        Self::from_guard_phrases(rules.iter().map(GuardPhrase::from_rule).collect())
+            .expect("test guard patterns are valid")
+    }
+
+    /// The phrase and policy behind a match, by pattern index.
+    pub(crate) fn matched_rule(&self, index: usize) -> &GuardPhrase {
         &self.phrases[index]
     }
 
@@ -794,7 +850,7 @@ impl GuardRules {
             winner.insert(rule.from.as_str(), rule);
         }
 
-        let mut by_guard: FxHashMap<String, Vec<String>> = FxHashMap::default();
+        let mut by_guard: FxHashMap<String, Vec<GuardPhrase>> = FxHashMap::default();
         for rule in winner.into_values() {
             let Some(guard) = rule.structural_guard.as_deref() else {
                 continue;
@@ -812,19 +868,15 @@ impl GuardRules {
             by_guard
                 .entry(guard.to_string())
                 .or_default()
-                .push(rule.from.clone());
+                .push(GuardPhrase::from_rule(rule));
         }
         let guards = by_guard
             .into_iter()
-            .filter_map(|(name, mut phrases)| {
-                // Sorted so the automaton, and therefore pattern indices and
-                // match order, do not depend on hash-map iteration order.
-                phrases.sort();
-                let ac = AhoCorasickBuilder::new()
-                    .match_kind(MatchKind::LeftmostLongest)
-                    .build(&phrases)
-                    .ok()?;
-                Some((name, StructuralGuard { phrases, ac }))
+            // The sort that keeps pattern indices independent of hash-map
+            // iteration order lives in from_guard_phrases, shared with the test
+            // constructor so the two cannot order phrases differently.
+            .filter_map(|(name, phrases)| {
+                Some((name, StructuralGuard::from_guard_phrases(phrases)?))
             })
             .collect();
         Self { guards }
@@ -1370,6 +1422,7 @@ pub fn compile_spelling_rules_filtered(
                 rule_idx: i,
                 predicates,
                 rule_type: rule.rule_type,
+                severity: rule.effective_severity(),
             }
         })
         .collect();

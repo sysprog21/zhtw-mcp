@@ -34,6 +34,15 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Severity assigned to an issue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    Info,
+    Warning,
+    Error,
+}
+
 /// Rule types for spelling/terminology rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -77,6 +86,11 @@ pub struct SpellingRule {
     /// Classification of this rule.
     #[serde(rename = "type")]
     pub rule_type: RuleType,
+    /// Optional per-rule severity. When omitted, the rule type's established
+    /// default applies. This lets a character-form preference remain advisory
+    /// without weakening other rules that share the Variant type.
+    #[serde(default)]
+    pub severity: Option<Severity>,
     /// If true, this rule is disabled and will not be used for scanning.
     #[serde(default)]
     pub disabled: bool,

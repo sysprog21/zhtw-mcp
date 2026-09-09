@@ -22,6 +22,11 @@
     "ai_filler",
     "translationese"
   ],
+  "severities": [
+    "info",
+    "warning",
+    "error"
+  ],
   "spelling_fields": [
     "context",
     "context_clues",
@@ -33,6 +38,7 @@
     "from",
     "negative_context_clues",
     "positional_clues",
+    "severity",
     "source",
     "structural_guard",
     "tags",

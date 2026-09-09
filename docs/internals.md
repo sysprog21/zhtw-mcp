@@ -9,13 +9,12 @@ The scanner detects Traditional vs. Simplified Chinese by counting exclusive cha
 1. NFC normalization with byte-offset mapping
 2. Content-type dispatch: Markdown (pulldown-cmark), YAML (key token exclusion), plain text (regex exclusion). `MarkdownScanCode` variant also lints inside fenced code blocks.
 3. Inline suppression markers (`zhtw:ignore`, `zhtw:ignore-next-line`, `zhtw:ignore-block`/`zhtw:end-ignore`), recognized behind any of the `<!--`, `//`, and `#` comment openers; see `docs/cli.md`
-4. Spelling pass: dual Aho-Corasick automata (leftmost-longest for spelling, case-insensitive for case rules); context-clue AC pre-scan for rules with `context_clues` or `negative_context_clues`
+4. Spelling pass: dual Aho-Corasick automata (leftmost-longest for spelling, case-insensitive for case rules); context-clue AC pre-scan for rules with `context_clues` or `negative_context_clues`. Character variant rules share this automaton and are filtered inside it, with exception phrase checking, rather than running as a pass of their own
 5. Punctuation pass: full-width conversion, CN curly quotes, enumeration comma, quote hierarchy, CJK spacing
-6. Variant pass: character variant normalization with exception phrase checking
-7. Overlap resolution: longer match wins, higher severity on tie
-8. Profile filtering (e.g., `臺`/`台` only in `strict`)
-9. Tier 2 local disambiguation: collocations, context clue density, profile priors. Issues scoring >= 0.6 resolve locally, < 0.3 suppressed as likely FP, [0.3, 0.6) forwarded to Tier 3
-10. Tier 3 sampling (optional): gray-zone terms escalated to host LLM, results cached in persistent judgment cache
+6. Overlap resolution: longer match wins, higher severity on tie
+7. Profile filtering (e.g., `臺`/`台` only in `strict`)
+8. Tier 2 local disambiguation: collocations, context clue density, profile priors. Issues scoring >= 0.6 resolve locally, < 0.3 suppressed as likely FP, [0.3, 0.6) forwarded to Tier 3
+9. Tier 3 sampling (optional): gray-zone terms escalated to host LLM, results cached in persistent judgment cache
 
 ## Design decisions
 
@@ -25,7 +24,7 @@ The scanner detects Traditional vs. Simplified Chinese by counting exclusive cha
 - JSON ruleset (`assets/ruleset.json`) embedded via `include_str!`. Runtime overrides in platform config directory.
 - SHA-256 trace IDs for reproducibility. The `uuid` crate arrives transitively through RMCP and is not used for trace IDs.
 - Release binary about 9 MB on aarch64-apple-darwin (LTO + strip), against the 20 MiB `make check-size` gate.
-- Sampling (step 10) only activates when running as an MCP server inside an AI assistant. The standalone CLI runs Tier 2 disambiguation but skips Tier 3 sampling, keeping gray-zone issues at their original severity.
+- Sampling (step 9) only activates when running as an MCP server inside an AI assistant. The standalone CLI runs Tier 2 disambiguation but skips Tier 3 sampling, keeping gray-zone issues at their original severity.
 - Persistent judgment cache (`~/.config/zhtw-mcp/judgment_cache.json`) stores LLM disambiguation results keyed on a 9-field blake3-hashed composite (ruleset_hash, prompt/disambig versions, profile, content type, normalized context, term, candidate set hash, english anchor). 30-day TTL, 10000-entry cap, atomic writes (tempfile + rename), schema-versioned with backup-and-reset. Eliminates repeated LLM calls across sessions.
 - Incremental scan cache (BLAKE3-keyed, 24h TTL, 2000-entry cap) skips re-scanning unchanged files in lint-only CLI mode. Disabled for `--fix`, `--verify`, and stdin. MCP path does not use the cache (stateless by design).
 - Built-in SC→TC converter (`s2t.rs` + `s2t_data.rs`) eliminates the OpenCC runtime dependency for the `convert` subcommand.

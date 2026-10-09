@@ -1243,3 +1243,14 @@ fn digital_gate_stays_narrow() {
     assert_clean("高程欄位的數字要對齊", "數字");
     assert_clean("訊號強度的數字是負七十", "數字");
 }
+
+#[test]
+fn stack_top_terms() {
+    assert_flags(
+        "若當前堆疊非空，則棧頂函式在此刻被中斷。",
+        "棧頂",
+        "堆疊頂端",
+    );
+    assert_clean("程式執行時棧頂指標被修改", "棧");
+    assert_flags("資料結構中的棧採用後進先出原則", "棧", "堆疊");
+}

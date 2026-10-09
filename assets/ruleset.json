@@ -7586,7 +7586,7 @@
       "type": "cross_strait",
       "context": "@domain 程式設計。單字「棧」在非 CS 語境意為客棧、貨棧",
       "english": "stack",
-      "context_clues": ["程式", "記憶體", "指標", "push", "pop", "溢位"],
+      "context_clues": ["程式", "記憶體", "資料結構", "指標", "push", "pop", "溢位"],
       "exceptions": ["客棧", "貨棧", "棧道", "木棧", "棧橋"]
     },
     {
@@ -7595,6 +7595,15 @@
       "type": "cross_strait",
       "context": "@domain 程式設計",
       "english": "stack unwinding"
+    },
+    {
+      "from": "棧頂",
+      "to": ["堆疊頂端"],
+      "type": "cross_strait",
+      "context": "@domain 程式設計",
+      "english": "stack top",
+      "source": "det_cross_strait_stack_top",
+      "exceptions": ["客棧頂", "貨棧頂", "木棧頂"]
     },
     {
       "from": "棱",

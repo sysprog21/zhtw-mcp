@@ -132,6 +132,19 @@
           "rule_type": "cross_strait"
         }
       ]
+    },
+    {
+      "id": "det_cross_strait_stack_top",
+      "repeat": 1,
+      "input": "若當前堆疊非空，則棧頂函式在此刻被中斷。",
+      "expected_fixed": "若當前堆疊非空，則堆疊頂端函式在此刻被中斷。",
+      "expected_issues": [
+        {
+          "found": "棧頂",
+          "replace": "堆疊頂端",
+          "rule_type": "cross_strait"
+        }
+      ]
     }
   ]
 }

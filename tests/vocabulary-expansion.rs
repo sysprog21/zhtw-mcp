@@ -1254,3 +1254,21 @@ fn stack_top_terms() {
     assert_clean("程式執行時棧頂指標被修改", "棧");
     assert_flags("資料結構中的棧採用後進先出原則", "棧", "堆疊");
 }
+
+#[test]
+fn headless_terms() {
+    assert_flags("測試時以無頭模式執行瀏覽器。", "無頭", "無介面");
+    assert_flags("以無頭瀏覽器執行自動化", "無頭", "無介面");
+    assert_clean("警方測試新模式以破解這樁無頭公案", "無頭");
+    assert_clean("他像無頭蒼蠅，自動化流程亂成一團", "無頭");
+    assert_clean("無頭屍出現在瀏覽器的新聞模式", "無頭");
+    assert_clean("瀏覽器當機，我毫無頭緒", "無頭");
+    assert_clean("事情無頭無尾，叫自動化流程怎麼跑", "無頭");
+    assert_clean("整合無頭CMS與無頭UI自動化元件", "無頭");
+    assert_flags("在 Chrome 的無頭環境下執行腳本", "無頭", "無介面");
+    assert_clean("使用無頭 CMS 與無頭 UI 模式", "無頭");
+    assert_clean("無頭騎士在瀏覽器遊戲的模式裡出現", "無頭");
+    assert_clean("這起無頭案與瀏覽器自動化無關", "無頭");
+    assert_clean("做事無頭腦，自動化流程全亂了", "無頭");
+    assert_clean("無頭無腦的瀏覽器模式要改", "無頭");
+}

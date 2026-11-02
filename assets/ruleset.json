@@ -8818,6 +8818,16 @@
       "english": "infinite recursive"
     },
     {
+      "from": "無頭",
+      "to": ["無介面"],
+      "type": "cross_strait",
+      "context": "@domain IT。headless 直譯「無頭」難以意會，譯「無介面」；需區分 GUI 時用「無圖形介面」。headless CMS (前後端分離式內容管理系統) 與 headless UI (無預設樣式的 UI 元件) 不適用",
+      "english": "headless",
+      "source": "det_cross_strait_headless",
+      "context_clues": ["瀏覽器", "模式", "Chrome", "自動化"],
+      "exceptions": ["無頭公案", "無頭蒼蠅", "無頭屍", "無頭騎士", "無頭案", "無頭緒", "無頭腦", "無頭無尾", "無頭無腦", "無頭 CMS", "無頭CMS", "無頭 UI", "無頭UI"]
+    },
+    {
       "from": "燃氣灶",
       "to": ["瓦斯爐"],
       "type": "cross_strait",

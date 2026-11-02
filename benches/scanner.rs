@@ -11,7 +11,9 @@
 //   8. Post-scan transforms (ignore downgrade + remap)
 //   9. Per-stage CPU attribution on 100KB
 
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 
 use zhtw_mcp::engine::markdown::build_markdown_excluded_ranges;
 use zhtw_mcp::engine::scan::Scanner;

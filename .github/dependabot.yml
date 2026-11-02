@@ -8,6 +8,9 @@ updates:
       rust:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -16,6 +19,9 @@ updates:
       actions:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: npm
     directory: /extension
     schedule:
@@ -24,3 +30,6 @@ updates:
       npm:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch

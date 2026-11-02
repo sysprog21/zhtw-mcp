@@ -212,8 +212,16 @@ jobs:
   # Its own job rather than a step in "check": commit messages do not vary by
   # platform, so folding it into that matrix would run one second of shell three
   # times, and this is skipped outside a pull request while "check" is not.
+  #
+  # Dependabot is exempt: it writes its own messages (release-note links, a
+  # fixed signoff), and rewording them stops it from rebasing the branch.  Keyed
+  # on the PR author, not the actor, which is whoever last triggered the run and
+  # changes when a maintainer re-runs it.  A skipped job concludes "skipped",
+  # which branch protection accepts as satisfying a required check.
   commit-log:
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
 

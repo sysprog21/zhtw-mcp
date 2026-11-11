@@ -567,6 +567,22 @@ fn tools_call_simplified_input_builds_s2t_lazily() {
 }
 
 #[test]
+fn tools_call_json_preserves_simplified_keys_and_placeholders() {
+    let (mut server, _dir) = make_initialized_server();
+    let input = "{\"设置\":\"这个软件 {设置} 軟件\"}";
+    let resp = call_zhtw(
+        &mut server,
+        serde_json::json!({ "text": input, "content_type": "json", "fix_mode": "lexical_safe" }),
+    );
+    let output = assert_tool_success(&resp);
+    assert_eq!(output["s2t_applied"], false);
+    let fixed = output["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(fixed).unwrap();
+    // The key and the placeholder survive, and the value is still fixed.
+    assert_eq!(parsed["设置"], "这个软件 {设置} 軟體", "{fixed}");
+}
+
+#[test]
 fn tools_call_arguments_not_object() {
     let (mut server, _dir) = make_initialized_server();
     let resp = server.call_tool("zhtw", &serde_json::json!("not_an_object"), None, None);

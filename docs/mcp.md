@@ -55,7 +55,7 @@ Unified lint / fix / gate for zh-TW text.
 | `spacing` | `"require"` / `"strip"` | Boundary policy for CJK against ASCII letters and ASCII digits; `require` is the default |
 | `off` | array of rule-family names | Disable named families after profile and capability flags resolve |
 | `relaxed` | boolean | Relax colon and other UI-string-level rules |
-| `content_type` | `"plain"` / `"markdown"` / `"markdown-scan-code"` / `"yaml"` | Content type (`markdown-scan-code` also lints inside code blocks) |
+| `content_type` | `"plain"` / `"markdown"` / `"markdown-scan-code"` / `"yaml"` / `"json"` | Content type (`markdown-scan-code` also lints inside code blocks; `json` skips automatic Simplified-to-Traditional conversion) |
 | `political_stance` | `"roc_centric"` / `"neutral"` / `"international"` | Political stance filter |
 | `ignore_terms` | array of strings | Terms to downgrade to Info for this call |
 | `explain` | boolean | Attach cultural/linguistic annotations |

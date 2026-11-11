@@ -245,7 +245,7 @@ The zhtw-mcp MCP server provides automated zh-TW linting and fixing.
 ## MCP Tool: zhtw
 - `zhtw({ "text": "...", "fix_mode": "lexical_safe", "max_errors": 0 })`
 - Profiles: base, strict. Flags: relaxed (UI), detect_ai (AI writing review)
-- Content types: plain, markdown
+- Content types: plain, markdown, markdown-scan-code, yaml, json
 
 ## Taiwan-Standard Terms
 軟體 (not 軟件), 資訊 (not 信息), 預設 (not 默認), 程式 (not 程序),
@@ -311,7 +311,7 @@ The single unified tool for linting, fixing, and gating zh-TW text.
 | max_errors | integer | (none) | Gate: reject if errors exceed this |
 | profile | string | "base" | "base" or "strict" (full MoE with character variants) |
 | relaxed | boolean | false | UI strings mode: disables colon/dunhao/grammar, en-dash ranges |
-| content_type | string | "plain" | "plain" or "markdown" |
+| content_type | string | "plain" | "plain", "markdown", "markdown-scan-code", "yaml" or "json" |
 | political_stance | string | "roc_centric" | "roc_centric", "international", "neutral" |
 | ignore_terms | array | [] | Terms to downgrade to Info severity |
 | explain | boolean | false | Attach cultural explanations to issues |

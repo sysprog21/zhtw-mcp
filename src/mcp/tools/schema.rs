@@ -87,7 +87,7 @@ pub(super) fn input_schema_properties() -> &'static JsonObject {
             json!({
                 "type": "string",
                 "default": "plain",
-                "enum": ["plain", "markdown", "markdown-scan-code", "yaml"]
+                "enum": ["plain", "markdown", "markdown-scan-code", "yaml", "json"]
             }),
         );
         props.insert(
@@ -194,7 +194,7 @@ pub(super) fn tool_definitions() -> Vec<Tool> {
 
     vec![Tool::new(
         "zhtw",
-        "Lint/fix/gate zh-TW text. Auto-converts Simplified Chinese to Traditional before applying rules. Use verify=true to calibrate issues via Google Translate anchor matching.",
+        "Lint/fix/gate zh-TW text. Auto-converts Simplified Chinese to Traditional before applying rules, except for JSON input. Use verify=true to calibrate issues via Google Translate anchor matching.",
         input_schema,
     )
     .with_annotations(ToolAnnotations::new().read_only(true).idempotent(true))]

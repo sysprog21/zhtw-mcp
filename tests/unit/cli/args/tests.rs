@@ -212,7 +212,7 @@ fn lint_fix_modes() {
 
 #[test]
 fn lint_content_type_is_validated() {
-    for ct in ["plain", "markdown", "markdown-scan-code", "yaml"] {
+    for ct in ["plain", "markdown", "markdown-scan-code", "yaml", "json"] {
         let lint = lint_of(&["lint", "a.md", "--content-type", ct]);
         assert_eq!(lint.content_type.as_deref(), Some(ct));
     }

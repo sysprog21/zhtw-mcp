@@ -36,7 +36,8 @@ use self::emit::Emitter;
 use super::excluded::{build_excluded_ranges, merge_ranges_pub, ByteRange};
 use super::lineindex::{ColumnEncoding, LineIndex};
 use super::markdown::{
-    build_markdown_excluded_ranges_with_options, build_yaml_excluded_ranges, MdScanOptions,
+    build_json_excluded_ranges, build_markdown_excluded_ranges_with_options,
+    build_yaml_excluded_ranges, MdScanOptions,
 };
 use super::normalize::{map_offset, map_range_forward, normalize_nfc, Normalized};
 use super::segment::{BoundaryBitmap, Segmenter};
@@ -171,6 +172,9 @@ pub enum ContentType {
     /// be linted.
     MarkdownScanCode,
     Yaml,
+    /// String values only: keys, structure, escapes and placeholders are
+    /// excluded. Malformed input is scanned as plain text.
+    Json,
 }
 
 impl ContentType {
@@ -181,6 +185,7 @@ impl ContentType {
             ContentType::Markdown => "markdown",
             ContentType::MarkdownScanCode => "markdown-scan-code",
             ContentType::Yaml => "yaml",
+            ContentType::Json => "json",
         }
     }
 
@@ -194,6 +199,7 @@ impl ContentType {
             "markdown" => Some(ContentType::Markdown),
             "markdown-scan-code" => Some(ContentType::MarkdownScanCode),
             "yaml" => Some(ContentType::Yaml),
+            "json" => Some(ContentType::Json),
             _ => None,
         }
     }
@@ -208,6 +214,8 @@ impl ContentType {
             ContentType::Markdown
         } else if lower.ends_with(".yml") || lower.ends_with(".yaml") {
             ContentType::Yaml
+        } else if lower.ends_with(".json") {
+            ContentType::Json
         } else {
             ContentType::Plain
         }
@@ -222,10 +230,36 @@ impl ContentType {
     /// suppression pass reads raw lines, so `<!-- zhtw:ignore -->` works
     /// anywhere in the file, fenced code included.
     ///
+    /// Also false for JSON, which has no comments at all.
+    ///
     /// True for the code-bearing types: YAML, and the plain text that
     /// TOML, Python, shell, and locale files resolve to.
     pub fn hash_comments(self) -> bool {
-        !matches!(self, ContentType::Markdown | ContentType::MarkdownScanCode)
+        !matches!(
+            self,
+            ContentType::Markdown | ContentType::MarkdownScanCode | ContentType::Json
+        )
+    }
+
+    /// Whether automatic Simplified-to-Traditional conversion may run over the
+    /// whole text. JSON is excluded: the conversion would rewrite keys, and a
+    /// locale bundle is already in the language its file name says.
+    pub fn converts_s2t(self) -> bool {
+        self != ContentType::Json
+    }
+
+    /// Whether a fix for this issue can be written back verbatim.
+    ///
+    /// Every escape in a JSON string is excluded from scanning, so a fix never
+    /// has to re-encode, but quotes, backslashes and control characters in a
+    /// replacement would still break the string. Other types accept every
+    /// replacement.
+    pub fn admits_fix(self, issue: &Issue) -> bool {
+        self != ContentType::Json
+            || !issue
+                .suggestions
+                .iter()
+                .any(|s| s.chars().any(|c| c == '"' || c == '\\' || c <= '\u{1f}'))
     }
 }
 
@@ -795,6 +829,7 @@ pub fn build_exclusions_for_content_type_with_options(
             excluded.extend(build_markdown_excluded_ranges_with_options(text, opts));
         }
         ContentType::Yaml => excluded.extend(build_yaml_excluded_ranges(text)),
+        ContentType::Json => excluded.extend(build_json_excluded_ranges(text).0),
         ContentType::Plain => {}
     }
     excluded.extend(build_suppression_ranges(text, content_type.hash_comments()));

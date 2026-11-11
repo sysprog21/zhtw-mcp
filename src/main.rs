@@ -403,7 +403,7 @@ fn run_convert(
     #[cfg(feature = "translate")] verify: bool,
 ) -> Result<()> {
     use zhtw_mcp::engine::scan::Scanner;
-    use zhtw_mcp::fixer::{apply_fixes_with_context, FixMode};
+    use zhtw_mcp::fixer::{apply_fixes_for_content_type, FixMode};
     use zhtw_mcp::rules::loader::load_embedded_ruleset;
     use zhtw_mcp::rules::store::OverrideStore;
 
@@ -421,10 +421,29 @@ fn run_convert(
         }
     }
 
+    // Determine content type. Same rule as the lint path. Keeping a second copy
+    // here had convert reading .markdown and README.MD as plain text, so it
+    // rewrote what a code fence was there to protect.
+    let content_type = content_type_for(
+        content_type_str,
+        file_args
+            .iter()
+            .find(|a| *a != "--")
+            .map_or("", |f| f.as_str()),
+    );
+
     // Step 1: SC→TC character/phrase conversion (built-in, no OpenCC
-    // dependency).
+    // dependency). JSON converts string values only: the exclusion ranges keep
+    // keys, structure and escapes byte-for-byte, so a Simplified key still
+    // looks up what it did before. A malformed file has no ranges and converts
+    // as plain text, the way lint scans it.
     let s2t = zhtw_mcp::engine::s2t::S2TConverter::new();
-    let s2t_output = s2t.convert(&raw_input);
+    let s2t_output = if content_type == zhtw_mcp::engine::scan::ContentType::Json {
+        let (excluded, _) = zhtw_mcp::engine::markdown::build_json_excluded_ranges(&raw_input);
+        s2t.convert_outside(&raw_input, &excluded)
+    } else {
+        s2t.convert(&raw_input)
+    };
 
     // Step 2: Build scanner with overrides.
     let store = OverrideStore::open(&overrides_path)?;
@@ -444,17 +463,6 @@ fn run_convert(
     );
     let scanner = Scanner::new(spelling_rules, case_rules);
 
-    // Determine content type. Same rule as the lint path. Keeping a second copy
-    // here had convert reading .markdown and README.MD as plain text, so it
-    // rewrote what a code fence was there to protect.
-    let content_type = content_type_for(
-        content_type_str,
-        file_args
-            .iter()
-            .find(|a| *a != "--")
-            .map_or("", |f| f.as_str()),
-    );
-
     // Step 3: Iterative fix loop, scan + fix until convergence or max rounds.
     let mut text = s2t_output;
     let max_rounds = 3;
@@ -473,12 +481,13 @@ fn run_convert(
             break;
         }
 
-        let fix_result = apply_fixes_with_context(
+        let fix_result = apply_fixes_for_content_type(
             &text,
             &issues,
             FixMode::LexicalContextual,
             &excluded,
             Some(scanner.segmenter()),
+            content_type,
         );
 
         if fix_result.applied == 0 {

@@ -504,6 +504,15 @@
       "content_type": "markdown"
     },
     {
+      "id": "native_locale_bundle_json_values_only",
+      "repeat": 1,
+      "input": "{\n  \"title\": \"軟體設定\",\n  \"desc\": \"共{count}個使用者，%d個專案\"\n}\n",
+      "expected_fixed": "{\n  \"title\": \"軟體設定\",\n  \"desc\": \"共{count}個使用者，%d個專案\"\n}\n",
+      "expected_issues": [],
+      "must_be_clean": true,
+      "content_type": "json"
+    },
+    {
       "id": "native_attribution_named_agency",
       "repeat": 1,
       "detect_ai": true,

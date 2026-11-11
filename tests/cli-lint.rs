@@ -2710,3 +2710,152 @@ fn cli_lint_rhythm_is_opt_in_advisory_and_never_fixed() {
         assert_eq!(after, bad, "--fix rewrote a rhythm finding with {args:?}");
     }
 }
+
+fn lint_json_fixture(name: &str, body: &str, args: &[&str]) -> (tempfile::TempDir, Output) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(name);
+    std::fs::write(&path, body).unwrap();
+    let mut all = vec![path.to_str().unwrap()];
+    all.extend_from_slice(args);
+    let output = run_lint_args(&all);
+    (dir, output)
+}
+
+/// The `found` text of every issue, in report order, from `--format json`.
+fn json_file_findings(name: &str, body: &str) -> Vec<String> {
+    let (_dir, output) = lint_json_fixture(name, body, &["--format", "json"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON output");
+    parsed["issues"]
+        .as_array()
+        .expect("issues array")
+        .iter()
+        .map(|i| i["found"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn cli_lint_json_file_reports_values_only() {
+    // Under plain text the quotes, colons and commas around these values are
+    // findings of their own, so the exact set is what tells the two paths
+    // apart.
+    let body = "{\"title\":\"軟件設置\",\"desc\":\"用戶權限請聯繫管理員\"}\n";
+    assert_eq!(json_file_findings("a.json", body), ["軟件", "用戶"]);
+    let (_dir, output) = lint_json_fixture("a.json", body, &[]);
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("not valid JSON"),
+        "valid JSON must not warn"
+    );
+}
+
+#[test]
+fn cli_lint_json_file_keys_are_not_linted() {
+    assert_eq!(
+        json_file_findings("a.json", "{\"軟件\":\"設定\",\"用戶\":[\"網絡\"]}\n"),
+        ["網絡"]
+    );
+}
+
+#[test]
+fn cli_lint_json_file_fix_keeps_valid_json() {
+    let body = "{\"title\":\"軟件設置\",\"desc\":\"用戶權限請聯繫管理員\"}\n";
+    let (dir, output) = lint_json_fixture("a.json", body, &["--fix"]);
+    let _ = output;
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&fixed).expect("still valid JSON");
+    assert!(
+        parsed["title"].as_str().unwrap().contains("軟體"),
+        "{fixed}"
+    );
+    assert!(
+        parsed["desc"].as_str().unwrap().contains("使用者"),
+        "{fixed}"
+    );
+}
+
+#[test]
+fn cli_lint_json_file_placeholders_are_not_findings() {
+    // Each placeholder produced a finding under plain text: a case finding for
+    // the variable name, a spacing finding next to %d.
+    let body = "{\"a\":\"在{{github}}和${github}上共%d個軟件，%(n)s個用戶\"}\n";
+    assert_eq!(json_file_findings("a.json", body), ["軟件", "用戶"]);
+}
+
+#[test]
+fn cli_lint_json_file_fix_leaves_placeholders_alone() {
+    let body = "{\"a\":\"在{{github}}上的軟件\"}\n";
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, "{\"a\":\"在{{github}}上的軟體\"}\n");
+}
+
+#[test]
+fn cli_lint_json_file_unicode_escape_is_not_seen() {
+    // A term spelled through an escape is invisible by design; the raw one
+    // beside it is still reported and fixed, and the escape survives.
+    let body = "{\"a\":\"\\u8edf\\u4ef6 軟件\"}\n";
+    assert_eq!(json_file_findings("a.json", body), ["軟件"]);
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, "{\"a\":\"\\u8edf\\u4ef6 軟體\"}\n");
+}
+
+#[test]
+fn cli_lint_json_file_fix_next_to_escapes() {
+    let body = "{\"a\":\"軟件\\u0041軟件\\n用戶\\\"\"}\n";
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, "{\"a\":\"軟體\\u0041軟體\\n使用者\\\"\"}\n");
+    serde_json::from_str::<serde_json::Value>(&fixed).expect("still valid JSON");
+}
+
+#[test]
+fn cli_lint_json_file_nfd_text_keeps_offsets() {
+    // A decomposed letter before the term: offsets are mapped back through NFC
+    // normalization, so the fix must still land on the term.
+    let body = "{\"a\":\"cafe\u{301} 軟件\"}\n";
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, "{\"a\":\"cafe\u{301} 軟體\"}\n");
+}
+
+#[test]
+fn cli_lint_json_file_fix_does_not_convert_simplified_keys() {
+    // Whole-text S2T would rewrite the key; JSON skips it.
+    let body = "{\"设置\":\"这个软件的网络服务器设置\"}\n";
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, body);
+}
+
+#[test]
+fn cli_lint_json_file_malformed_falls_back_to_plain_with_notice() {
+    let (_dir, output) = lint_json_fixture("bad.json", "{\"a\":\"軟件", &["--format", "json"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("not valid JSON, linted as plain text"),
+        "{stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON output");
+    assert!(
+        parsed["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["found"] == "軟件"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn cli_lint_json_file_plain_opt_out_restores_prose_lint() {
+    let body = "{\"title\":\"軟件設置\",\"desc\":\"用戶權限請聯繫管理員\"}\n";
+    let (_dir, output) = lint_json_fixture(
+        "a.json",
+        body,
+        &["--content-type", "plain", "--format", "compact"],
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.lines().count() > 1, "quotes should warn: {stdout}");
+}

@@ -216,3 +216,54 @@ fn convert_pack_rules_reach_the_conversion() {
         "the pack rule should have been applied; got {with:?}"
     );
 }
+
+const JSON_SC: &str =
+    "{\"设置\": \"软件设置\", \"list\": [\"用户使用软件\"], \"n\": \"{name}软件\\n\"}\n";
+
+/// Keys, placeholders and escapes survive, values convert, and the output
+/// still parses.
+#[test]
+fn cli_convert_json_converts_values_and_keeps_keys() {
+    let out = run_convert(&["--content-type", "json"], JSON_SC);
+    assert!(out.status.success(), "convert should exit 0");
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("output must be valid JSON");
+    let obj = v.as_object().unwrap();
+    let mut keys: Vec<_> = obj.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["list", "n", "设置"], "keys untouched: {stdout}");
+    let value = obj["设置"].as_str().unwrap();
+    assert!(value.contains('設'), "value should be Traditional: {value}");
+    assert!(
+        !value.contains('软'),
+        "value should be Traditional: {value}"
+    );
+    assert!(stdout.contains("{name}"), "placeholder kept: {stdout}");
+    assert!(stdout.contains("\\n"), "escape kept: {stdout}");
+}
+
+/// The type also comes from a .json file name.
+#[test]
+fn cli_convert_json_by_extension() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("zh.json");
+    std::fs::write(&path, JSON_SC).unwrap();
+    let out = Command::new(binary_path())
+        .arg("convert")
+        .arg(&path)
+        .output()
+        .expect("run convert");
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("\"设置\""), "key rewritten: {stdout}");
+    assert!(stdout.contains('設'), "value not converted: {stdout}");
+    serde_json::from_str::<serde_json::Value>(&stdout).expect("valid JSON");
+}
+
+/// Plain is the opt-out and converts the whole text, keys included.
+#[test]
+fn cli_convert_json_plain_opt_out_converts_keys() {
+    let out = run_convert(&["--content-type", "plain"], JSON_SC);
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("「設置」"), "{stdout}");
+}

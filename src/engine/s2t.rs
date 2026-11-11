@@ -83,6 +83,28 @@ impl S2TConverter {
         }
     }
 
+    /// Convert only the text outside `excluded`, copying excluded bytes
+    /// through untouched. Each gap is converted on its own, so a phrase that
+    /// straddles an excluded range is not matched, and the output length may
+    /// differ from the input without invalidating any range, since ranges are
+    /// read against the input only. `excluded` must be sorted by start.
+    pub fn convert_outside(&self, input: &str, excluded: &[super::excluded::ByteRange]) -> String {
+        let mut out = String::with_capacity(input.len());
+        let mut pos = 0;
+        for r in excluded {
+            if r.start > pos {
+                out.push_str(&self.convert(&input[pos..r.start]));
+                pos = r.start;
+            }
+            if r.end > pos {
+                out.push_str(&input[pos..r.end]);
+                pos = r.end;
+            }
+        }
+        out.push_str(&self.convert(&input[pos..]));
+        out
+    }
+
     /// Convert Simplified Chinese text to Traditional Chinese (Taiwan variant).
     ///
     /// Protected-zone tracking: phrase substitutions produce pre-normalized

@@ -1321,6 +1321,37 @@ fn translationese_pipeline_keeps_only_indexed_zy3_issue() {
     );
 }
 
+#[test]
+fn json_content_type_names_and_flags() {
+    assert_eq!(ContentType::from_name("json"), Some(ContentType::Json));
+    assert_eq!(ContentType::Json.name(), "json");
+    assert_eq!(ContentType::from_file_name("zh-TW.JSON"), ContentType::Json);
+    assert!(!ContentType::Json.hash_comments());
+    assert!(ContentType::Yaml.hash_comments());
+}
+
+#[test]
+fn json_admits_only_fixes_that_need_no_escaping() {
+    let issue = |to: &str| {
+        Issue::new(
+            0,
+            3,
+            "x",
+            vec![to.to_string()],
+            IssueType::CrossStrait,
+            Severity::Warning,
+        )
+    };
+    assert!(ContentType::Json.admits_fix(&issue("軟體")));
+    assert!(!ContentType::Json.admits_fix(&issue("「軟體」\"")));
+    assert!(!ContentType::Json.admits_fix(&issue("a\\b")));
+    for c in '\0'..='\u{1f}' {
+        assert!(!ContentType::Json.admits_fix(&issue(&format!("a{c}b"))));
+    }
+    assert!(ContentType::Json.admits_fix(&issue("a\u{7f}b")));
+    assert!(ContentType::Plain.admits_fix(&issue("a\"b")));
+}
+
 // Remaining tests are included from the original scan.rs via include. Rather
 // than duplicating 2000+ lines inline, the tests are appended by extracting
 // from the original monolithic file.

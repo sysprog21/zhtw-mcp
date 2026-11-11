@@ -4701,7 +4701,7 @@ fn positional_tells_skip_later_sentences_of_a_quotation() {
 }
 
 #[test]
-fn stock_conclusion_needs_a_hard_study_cue_to_stay_silent() {
+fn stock_conclusion_weak_study_words_do_not_spare_a_closer() {
     // Study words in ordinary prose do not make a results paragraph: it takes a
     // subject, instrument or statistic word beside them.
     for text in [
@@ -4735,7 +4735,6 @@ fn stock_conclusion_recall_on_model_written_paragraphs() {
     // so they are spared by design; every other paragraph must fire. Asserting
     // that, instead of a count with a tolerance, makes one spared paragraph
     // inside the cap fail the test.
-    const MAX_CLOSER_CHARS: usize = 20;
     let paragraphs: Vec<String> =
         serde_json::from_str(include_str!("../../../../fixtures/ai-study-closers.json"))
             .expect("fixture is a JSON array of strings");
@@ -4746,7 +4745,7 @@ fn stock_conclusion_recall_on_model_written_paragraphs() {
             .rfind("由此可見")
             .expect("every paragraph has a closer")..];
         let fires = has_family(&scan_phase2(text), StructuralFamily::StockConclusion);
-        if closer.chars().count() <= MAX_CLOSER_CHARS {
+        if closer.chars().count() <= super::ai_style::STOCK_CONCLUSION_MAX_CHARS {
             within_cap += 1;
             assert!(fires, "a closer within the cap must fire: {text}");
         } else {
@@ -4763,19 +4762,9 @@ fn stock_conclusion_study_gate_evidence() {
     // rows are academic paragraphs whose last sentence is a short 由此可見
     // closer, so the ideal answer is that nothing fires. AI rows borrow study
     // words but end in a bare verdict, so the ideal answer is that it fires.
-    // Each row pins what the gate does today and where that differs from the
-    // ideal; a change to STUDY_HARD_CUES, STUDY_WEAK_CUES or STUDY_MIN_CUES
-    // flips named rows here.
-    //
-    // Measured 2026-11-11: 13 native rows without a hard cue plus weak cues all
-    // fire, because ordinary results prose carries no cue the gate counts (the
-    // figures and the design words mark it, and neither is a cue). Three native
-    // rows that do carry one are spared. Lowering STUDY_MIN_CUES to 2 spares no
-    // more native row and silences three more AI rows, so the data does not
-    // justify it. Two AI rows stuffed with cues are spared, which no count can
-    // separate from a native paragraph.
-    const KNOWN_GAPS: usize = 15;
-    let mut gaps = 0;
+    // Each row pins what the gate does today, and the message names where that
+    // differs from the ideal: those are the known limits of the gate, and a
+    // change to the cue lists or the minimum flips named rows.
     for (name, ideal, actual, text) in [
         ("edu_reading", false, true, "本研究在兩個班級實施為期八週的共讀計畫，並在前後測比較學生的閱讀理解分數。實驗班的平均進步幅度為九點三分，對照班僅有三點一分，差異達顯著水準。由此可見，共讀計畫確有助益。"),
         ("edu_homework", false, true, "我們訪談了十二位國小導師，詢問他們如何安排回家作業的份量。多數老師表示會依據班級進度調整，少數則沿用學年統一的作業單。由此可見，作業政策各校差異很大。"),
@@ -4813,13 +4802,7 @@ fn stock_conclusion_study_gate_evidence() {
             actual,
             "{name}: the gate no longer answers as pinned (ideal {ideal}): {text}"
         );
-        gaps += usize::from(actual != ideal);
     }
-    assert_eq!(
-        gaps, KNOWN_GAPS,
-        "the number of rows where the gate departs from the ideal changed; \
-         update KNOWN_GAPS deliberately"
-    );
 }
 
 #[test]
@@ -4905,6 +4888,46 @@ fn quote_state_clamps_stray_closers_and_resumes_along_a_line() {
     assert!(!q.open_at(text, at("新的")));
     // A step backwards restarts from the line start.
     assert!(q.open_at(text, at("廢話")));
+}
+
+#[test]
+fn a_bracket_inside_a_code_span_does_not_open_a_quotation() {
+    // The code span holds an unmatched 「. Counted from the raw text it would
+    // read as an open quotation and silence the opener later on the line.
+    let text = "先看設定 `「`。廢話不多說，開始部署。";
+    let idx = BoundaryIndex::build(text, &[]);
+    let excluded = [ByteRange {
+        start: text.find('`').unwrap(),
+        end: text.rfind('`').unwrap() + 1,
+    }];
+    let mut issues = Vec::new();
+    scan_ai_structural_phase2(
+        &mut Emitter::new(text, &excluded, &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    assert!(has_family(&issues, StructuralFamily::OpeningAnnouncement));
+}
+
+#[test]
+fn an_open_bracket_does_not_carry_past_a_multiline_exclusion() {
+    // The 「 is never closed, but the line it sits on ends inside the code span
+    // and the sentence starts on a later line. Blanking must keep that line
+    // break, or the quote counter never resets and reads the bracket as still
+    // open.
+    let text = "他說「未閉合 `a\nb` 好。廢話不多說，開始部署。";
+    let idx = BoundaryIndex::build(text, &[]);
+    let excluded = [ByteRange {
+        start: text.find('`').unwrap(),
+        end: text.rfind('`').unwrap() + 1,
+    }];
+    let mut issues = Vec::new();
+    scan_ai_structural_phase2(
+        &mut Emitter::new(text, &excluded, &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    assert!(has_family(&issues, StructuralFamily::OpeningAnnouncement));
 }
 
 #[test]

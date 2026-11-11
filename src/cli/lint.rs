@@ -626,10 +626,9 @@ impl ScanCtx<'_> {
     }
 }
 
-/// The engine scans JSON it cannot tokenize as plain text. Say so once, on
-/// stderr, so the quote warnings that follow are not a mystery. A cache hit
-/// that
-/// skips the read skips this too, which is fine for a notice.
+/// The engine scans JSON with a string that never closes as plain text. Say so
+/// once, on stderr, so the quote warnings that follow are not a mystery. A
+/// cache hit that skips the read skips this too, which is fine for a notice.
 fn warn_if_malformed_json(
     content_type: zhtw_mcp::engine::scan::ContentType,
     text: &str,

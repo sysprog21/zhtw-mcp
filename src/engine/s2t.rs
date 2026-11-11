@@ -83,11 +83,12 @@ impl S2TConverter {
         }
     }
 
-    /// Convert only the text outside `excluded`, copying excluded bytes
+    /// Convert only the text outside the excluded ranges, copying excluded
+    /// bytes
     /// through untouched. Each gap is converted on its own, so a phrase that
     /// straddles an excluded range is not matched, and the output length may
     /// differ from the input without invalidating any range, since ranges are
-    /// read against the input only. `excluded` must be sorted by start.
+    /// read against the input only. The ranges must be sorted by start.
     pub fn convert_outside(&self, input: &str, excluded: &[super::excluded::ByteRange]) -> String {
         let mut out = String::with_capacity(input.len());
         let mut pos = 0;

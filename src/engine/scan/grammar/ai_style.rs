@@ -1786,6 +1786,14 @@ const QA_LEAD_INS: &[&str] = &[
 /// lowercased paragraph, so a "faq:" heading suppresses too.
 const FAQ_LABELS: &[&str] = &["faq", "常見問題", "q：", "q:", "問：", "問:"];
 
+/// Whether the paragraph carries an FAQ label. Reads the blanked view: a label
+/// inside a code span does not label the paragraph, and would otherwise spare a
+/// real hit. It allocates a cased copy, so callers check it last.
+fn is_faq_paragraph(visible: &str, para: &crate::engine::sentence::ParagraphBound) -> bool {
+    let paragraph = visible[para.byte_start..para.byte_end].to_lowercase();
+    FAQ_LABELS.iter().any(|label| paragraph.contains(label))
+}
+
 /// Strip any run of leading discourse markers and the punctuation after them.
 fn strip_qa_lead_in(sentence: &str) -> &str {
     let mut rest = sentence.trim();
@@ -1850,11 +1858,8 @@ pub(super) fn scan_ai_rhetorical_self_qa(
         };
 
         // Checked last: it allocates a cased copy of the paragraph, and only a
-        // paragraph that already looks like a hit is worth that. From the
-        // blanked view: a label inside a code span does not label the
-        // paragraph, and would otherwise spare a real hit.
-        let paragraph = visible[para.byte_start..para.byte_end].to_lowercase();
-        if FAQ_LABELS.iter().any(|label| paragraph.contains(label)) {
+        // paragraph that already looks like a hit is worth that.
+        if is_faq_paragraph(&visible, para) {
             continue;
         }
 
@@ -2051,6 +2056,9 @@ pub(super) fn scan_ai_false_ranges(
 /// Characters of text[start..end] that are not inside an excluded range.
 fn prose_char_count(text: &str, excluded: &[ByteRange], start: usize, end: usize) -> usize {
     let total = text[start..end].chars().count();
+    if excluded.is_empty() {
+        return total;
+    }
     let excluded_chars: usize = excluded
         .iter()
         .filter_map(|r| text.get(r.start.max(start)..r.end.min(end)))
@@ -2132,11 +2140,12 @@ pub(super) fn scan_ai_colon_reveal(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
     let mut quotes = QuoteState::default();
 
     for sent in &idx.sentences {
-        let Some((start, body)) = positional_sentence(text, excluded, &mut quotes, sent) else {
+        let Some((start, body)) = positional_sentence(text, &visible, excluded, &mut quotes, sent)
+        else {
             continue;
         };
         let Some(colon) = body.find('：') else {
@@ -2187,12 +2196,10 @@ pub(super) fn scan_ai_colon_reveal(
 /// 其實, 真的 and 真正 are left out: tutorials ask 為什麼其實不需要加鎖？ and
 /// 為什麼真正執行的是子程序？ in plain earnest, and the modifiers carry no
 /// staging on their own. 到底 and 究竟 stage only in front of the interrogative
-/// (到底為什麼會這樣？). Inside it they are an ordinary intensifier in a
-/// sincere
-/// question (為什麼備份到底要放在不同的磁碟？), so a cue after 為什麼 is
-/// ignored.
-/// Every cue here must also be in QA_LEAD_INS, because the check reads the text
-/// that strip_qa_lead_in removed from the front of the question.
+/// (到底為什麼會這樣？). Inside it they are only an intensifier, as in the
+/// sincere question 為什麼備份到底要放在不同的磁碟？, so a cue after 為什麼 is
+/// ignored. Every cue here must also be in QA_LEAD_INS, because the check reads
+/// the text that strip_qa_lead_in removed from the front of the question.
 const QA_STAGING_CUES: &[&str] = &["到底", "究竟"];
 
 /// 自問自答: one 為什麼…？因為… pair whose question or answer stages it.
@@ -2218,7 +2225,8 @@ pub(super) fn scan_ai_self_qa_reveal(
             {
                 continue;
             }
-            let Some((q_start, raw_q)) = positional_sentence(text, excluded, &mut quotes, &pair[0])
+            let Some((q_start, raw_q)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, &pair[0])
             else {
                 continue;
             };
@@ -2247,9 +2255,7 @@ pub(super) fn scan_ai_self_qa_reveal(
         let Some((q_start, q_end)) = hit else {
             continue;
         };
-        // From the blanked view, as in the rhetorical self-Q&A detector.
-        let paragraph = visible[para.byte_start..para.byte_end].to_lowercase();
-        if FAQ_LABELS.iter().any(|l| paragraph.contains(l)) {
+        if is_faq_paragraph(&visible, para) {
             continue;
         }
         issues.push(
@@ -2311,13 +2317,15 @@ pub(super) fn scan_ai_golden_contrast(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
     let mut quotes = QuoteState::default();
 
     for para in &idx.paragraphs {
         let mut hits: Vec<(usize, usize)> = Vec::new();
         for sent in idx.sentence_slice(para) {
-            let Some((start, body)) = positional_sentence(text, excluded, &mut quotes, sent) else {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
                 continue;
             };
             if let Some((a, b)) = short_contrast_span(body) {
@@ -2382,13 +2390,15 @@ pub(super) fn scan_ai_psych_verdict(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
     let mut quotes = QuoteState::default();
 
     for para in &idx.paragraphs {
         let mut hits: Vec<(usize, usize)> = Vec::new();
         for sent in idx.sentence_slice(para) {
-            let Some((start, body)) = positional_sentence(text, excluded, &mut quotes, sent) else {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
                 continue;
             };
             let span = psych_contrast_span(body).or_else(|| {
@@ -2441,7 +2451,8 @@ pub(super) struct QuoteState {
 }
 
 impl QuoteState {
-    /// Whether `start` sits inside an unclosed quotation or bracket.
+    /// Whether the byte offset start sits inside an unclosed quotation or
+    /// bracket.
     pub(super) fn open_at(&mut self, text: &str, start: usize) -> bool {
         if !self.primed || start < self.pos || text[self.pos..start].contains('\n') {
             self.pos = text[..start].rfind('\n').map_or(0, |i| i + 1);
@@ -2470,6 +2481,7 @@ impl QuoteState {
 /// or bracket on its line, where the phrase is somebody's reported speech.
 fn positional_sentence<'a>(
     text: &'a str,
+    visible: &str,
     excluded: &[ByteRange],
     quotes: &mut QuoteState,
     sent: &crate::engine::sentence::SentenceBound,
@@ -2480,7 +2492,10 @@ fn positional_sentence<'a>(
     let raw = &text[sent.byte_start..sent.byte_end];
     let body = raw.trim_start();
     let start = sent.byte_start + (raw.len() - body.len());
-    if quotes.open_at(text, start) {
+
+    // Counted on the blanked view, which has the same byte layout as the text:
+    // a bracket or quote inside a code span is not an open quotation.
+    if quotes.open_at(visible, start) {
         return None;
     }
     Some((start, body))
@@ -2496,13 +2511,15 @@ pub(super) fn scan_ai_fake_candor(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
     let mut quotes = QuoteState::default();
     const OPENERS: &[&str] = &["說實話？", "說實話?"];
 
     for para in &idx.paragraphs {
         for sent in idx.sentence_slice(para) {
-            let Some((start, body)) = positional_sentence(text, excluded, &mut quotes, sent) else {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
                 continue;
             };
             let Some(opener) = OPENERS.iter().find(|o| body.starts_with(**o)) else {
@@ -2532,13 +2549,15 @@ pub(super) fn scan_ai_opening_announcement(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
     let mut quotes = QuoteState::default();
     const PHRASE: &str = "廢話不多說";
 
     for para in &idx.paragraphs {
         for sent in idx.sentence_slice(para) {
-            let Some((start, body)) = positional_sentence(text, excluded, &mut quotes, sent) else {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
                 continue;
             };
             if !body.starts_with(PHRASE) {
@@ -2558,8 +2577,10 @@ pub(super) fn scan_ai_opening_announcement(
     }
 }
 
-/// Longest closing sentence, in characters, still read as a bare verdict.
-const STOCK_CONCLUSION_MAX_CHARS: usize = 20;
+/// Longest closing sentence, in characters, still reported. It counts the
+/// phrase and the final mark, and it is the one precision lever the evidence
+/// supports.
+pub(super) const STOCK_CONCLUSION_MAX_CHARS: usize = 20;
 
 /// Cues that only a reported study names: its subjects, instrument or
 /// statistic. A paragraph needs at least one of these.
@@ -2589,12 +2610,12 @@ const STUDY_MIN_CUES: usize = 3;
 /// paragraph has no argument above the closer to be summarised, so both stay
 /// silent.
 ///
-/// Academic prose closes an argument this way and says something new in the
-/// closer: a qualified, specific inference. The tell is the bare verdict that
-/// only repeats the paragraph, which is short. A closer longer than
-/// STOCK_CONCLUSION_MAX_CHARS is an elaborated inference and stays silent.
-/// The text above the closer in its paragraph, when it reads as a reported
-/// study (see STUDY_HARD_CUES), keeps the closer silent too.
+/// Any short closer is reported, whether it is a bare verdict or a qualified
+/// inference: measured on human and model text, vocabulary and overlap do not
+/// separate the two, so the length cap is the only
+/// precision lever. A closer longer than STOCK_CONCLUSION_MAX_CHARS stays
+/// silent. The text above the closer in its paragraph, when it reads as a
+/// reported study (see STUDY_HARD_CUES), keeps the closer silent too.
 pub(super) fn scan_ai_stock_conclusion(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
@@ -2620,7 +2641,7 @@ pub(super) fn scan_ai_stock_conclusion(
         }
         let Some((start, body)) = sentences
             .last()
-            .and_then(|s| positional_sentence(text, excluded, &mut quotes, s))
+            .and_then(|s| positional_sentence(text, &visible, excluded, &mut quotes, s))
         else {
             continue;
         };
@@ -2631,7 +2652,7 @@ pub(super) fn scan_ai_stock_conclusion(
         let above = &visible[para.byte_start..start];
         let hits = |cues: &[&str]| cues.iter().filter(|c| above.contains(**c)).count();
         let hard = hits(STUDY_HARD_CUES);
-        if hard >= 1 && (hard >= STUDY_MIN_CUES || hard + hits(STUDY_WEAK_CUES) >= STUDY_MIN_CUES) {
+        if hard >= 1 && hard + hits(STUDY_WEAK_CUES) >= STUDY_MIN_CUES {
             continue;
         }
         issues.push(
@@ -2664,14 +2685,16 @@ pub(super) fn scan_ai_fake_depth(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
     let mut quotes = QuoteState::default();
 
     for para in &idx.paragraphs {
         // (offset, frame) of each sentence-initial frame, in order.
         let mut hits: Vec<(usize, &'static str)> = Vec::new();
         for sent in idx.sentence_slice(para) {
-            let Some((start, body)) = positional_sentence(text, excluded, &mut quotes, sent) else {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
                 continue;
             };
             let mut rest = body;

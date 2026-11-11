@@ -206,10 +206,10 @@ pub struct SpellingRule {
     ///
     /// Some forms are a tell in casual prose and simply the house style of
     /// another register: 茲 and 鑑於 in a blog post read as officialese, while
-    /// in a 公文 they are mandated. A rule that carries `formal` fires only
+    /// in a 公文 they are mandated. A rule that carries formal fires only
     /// when the document resolved to the formal register, and one that carries
-    /// `casual` fires only when it resolved to the casual one. The register is
-    /// the same value `--register` and the MCP parameter select, so an
+    /// casual fires only when it resolved to the casual one. The register is
+    /// the same value the register flag and the MCP parameter select, so an
     /// explicit override applies here too. Absent means the rule is
     /// register-blind, which is every rule that predates this field.
     ///

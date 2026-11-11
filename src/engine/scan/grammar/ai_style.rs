@@ -2198,18 +2198,24 @@ pub(super) fn scan_ai_colon_reveal(
     }
 }
 
-/// Cues that stage a question rather than ask it.
+/// Cues that stage a question rather than ask it, when they lead it.
 ///
 /// 其實, 真的 and 真正 are left out: tutorials ask 為什麼其實不需要加鎖？ and
 /// 為什麼真正執行的是子程序？ in plain earnest, and the modifiers carry no
-/// staging on their own.
+/// staging on their own. 到底 and 究竟 stage only in front of the interrogative
+/// (到底為什麼會這樣？). Inside it they are an ordinary intensifier in a
+/// sincere
+/// question (為什麼備份到底要放在不同的磁碟？), so a cue after 為什麼 is
+/// ignored.
+/// Every cue here must also be in QA_LEAD_INS, because the check reads the text
+/// that strip_qa_lead_in removed from the front of the question.
 const QA_STAGING_CUES: &[&str] = &["到底", "究竟"];
 
 /// 自問自答: one 為什麼…？因為… pair whose question or answer stages it.
 ///
 /// scan_ai_rhetorical_self_qa needs two pairs and a 你以為…嗎？錯了 opening.
 /// A single pair is how tutorials and FAQs explain, so the bare pair stays
-/// silent. This reports one pair only with a staging cue: 到底 or 究竟 in
+/// silent. This reports one pair only with a staging cue: 到底 or 究竟 leading
 /// the question, or a 不是…是 reframe in the answer. A paragraph that carries
 /// an FAQ or Q and A label is exempt.
 pub(super) fn scan_ai_self_qa_reveal(
@@ -2241,8 +2247,13 @@ pub(super) fn scan_ai_self_qa_reveal(
                 continue;
             }
             let reframe = answer.contains("不是") && answer.contains("而是");
-            if reframe || QA_STAGING_CUES.iter().any(|c| raw_q.contains(c)) {
-                hit = Some((q_start, q_start + raw_q.trim_end().len()));
+
+            // question is a suffix of the trimmed sentence, so what precedes it
+            // is exactly the lead-in that strip_qa_lead_in removed.
+            let raw_q = raw_q.trim_end();
+            let lead_in = raw_q.strip_suffix(question).unwrap_or_default();
+            if reframe || QA_STAGING_CUES.iter().any(|c| lead_in.contains(c)) {
+                hit = Some((q_start, q_start + raw_q.len()));
                 break;
             }
         }
@@ -2487,18 +2498,19 @@ fn positional_sentence<'a>(
     Some((start, body))
 }
 
-/// 假坦率開場: 說實話？ or 講白了， as the opening of a sentence.
+/// 假坦率開場: 說實話？ as the opening of a sentence.
 ///
 /// 說實話 inside a sentence, and 說實話， as an opener, are ordinary speech and
-/// stay silent. Only the question form, which stages a confession the text
-/// never makes, and 講白了， opening a sentence are reported.
+/// stay silent. So does 講白了，, which is plain speech gated only by position
+/// and was dropped. Only the question form, which stages a confession the
+/// text never makes, is reported.
 pub(super) fn scan_ai_fake_candor(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
     let mut quotes = QuoteState::default();
-    const OPENERS: &[&str] = &["說實話？", "說實話?", "講白了，", "講白了,"];
+    const OPENERS: &[&str] = &["說實話？", "說實話?"];
 
     for para in &idx.paragraphs {
         for sent in idx.sentence_slice(para) {
@@ -2558,14 +2570,22 @@ pub(super) fn scan_ai_opening_announcement(
     }
 }
 
+/// Longest closing sentence, in characters, still read as a bare verdict.
+const STOCK_CONCLUSION_MAX_CHARS: usize = 20;
+
 /// 結語套話: 由此可見 opening the last sentence of a paragraph.
 ///
 /// scan_ai_paragraph_endings already counts 由此可見 among its closers, but
 /// only once three of five or more paragraphs end that way. This reports the
 /// single paragraph-final use, and stays silent once that detector has fired.
-/// Mid-paragraph 由此可見 is an ordinary
-/// inference marker, and a one-sentence paragraph has no argument above the
-/// closer to be summarised, so both stay silent.
+/// Mid-paragraph 由此可見 is an ordinary inference marker, and a one-sentence
+/// paragraph has no argument above the closer to be summarised, so both stay
+/// silent.
+///
+/// Academic prose closes an argument this way and says something new in the
+/// closer: a qualified, specific inference. The tell is the bare verdict that
+/// only repeats the paragraph, which is short. A closer longer than
+/// STOCK_CONCLUSION_MAX_CHARS is an elaborated inference and stays silent.
 pub(super) fn scan_ai_stock_conclusion(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
@@ -2595,7 +2615,7 @@ pub(super) fn scan_ai_stock_conclusion(
         else {
             continue;
         };
-        if !body.starts_with(PHRASE) {
+        if !body.starts_with(PHRASE) || body.chars().count() > STOCK_CONCLUSION_MAX_CHARS {
             continue;
         }
         issues.push(

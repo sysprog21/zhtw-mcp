@@ -1863,6 +1863,16 @@
       "expected_issues": []
     },
     {
+      "id": "native_rhythm_staccato_regular_verse",
+      "repeat": 1,
+      "detector": "rhythm",
+      "detect_rhythm": true,
+      "must_be_clean": true,
+      "input": "白日依山盡。黃河入海流。欲窮千里目。更上一層樓。\n\n床前明月光。疑是地上霜。舉頭望明月。低頭思故鄉。",
+      "expected_fixed": "白日依山盡。黃河入海流。欲窮千里目。更上一層樓。\n\n床前明月光。疑是地上霜。舉頭望明月。低頭思故鄉。",
+      "expected_issues": []
+    },
+    {
       "id": "native_antiovercorrection_self_qa_tutorial_modifiers",
       "repeat": 1,
       "input": "為什麼其實不需要加鎖？因為這段程式只由單一執行緒讀取。為什麼真的要先建立索引？因為索引能加速查詢。",
@@ -2010,6 +2020,166 @@
       "must_be_clean": true,
       "detector": "ai_style",
       "expected_fixed": "敬啟者：\n鑑於貴公司來函所述事項，茲將處理結果說明如下，特此通知。\n此致\n某某股份有限公司\n謹啟",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_inference_final_numeric",
+      "repeat": 1,
+      "input": "本研究以三所大學的修課紀錄為樣本，比較線上與面授課程的期末成績。結果顯示，線上組平均七十二點四分，面授組平均七十八點一分，差距達到統計顯著。由此可見，在未控制先備知識的情況下，授課形式與成績之間存在穩定的負相關。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "本研究以三所大學的修課紀錄為樣本，比較線上與面授課程的期末成績。結果顯示，線上組平均七十二點四分，面授組平均七十八點一分，差距達到統計顯著。由此可見，在未控制先備知識的情況下，授課形式與成績之間存在穩定的負相關。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_inference_final_hedged",
+      "repeat": 1,
+      "input": "早期的方言調查多半集中在城市，鄉村的語料相對稀少。這使得後來的研究者難以判斷某些詞彙是否真的只在特定地區流通。由此可見，取樣偏差會左右語言分布的判讀，後續工作必須補足鄉村語料。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "早期的方言調查多半集中在城市，鄉村的語料相對稀少。這使得後來的研究者難以判斷某些詞彙是否真的只在特定地區流通。由此可見，取樣偏差會左右語言分布的判讀，後續工作必須補足鄉村語料。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_inference_mid_paragraph",
+      "repeat": 1,
+      "input": "實驗組在第三週後出現明顯進步，由此可見訓練時間的長短確實影響表現。不過對照組同期也有小幅提升，因此我們仍需要更長的追蹤期才能下結論。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "實驗組在第三週後出現明顯進步，由此可見訓練時間的長短確實影響表現。不過對照組同期也有小幅提升，因此我們仍需要更長的追蹤期才能下結論。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_literature_review",
+      "repeat": 1,
+      "input": "過去二十年，關於社群媒體與青少年睡眠的研究數量快速增加。多數研究採用自填問卷，少數使用穿戴裝置記錄。兩種方法得到的效果量並不一致，問卷研究的估計值大約是裝置研究的兩倍。由此可見，測量方式本身就是造成文獻分歧的重要來源。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "過去二十年，關於社群媒體與青少年睡眠的研究數量快速增加。多數研究採用自填問卷，少數使用穿戴裝置記錄。兩種方法得到的效果量並不一致，問卷研究的估計值大約是裝置研究的兩倍。由此可見，測量方式本身就是造成文獻分歧的重要來源。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_tutorial_why_exactly",
+      "repeat": 1,
+      "input": "遞迴常讓人困惑。為什麼函式呼叫自己，到底不會無限執行下去？因為每一層呼叫都會先檢查終止條件，成立就直接回傳。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "遞迴常讓人困惑。為什麼函式呼叫自己，到底不會無限執行下去？因為每一層呼叫都會先檢查終止條件，成立就直接回傳。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_tutorial_why_actually",
+      "repeat": 1,
+      "input": "這個設定看起來很奇怪。為什麼這裡究竟要關掉快取？因為這份資料每秒都在更新，快取只會讓使用者看到舊內容。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這個設定看起來很奇怪。為什麼這裡究竟要關掉快取？因為這份資料每秒都在更新，快取只會讓使用者看到舊內容。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_tutorial_faq_answer",
+      "repeat": 1,
+      "input": "常見問題：為什麼備份到底要放在不同的磁碟？因為同一顆磁碟損壞時，備份也會一起消失，放在不同磁碟才能真正降低風險。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "常見問題：為什麼備份到底要放在不同的磁碟？因為同一顆磁碟損壞時，備份也會一起消失，放在不同磁碟才能真正降低風險。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_tutorial_why_exactly_embedded",
+      "repeat": 1,
+      "input": "部署前先確認版本編號。為什麼復原到底需要保留舊映像檔？因為新版本一旦出錯，只有舊映像檔能在一分鐘內恢復服務。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "部署前先確認版本編號。為什麼復原到底需要保留舊映像檔？因為新版本一旦出錯，只有舊映像檔能在一分鐘內恢復服務。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_bio_low_profile_1",
+      "repeat": 1,
+      "input": "林教授是臺南人，為人低調，鮮少公開談論私事，連得獎的消息都是學生在系網站上看到才知道。他在實驗室待了三十年，晚年仍每天到系上看論文。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "林教授是臺南人，為人低調，鮮少公開談論私事，連得獎的消息都是學生在系網站上看到才知道。他在實驗室待了三十年，晚年仍每天到系上看論文。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_bio_low_profile_2",
+      "repeat": 1,
+      "input": "這位建築師為人低調，鮮少公開露面，作品卻遍布全臺。他的事務所至今沒有網站，案子全靠舊客戶口耳相傳。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這位建築師為人低調，鮮少公開露面，作品卻遍布全臺。他的事務所至今沒有網站，案子全靠舊客戶口耳相傳。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_bio_obituary_1",
+      "repeat": 1,
+      "input": "王老先生一生教書，桃李滿天下。學生回憶他為人低調，鮮少提起自己的事，只在畢業典禮上說過一句話：書要讀下去。告別式訂於下週三上午十時舉行。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "王老先生一生教書，桃李滿天下。學生回憶他為人低調，鮮少提起自己的事，只在畢業典禮上說過一句話：書要讀下去。告別式訂於下週三上午十時舉行。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_bio_profile_1",
+      "repeat": 1,
+      "input": "她出身雲林的農家，大學念的是農業經濟。畢業後回鄉接手家裡的稻田，這幾年改種有機米，也開始在網路上賣米。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "她出身雲林的農家，大學念的是農業經濟。畢業後回鄉接手家裡的稻田，這幾年改種有機米，也開始在網路上賣米。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_kanyu_1",
+      "repeat": 1,
+      "input": "鑑於近日連續降雨，水利署昨天宣布，曾文水庫提前進行調節性放水，下游沿岸居民請留意警戒訊息。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "鑑於近日連續降雨，水利署昨天宣布，曾文水庫提前進行調節性放水，下游沿岸居民請留意警戒訊息。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_kanyu_2",
+      "repeat": 1,
+      "input": "市府表示，鑑於部分路段施工延宕，原訂本月底通車的時程將順延至下月中旬，施工期間的改道措施不變。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "市府表示，鑑於部分路段施工延宕，原訂本月底通車的時程將順延至下月中旬，施工期間的改道措施不變。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zi_1",
+      "repeat": 1,
+      "input": "校方今天發出公告，茲定於十一月十八日舉行校慶運動會，當天校門口將實施交通管制，請家長提早出門。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "校方今天發出公告，茲定於十一月十八日舉行校慶運動會，當天校門口將實施交通管制，請家長提早出門。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zi_2",
+      "repeat": 1,
+      "input": "鑑於今年入學人數下降，教育部將調整兩所國中的招生班級數，相關名單已公布在網站上。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "鑑於今年入學人數下降，教育部將調整兩所國中的招生班級數，相關名單已公布在網站上。",
       "expected_issues": []
     }
   ]

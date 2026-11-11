@@ -4551,8 +4551,8 @@ fn has_family(issues: &[Issue], family: StructuralFamily) -> bool {
 fn fake_candor_opener_fires_only_as_a_sentence_opener() {
     for text in [
         "團隊評估了三個月。說實話？我們一開始也沒想到。\n\n後續再補。",
-        "團隊評估了三個月。講白了，是設計太急。\n\n後續再補。",
-        "講白了，這是流程問題。",
+        "團隊評估了三個月。說實話？是設計太急。\n\n後續再補。",
+        "說實話？這是流程問題。",
     ] {
         let issues = scan_phase2(text);
         assert!(has_family(&issues, StructuralFamily::FakeCandor), "{text}");
@@ -4571,8 +4571,11 @@ fn fake_candor_leaves_ordinary_speech_alone() {
         // 說實話 mid-sentence and as a comma opener are ordinary speech.
         "我說實話，這個決定想了很久。",
         "說實話，這個決定我想了很久。",
+        // 講白了， is ordinary speech, in any position.
+        "團隊評估了三個月。講白了，是設計太急。\n\n後續再補。",
+        "講白了，這是流程問題。",
         // Reported speech.
-        "他笑著說：「講白了，就是沒錢。」",
+        "他笑著說：「說實話？就是沒錢。」",
         // Not a sentence opener.
         "這份報告寫得很白，講白了，是給外行看的。",
         "他問我：「說實話？」我點了點頭。",
@@ -4616,7 +4619,7 @@ fn positional_tells_skip_later_sentences_of_a_quotation() {
     // check has to count quotes from the start of the line.
     for text in [
         "老闆交代：「大家先別慌。廢話不多說，今天就要交。」",
-        "他說：「別急。講白了，就是沒錢。」",
+        "他說：「別急。說實話？就是沒錢。」",
     ] {
         let issues = scan_phase2(text);
         assert!(
@@ -4641,6 +4644,8 @@ fn stock_conclusion_fires_on_the_paragraph_final_sentence_only() {
         "由此可見，網路分區是主因。\n\n後續再補。",
         // Reported speech.
         "委員說：「兩次壓測結果相同。由此可見，瓶頸在儲存層。」",
+        // An elaborated inference says something the paragraph did not.
+        "線上組平均七十二點四分，面授組平均七十八點一分。由此可見，在未控制先備知識的情況下，授課形式與成績之間存在穩定的負相關。",
     ] {
         let issues = scan_phase2(text);
         assert!(
@@ -4770,6 +4775,10 @@ fn self_qa_reveal_needs_a_staging_cue_and_no_faq_label() {
     }
 
     for text in [
+        // 到底 and 究竟 inside a sincere question are intensifiers, not
+        // staging.
+        "為什麼備份到底要放在不同的磁碟？因為同一顆磁碟損壞時，備份也會一起消失。",
+        "遞迴常讓人困惑。為什麼函式呼叫自己，究竟不會無限執行？因為每層都會先檢查終止條件。",
         // Tutorial questions that merely carry 其實, 真的 or 真正.
         "為什麼其實不需要加鎖？因為這段程式只由單一執行緒讀取。",
         "為什麼真的要先建立索引？因為索引能加速查詢。",
@@ -4926,6 +4935,17 @@ fn staccato_burst_is_one_finding_per_maximal_run() {
 }
 
 #[test]
+fn staccato_burst_keeps_equal_length_clipped_beats() {
+    // Equal beats are no verse tell by themselves: four character beats are the
+    // drumbeat the check is after.
+    let issues = scan_rhythm_only("沒有猶豫。沒有退路。沒有希望。");
+    assert!(
+        rhythm_fires(&issues, PhaseFamily::RhythmStaccato),
+        "{issues:?}"
+    );
+}
+
+#[test]
 fn staccato_burst_passes_ordinary_short_prose() {
     for text in [
         // Two beats are a pair, not a burst.
@@ -4940,6 +4960,9 @@ fn staccato_burst_passes_ordinary_short_prose() {
         "你是誰？我是他。為什麼？",
         // A paragraph break separates the beats.
         "它來了。\n\n沒有猶豫。\n\n沒有退路。",
+        // Five and six character beats are regular verse, with no clipped beat.
+        "白日依山盡。黃河入海流。欲窮千里目。",
+        "床前明月光。疑是地上霜。舉頭望明月。",
         // Clauses with commas are not bare beats.
         "天黑了，路遠。風起了，雲低。人散了，燈滅。",
     ] {

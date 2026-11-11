@@ -919,29 +919,11 @@
       ]
     },
     {
-      "id": "ai_speculative_bio_comma",
-      "repeat": 5,
-      "input": "維護者為人低調，鮮少公開私人生活，細節不明。",
-      "expected_fixed": "維護者為人低調，鮮少公開私人生活，細節不明。",
-      "expected_issues": [
-        {
-          "found": "為人低調，鮮少公開",
-          "replace": "",
-          "rule_type": "ai_style"
-        }
-      ]
-    },
-    {
       "id": "ai_officialese_casual",
       "repeat": 3,
       "input": "鑑於目前的狀況，茲將處理方式說明如下，特此通知。",
       "expected_fixed": "鑑於目前的狀況，茲將處理方式說明如下，特此通知。",
       "expected_issues": [
-        {
-          "found": "鑑於",
-          "replace": "",
-          "rule_type": "ai_style"
-        },
         {
           "found": "茲將",
           "replace": "",

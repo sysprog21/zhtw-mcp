@@ -8439,8 +8439,9 @@
       "from": "消息",
       "to": ["訊息"],
       "type": "cross_strait",
-      "context": "@domain IT。`好消息`/`壞消息`/`消息來源` 為合法 zh-TW 用法",
+      "context": "@domain IT。`好消息`/`壞消息`/`消息來源` 為合法 zh-TW 用法；新聞義的消息（得獎的消息、傳出消息）同為合法，僅在資訊系統語境才建議訊息",
       "english": "message",
+      "context_clues": ["傳送", "發送", "接收", "佇列", "通訊", "中介軟體", "推送", "聊天", "回覆", "封包", "伺服器", "用戶端", "客戶端", "程式", "系統", "通知", "錯誤", "日誌", "協定", "訂閱", "發布"],
       "positional_clues": ["not_after:好", "not_after:壞", "not_before:來源"]
     },
     {
@@ -8772,7 +8773,8 @@
       "from": "為人低調，鮮少公開",
       "to": [],
       "type": "ai_filler",
-      "context": "Speculative biographical filler without evidence; comma form of the rule below, which spelling matching cannot reach across punctuation",
+      "disabled": true,
+      "context": "disabled: speculative biographical filler without evidence; comma form of the rule below, which spelling matching cannot reach across punctuation. It fired on plain native biography, and the tell is not lexical",
       "source": "ai_speculative_bio_comma",
       "negative_context_clues": ["://", "doi", "參見", "註", "受訪", "本人", "自稱", "「"],
       "tags": ["src:humanizer"]
@@ -13666,7 +13668,8 @@
       "to": [],
       "type": "ai_filler",
       "severity": "info",
-      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "disabled": true,
+      "context": "disabled: 鑑於 is ordinary written Taiwanese in news and policy prose, not only in a 公文, so the casual register gate cannot tell it from native use",
       "source": "ai_officialese_casual",
       "tags": ["src:humanizer"],
       "register": "casual"

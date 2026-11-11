@@ -1,7 +1,8 @@
 //! The rhythm (氣口) advisory axis.
 //!
-//! A sentence that never pauses, and a run of sentences closing on the same
-//! particle. Opt-in and never fixable, because rhythm is taste. ZY5 borrows
+//! A sentence that never pauses, a run of sentences closing on the same
+//! particle, and a burst of short sentences. Opt-in and never fixable, because
+//! rhythm is taste. ZY5 borrows
 //! the fragment test when the flag relaxes its own 的 count.
 
 use super::*;
@@ -9,9 +10,9 @@ use super::*;
 // Rhythm (氣口) advisory axis, gated by ProfileConfig::rhythm and off by
 // default. good-writing-tw measures four things; ZY5 already covers the stacked
 // pre-modifier and sentence-length variability is measured elsewhere and
-// deliberately unscored, so the two checks here are the ones nothing in the
-// tree performs: a sentence that never pauses, and a run of sentences that all
-// close on the same particle.
+// deliberately unscored, so the checks here are the ones nothing in the tree
+// performs: a sentence that never pauses, a run of sentences that all close on
+// the same particle, and a burst of short sentences.
 //
 // There is no cross-guard against the AI score. The guard earlier drafts asked
 // for suppressed the advisory in a paragraph whose sentence-length sigma sat
@@ -246,45 +247,54 @@ fn scan_rhythm_ending_monotony(em: &mut Emitter<'_>, idx: &crate::engine::senten
 const RHYTHM_STACCATO_MAX_CJK: usize = 6;
 const RHYTHM_STACCATO_MIN_CJK: usize = 2;
 
+// A burst needs at least one beat this short. Five and six character lines in a
+// row are regular verse (床前明月光。疑是地上霜。), whose beats are even by
+// design; the drumbeat effect lives in the clipped two to four character beats.
+const RHYTHM_STACCATO_CLIPPED_CJK: usize = 4;
+
 // Consecutive fragments before the burst reads as staged drama (它來了。沒有
 // 猶豫。沒有退路。) rather than a short exchange.
 const RHYTHM_STACCATO_RUN: usize = 3;
 
-/// Whether a sentence is one bare beat of a burst: two to six CJK
-/// characters closed by a full stop or exclamation mark, with nothing else in
-/// it.
+/// The length in CJK characters of a sentence that is one bare beat of a
+/// burst: two to six CJK characters closed by a full stop or exclamation mark,
+/// with nothing else in it. None for any other sentence.
 ///
 /// Anything that is not plain CJK plus the closing mark is a different kind of
 /// short sentence. A colon or comma inside (第一步：開機。) is a list item or a
 /// clause pair, a quotation mark is dialogue, a digit or Latin letter is a
 /// numbered step or an identifier, and a question mark is an exchange, not a
 /// pronouncement.
-fn rhythm_is_staccato_beat(s: &str) -> bool {
+fn rhythm_staccato_beat_len(s: &str) -> Option<usize> {
     let body = s.trim();
-    let Some(body) = body.strip_suffix('。').or_else(|| body.strip_suffix('！')) else {
-        return false;
-    };
+    let body = body
+        .strip_suffix('。')
+        .or_else(|| body.strip_suffix('！'))?;
     let mut n = 0usize;
     for ch in body.chars() {
         if !is_cjk_ideograph(ch) {
-            return false;
+            return None;
         }
         n += 1;
     }
-    (RHYTHM_STACCATO_MIN_CJK..=RHYTHM_STACCATO_MAX_CJK).contains(&n)
+    (RHYTHM_STACCATO_MIN_CJK..=RHYTHM_STACCATO_MAX_CJK)
+        .contains(&n)
+        .then_some(n)
 }
 
 // Rhythm check 3: RHYTHM_STACCATO_RUN or more consecutive bare beats inside one
-// paragraph. Runs are maximal and an exclusion or a gap the index left breaks
-// one, as in the monotony check. Advisory Info with no suggestion: whether the
-// burst is craft or a tic is the writer's call.
+// paragraph, at least one of them clipped (RHYTHM_STACCATO_CLIPPED_CJK). Runs
+// are maximal and an exclusion or a gap the index left breaks one, as in the
+// monotony check. Advisory Info with no suggestion: whether the burst is craft
+// or a tic is the writer's call.
 fn scan_rhythm_staccato(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
     let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
     for para in &idx.paragraphs {
-        let mut run: Vec<(usize, usize)> = Vec::new();
+        let mut run: Vec<(usize, usize, usize)> = Vec::new();
         let mut prev_end: Option<usize> = None;
-        let mut flush = |run: &mut Vec<(usize, usize)>| {
-            if run.len() >= RHYTHM_STACCATO_RUN {
+        let mut flush = |run: &mut Vec<(usize, usize, usize)>| {
+            let clipped = run.iter().any(|b| b.2 <= RHYTHM_STACCATO_CLIPPED_CJK);
+            if run.len() >= RHYTHM_STACCATO_RUN && clipped {
                 let start = run[0].0;
                 let end = run[run.len() - 1].1;
                 issues.push(
@@ -309,17 +319,18 @@ fn scan_rhythm_staccato(em: &mut Emitter<'_>, idx: &crate::engine::sentence::Bou
             let interrupted =
                 prev_end.is_some_and(|end| is_excluded(end, sent.byte_start, excluded));
             prev_end = Some(sent.byte_end);
-            if interrupted || is_excluded(sent.byte_start, sent.byte_end, excluded) {
+            let sent_excluded = is_excluded(sent.byte_start, sent.byte_end, excluded);
+            if interrupted || sent_excluded {
                 flush(&mut run);
             }
-            if is_excluded(sent.byte_start, sent.byte_end, excluded) {
+            if sent_excluded {
                 continue;
             }
             let raw = &text[sent.byte_start..sent.byte_end];
-            if rhythm_is_staccato_beat(raw) {
+            if let Some(n) = rhythm_staccato_beat_len(raw) {
                 let start = sent.byte_start + (raw.len() - raw.trim_start().len());
                 let end = sent.byte_start + raw.trim_end().len();
-                run.push((start, end));
+                run.push((start, end, n));
             } else {
                 flush(&mut run);
             }

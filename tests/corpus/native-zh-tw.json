@@ -1020,6 +1020,69 @@
       "expected_issues": []
     },
     {
+      "id": "native_antiovercorrection_suoyou_technical",
+      "repeat": 1,
+      "input": "當快取失效時，所有連線將導向備援伺服器。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "當快取失效時，所有連線將導向備援伺服器。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_xiangmu_list_item",
+      "repeat": 1,
+      "input": "待辦項目包含資料庫遷移與權限審查。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "待辦項目包含資料庫遷移與權限審查。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_opinion_command_shape",
+      "repeat": 1,
+      "input": "我支持保留全部練習題，這對初學者理解架構很有幫助。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "我支持保留全部練習題，這對初學者理解架構很有幫助。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_shuoshihua_midsentence",
+      "repeat": 1,
+      "input": "說實話，這個決定我想了很久。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "說實話，這個決定我想了很久。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_parenthetical_self_correction",
+      "repeat": 1,
+      "input": "我們預計下週發布（更正是下下週一），請團隊先做好準備。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "我們預計下週發布（更正是下下週一），請團隊先做好準備。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_tutorial_rhetorical_question",
+      "repeat": 1,
+      "input": "為什麼這裡要用指標？因為我們需要就地修改記憶體內容。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "為什麼這裡要用指標？因為我們需要就地修改記憶體內容。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_counter_mainstream_with_evidence",
+      "repeat": 1,
+      "input": "多數人認為快取越大越好，但我們量測發現，把快取從四百 MB 縮到一百 MB 後，命中率只掉兩個百分點，記憶體用量卻少了四分之三。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "多數人認為快取越大越好，但我們量測發現，把快取從四百 MB 縮到一百 MB 後，命中率只掉兩個百分點，記憶體用量卻少了四分之三。",
+      "expected_issues": []
+    },
+    {
       "id": "native_hackathon",
       "repeat": 1,
       "input": "總統盃黑客松的參賽團隊在兩天內完成原型。",

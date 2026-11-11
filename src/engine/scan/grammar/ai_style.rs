@@ -2048,21 +2048,35 @@ pub(super) fn scan_ai_false_ranges(
     }
 }
 
+/// Characters of text[start..end] that are not inside an excluded range.
+fn prose_char_count(text: &str, excluded: &[ByteRange], start: usize, end: usize) -> usize {
+    let total = text[start..end].chars().count();
+    let excluded_chars: usize = excluded
+        .iter()
+        .filter_map(|r| text.get(r.start.max(start)..r.end.min(end)))
+        .map(|t| t.chars().count())
+        .sum();
+    total.saturating_sub(excluded_chars)
+}
+
 // Hedging density: promote Info to Warning at three or more hedging hits per
 // 200 chars.
 pub(super) fn scan_ai_hedging_density(
-    visible: &str,
-    issues: &mut [Issue],
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
     const HEDGING_PHRASES: &[&str] = &["在某種程度上", "從某個角度來看", "可以說是", "相對而言"];
+    let (text, excluded, visible, issues) = em.parts();
 
     for para in &idx.paragraphs {
-        let p = &visible[para.byte_start..para.byte_end];
-        let char_count = p.chars().count();
+        // The length is the author's prose: excluded text (code, URLs) is left
+        // out, so a long code span neither lifts a short paragraph over the
+        // minimum nor raises the density threshold of a real one.
+        let char_count = prose_char_count(text, excluded, para.byte_start, para.byte_end);
         if char_count < 50 {
             continue;
         }
+        let p = &visible[para.byte_start..para.byte_end];
         let count: usize = HEDGING_PHRASES
             .iter()
             .map(|phrase| p.matches(phrase).count())

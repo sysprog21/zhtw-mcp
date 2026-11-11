@@ -2950,7 +2950,7 @@ fn ai_hedging_density_leaves_a_pinned_advisory_alone() {
         issue
     };
     let mut issues = vec![pinned(0)];
-    scan_ai_hedging_density(text, &mut issues, &idx);
+    scan_ai_hedging_density(&mut Emitter::new(text, &[], &mut issues), &idx);
     assert_eq!(
         issues[0].severity,
         Severity::Info,
@@ -2968,7 +2968,7 @@ fn ai_hedging_density_leaves_a_pinned_advisory_alone() {
         Severity::Info,
     )
     .with_context("AI hedging: 在某種程度上")];
-    scan_ai_hedging_density(text, &mut unpinned, &idx);
+    scan_ai_hedging_density(&mut Emitter::new(text, &[], &mut unpinned), &idx);
     assert_eq!(
         unpinned[0].severity,
         Severity::Warning,
@@ -2996,17 +2996,83 @@ fn ai_hedging_density_ignores_excluded_markers() {
     )
     .with_context("AI hedging: 在某種程度上")];
 
-    scan_ai_hedging_density(
-        &crate::engine::excluded::mask_excluded(text, &excluded),
-        &mut issues,
-        &idx,
-    );
+    scan_ai_hedging_density(&mut Emitter::new(text, &excluded, &mut issues), &idx);
 
     assert_eq!(
         issues[0].severity,
         Severity::Info,
         "excluded hedging examples should not promote the real issue"
     );
+}
+
+#[test]
+fn ai_hedging_density_measures_length_on_the_authors_prose() {
+    // Three hedges in about 50 characters of prose promote. A long code span in
+    // the same paragraph is not the author's prose, so it must not raise the
+    // density threshold and spare the promotion.
+    let prose = "在某種程度上，從某個角度來看，這個做法可以說是相當合理，不過細節上仍有討論的空間，所以先說到這裡，其餘之後再補充。";
+    let code = "寫".repeat(300);
+    let text = format!("{prose}`{code}`");
+    let code_start = text.find('`').unwrap();
+    let excluded = vec![ByteRange {
+        start: code_start,
+        end: text.len(),
+    }];
+    let idx = BoundaryIndex::build(&text, &excluded);
+    let hedge = || {
+        Issue::new(
+            0,
+            "在某種程度上".len(),
+            "在某種程度上",
+            vec![],
+            IssueType::AiStyle,
+            Severity::Info,
+        )
+        .with_context("AI hedging: 在某種程度上")
+    };
+
+    let mut issues = vec![hedge()];
+    scan_ai_hedging_density(&mut Emitter::new(&text, &excluded, &mut issues), &idx);
+    assert_eq!(
+        issues[0].severity,
+        Severity::Warning,
+        "an excluded span must not raise the threshold and spare the promotion"
+    );
+
+    // The same prose with no code in it promotes, so the code span is what the
+    // test removes from the length, not the hedges.
+    let mut plain = vec![hedge()];
+    scan_ai_hedging_density(
+        &mut Emitter::new(prose, &[], &mut plain),
+        &BoundaryIndex::build(prose, &[]),
+    );
+    assert_eq!(plain[0].severity, Severity::Warning);
+}
+
+#[test]
+fn ai_hedging_density_ignores_a_short_paragraph_padded_by_code() {
+    // About 20 characters of prose are below the 50 character minimum, however
+    // long the code span beside them is.
+    let prose = "在某種程度上，從某個角度來看，可以說是。";
+    let code = "寫".repeat(300);
+    let text = format!("{prose}`{code}`");
+    let code_start = text.find('`').unwrap();
+    let excluded = vec![ByteRange {
+        start: code_start,
+        end: text.len(),
+    }];
+    let idx = BoundaryIndex::build(&text, &excluded);
+    let mut issues = vec![Issue::new(
+        0,
+        "在某種程度上".len(),
+        "在某種程度上",
+        vec![],
+        IssueType::AiStyle,
+        Severity::Info,
+    )
+    .with_context("AI hedging: 在某種程度上")];
+    scan_ai_hedging_density(&mut Emitter::new(&text, &excluded, &mut issues), &idx);
+    assert_eq!(issues[0].severity, Severity::Info);
 }
 
 #[test]
@@ -4659,21 +4725,36 @@ fn stock_conclusion_needs_a_hard_study_cue_to_stay_silent() {
 fn stock_conclusion_recall_on_model_written_paragraphs() {
     // 60 paragraphs written by four Claude subagents asked for ordinary
     // explanatory writing across technology, health, society and science, each
-    // ending in a short 由此可見 closer (generated 2026-11-11, not told what
-    // the detector looks for). This is recall on that prompted sample, not on
-    // unconstrained model output, and four subagents are one model family.
-    // Measured: 58 of 60 fire. The floor of 55 tolerates three more misses, so
-    // a change that spares many typical closers fails and a deliberately more
-    // precise detector needs a deliberate floor edit.
+    // ending in a 由此可見 closer (generated 2026-11-11, not told what the
+    // detector looks for). This is recall on that prompted sample, not on
+    // unconstrained model output, and four subagents are one model family. The
+    // closers were not all bare verdicts: some state a qualified inference.
+    //
+    // The detector reads a closing sentence of at most 20 characters, counting
+    // the 由此可見 and the final mark. Two of the 60 closers run to 23 and 24,
+    // so they are spared by design; every other paragraph must fire. Asserting
+    // that, instead of a count with a tolerance, makes one spared paragraph
+    // inside the cap fail the test.
+    const MAX_CLOSER_CHARS: usize = 20;
     let paragraphs: Vec<String> =
         serde_json::from_str(include_str!("../../../../fixtures/ai-study-closers.json"))
             .expect("fixture is a JSON array of strings");
     assert_eq!(paragraphs.len(), 60);
-    let fired = paragraphs
-        .iter()
-        .filter(|text| has_family(&scan_phase2(text), StructuralFamily::StockConclusion))
-        .count();
-    assert!(fired >= 55, "only {fired} of 60 model paragraphs fire");
+    let (mut within_cap, mut over_cap) = (0, 0);
+    for text in &paragraphs {
+        let closer = &text[text
+            .rfind("由此可見")
+            .expect("every paragraph has a closer")..];
+        let fires = has_family(&scan_phase2(text), StructuralFamily::StockConclusion);
+        if closer.chars().count() <= MAX_CLOSER_CHARS {
+            within_cap += 1;
+            assert!(fires, "a closer within the cap must fire: {text}");
+        } else {
+            over_cap += 1;
+            assert!(!fires, "a closer over the cap is spared: {text}");
+        }
+    }
+    assert_eq!((within_cap, over_cap), (58, 2));
 }
 
 #[test]
@@ -5131,6 +5212,17 @@ fn ai_didactic_noun_inside_a_code_span_is_not_read() {
         fires("這個專案的歷史告訴我們一個道理。"),
         "the same noun as prose must still count"
     );
+}
+
+#[test]
+fn ai_didactic_lookback_does_not_end_at_a_period_inside_code() {
+    // A period inside a code span is not the author's sentence end, so the
+    // sentence continues past it and the noun still reaches the verb.
+    let mut issues = Vec::new();
+    let doc = "這個專案的故事 `a。b` 告訴我們一個道理。";
+    let ranges = markdown_ranges(doc);
+    scan_ai_grammar(&mut Emitter::new(doc, &ranges, &mut issues));
+    assert!(has_context_with(&issues, "didactic"), "{issues:?}");
 }
 
 #[test]

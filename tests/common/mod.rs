@@ -2,6 +2,11 @@
 
 use std::collections::HashSet;
 
+/// The largest pair of lengths (in characters) the diff aligns; beyond it every
+/// source character is reported as dropped. A caller that needs a real answer
+/// checks its inputs against this first.
+pub const MAX_DIFF_CELLS: usize = 4_000_000;
+
 /// One edit from "src" to "dst": dropping source character i is "(i, None)",
 /// inserting character c before source character i is "(i, Some(c))".
 pub type Edit = (usize, Option<char>);
@@ -17,7 +22,7 @@ pub fn changed_positions(src: &[char], dst: &[char]) -> HashSet<Edit> {
 
     // Pairs this long never occur in UI strings; treat every source character
     // as dropped rather than build a quadratic table.
-    if n.saturating_mul(m) > 4_000_000 {
+    if n.saturating_mul(m) > MAX_DIFF_CELLS {
         return (0..n).map(|i| (i, None)).collect();
     }
     let mut lcs = vec![0u32; (n + 1) * (m + 1)];

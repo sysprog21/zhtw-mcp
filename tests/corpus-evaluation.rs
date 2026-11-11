@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 mod common;
-use common::changed_positions;
+use common::{changed_positions, MAX_DIFF_CELLS};
 use zhtw_mcp::engine::s2t::S2TConverter;
 use zhtw_mcp::engine::scan::{build_exclusions_for_content_type, ContentType, Scanner};
 use zhtw_mcp::engine::segment::Segmenter;
@@ -284,6 +284,13 @@ fn gold_edit_ranges(old: &str, new: &str) -> Vec<(usize, usize)> {
     let (mut starts, src): (Vec<usize>, Vec<char>) = old.char_indices().unzip();
     starts.push(old.len());
     let dst: Vec<char> = new.chars().collect();
+
+    // Past the diff's size limit it reports every character as dropped, which
+    // would exclude every span from the keep rate instead of failing.
+    assert!(
+        src.len().saturating_mul(dst.len()) <= MAX_DIFF_CELLS,
+        "a corpus case is too long for the character diff: split it"
+    );
     changed_positions(&src, &dst)
         .into_iter()
         .map(|(i, inserted)| match inserted {

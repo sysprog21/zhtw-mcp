@@ -1294,8 +1294,7 @@ pub(crate) fn scan_ai_structural_phase2(
     scan_ai_emdash_overuse(em, boundary_index);
     scan_ai_formulaic_despite(em, boundary_index);
     scan_ai_false_ranges(em, boundary_index);
-    let (_, _, visible, issues) = em.parts();
-    scan_ai_hedging_density(&visible, issues, boundary_index);
+    scan_ai_hedging_density(em, boundary_index);
     scan_ai_abstract_line_metaphor(em, boundary_index);
     scan_ai_repeated_parallel_slogan(em, boundary_index);
     scan_ai_rhetorical_self_qa(em, boundary_index);

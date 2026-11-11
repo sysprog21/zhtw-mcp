@@ -254,6 +254,58 @@
         assert!(is_cjk_ideograph('ㄆ')); // U+3106
     }
 
+    #[test]
+    fn cjk_ideograph_block_edges() {
+        // (first, last) of each block that is_cjk_ideograph must accept.
+        let blocks: &[(u32, u32)] = &[
+            (0x3100, 0x312F),   // Bopomofo
+            (0x3400, 0x4DBF),   // Ext A
+            (0x4E00, 0x9FFF),   // Unified
+            (0xF900, 0xFAFF),   // Compatibility
+            (0x20000, 0x2A6DF), // Ext B
+            (0x2A700, 0x2B73F), // Ext C
+            (0x2B740, 0x2B81F), // Ext D
+            (0x2B820, 0x2CEAF), // Ext E
+            (0x2CEB0, 0x2EBEF), // Ext F
+            (0x2EBF0, 0x2EE5F), // Ext I
+            (0x2F800, 0x2FA1F), // Compatibility Supplement
+            (0x30000, 0x3134F), // Ext G
+            (0x31350, 0x323AF), // Ext H
+            (0x323B0, 0x3347F), // Ext J
+        ];
+        let is = |cp: u32| char::from_u32(cp).is_some_and(is_cjk_ideograph);
+        for &(lo, hi) in blocks {
+            assert!(is(lo), "first of block U+{lo:X}");
+            assert!(is((lo + hi) / 2), "inside block U+{lo:X}");
+            assert!(is(hi), "last of block U+{hi:X}");
+
+            // A neighbour that sits in another listed block (Ext F/I, G/H/J are
+            // contiguous) is legitimately accepted.
+            let contiguous = |cp: u32| blocks.iter().any(|&(a, b)| (a..=b).contains(&cp));
+            assert_eq!(is(lo - 1), contiguous(lo - 1), "below U+{lo:X}");
+            assert_eq!(is(hi + 1), contiguous(hi + 1), "above U+{hi:X}");
+        }
+        // Ideograph/punctuation split.
+        assert!(!is(0x3000)); // ideographic space
+        assert!(!is(0x3002)); // 。
+        assert!(!is(0x303F));
+        assert!(is('𠮷' as u32));
+    }
+
+    #[test]
+    fn oral_density_counts_bopomofo_and_extension_chars() {
+        // 18 Bopomofo plus the 2-char marker 就是: 20 Han-script characters.
+        // The old 4E00..9FFF count saw only 2 and returned None.
+        let text = format!("就是{}", "ㄅ".repeat(18));
+        let d = compute_oral_density(&text).expect("20 CJK chars reach the floor");
+        assert!((d - 0.1).abs() < 1e-6, "got {d}");
+
+        // Ext B characters count in the denominator too.
+        let text = format!("就是{}", "𠮷".repeat(18));
+        let d = compute_oral_density(&text).expect("Ext B counted");
+        assert!((d - 0.1).abs() < 1e-6, "got {d}");
+    }
+
     // -- punctuation scan tests -----------------------------------------------
 
     fn empty_scanner() -> Scanner {

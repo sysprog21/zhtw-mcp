@@ -640,8 +640,10 @@ pub(crate) fn char_bounded_end(text: &str, start_byte: usize, n_chars: usize) ->
         .unwrap_or(text.len())
 }
 
-/// Returns true if ch is a CJK ideograph (unified, extensions A-I,
-/// compatibility, or bopomofo).  Excludes CJK Symbols/Punctuation
+/// Returns true if ch is a CJK ideograph (unified, extensions A-J,
+/// compatibility and its supplement, or bopomofo).  This is the one
+/// definition of a Han character in the engine; do not add local copies.
+/// Excludes CJK Symbols/Punctuation
 /// (U+3000..U+303F) to avoid false positives when full-width marks sit
 /// next to half-width punctuation.
 pub(crate) fn is_cjk_ideograph(ch: char) -> bool {
@@ -656,8 +658,10 @@ pub(crate) fn is_cjk_ideograph(ch: char) -> bool {
         '\u{2B820}'..='\u{2CEAF}' | // CJK Extension E
         '\u{2CEB0}'..='\u{2EBEF}' | // CJK Extension F
         '\u{2EBF0}'..='\u{2EE5F}' | // CJK Extension I
+        '\u{2F800}'..='\u{2FA1F}' | // CJK Compatibility Ideographs Supplement
         '\u{30000}'..='\u{3134F}' | // CJK Extension G
-        '\u{31350}'..='\u{323AF}'   // CJK Extension H
+        '\u{31350}'..='\u{323AF}' | // CJK Extension H
+        '\u{323B0}'..='\u{3347F}'   // CJK Extension J
     )
 }
 
@@ -2072,7 +2076,7 @@ const ORAL_MARKERS: &[&str] = &[
 fn compute_oral_density(text: &str) -> Option<f32> {
     let mut cjk_count = 0u32;
     for ch in text.chars() {
-        if ('\u{4e00}'..='\u{9fff}').contains(&ch) {
+        if is_cjk_ideograph(ch) {
             cjk_count += 1;
         }
     }
@@ -2096,7 +2100,7 @@ fn compute_oral_density(text: &str) -> Option<f32> {
         let s = s.max(cur_end); // clip to avoid double-count
         if s < e {
             for ch in text[s..e].chars() {
-                if ('\u{4e00}'..='\u{9fff}').contains(&ch) {
+                if is_cjk_ideograph(ch) {
                     marker_chars += 1;
                 }
             }

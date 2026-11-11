@@ -50,7 +50,7 @@ Metric definitions:
 
 - `precision`: true-positive issue matches / all reported issues on corpora with gold positives.
 - `recall`: true-positive issue matches / all gold issues on corpora with gold positives.
-- `false_positive_rate`: fraction of native zh-TW documents that produced one or more issues.
+- `false_positive_rate`: over the checked-in native zh-TW cases only; `make corpus` prints the counts. `fp_rate(cases)` is the share of cases that produced any issue; `fp_rate(weighted)` is the same share weighted by each case's `repeat`. Both are gated at 5%.
 - `safe_fix_success_rate`: fraction of documents whose `lexical_safe` output exactly matches the expected fixed text.
 
 Gate thresholds: precision >= 90%, false-positive rate <= 5% on native zh-TW, safe-fix success >= 85% on AI-generated corpus.

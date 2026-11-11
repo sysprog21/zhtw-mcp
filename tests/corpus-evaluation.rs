@@ -433,6 +433,10 @@ fn corpus_evaluation_suite() {
         recall(&aggregate),
     );
     println!();
+    // Printed before the gates so the caveats appear even when one fails.
+    println!("Caveats: the corpora are synthetic and small. Precision is per matched issue,");
+    println!("not per document. The native false-positive rate covers only the checked-in cases.");
+    println!();
 
     assert!(
         precision(&aggregate) >= 90.0,

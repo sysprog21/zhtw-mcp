@@ -28,6 +28,9 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+mod common;
+use common::{changed_positions, Edit};
+
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -78,52 +81,6 @@ fn convert_all(lines: &[&str]) -> Vec<String> {
     writer.join().unwrap();
     let text = String::from_utf8(output.stdout).unwrap();
     text.lines().map(str::to_string).collect()
-}
-
-/// One edit from "src" to "dst": dropping source character i is "(i, None)",
-/// inserting character c before source character i is "(i, Some(c))".
-type Edit = (usize, Option<char>);
-
-/// The edits between "src" and "dst", from a longest common subsequence
-/// alignment. When several alignments are equally long the one that drops the
-/// earlier character is taken, so equal inputs always give equal edit sets.
-fn changed_positions(src: &[char], dst: &[char]) -> HashSet<Edit> {
-    if src == dst {
-        return HashSet::new();
-    }
-    let (n, m) = (src.len(), dst.len());
-
-    // Pairs this long never occur in UI strings; treat every source character
-    // as dropped rather than build a quadratic table.
-    if n.saturating_mul(m) > 4_000_000 {
-        return (0..n).map(|i| (i, None)).collect();
-    }
-    let mut lcs = vec![0u32; (n + 1) * (m + 1)];
-    let at = |i: usize, j: usize| i * (m + 1) + j;
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            lcs[at(i, j)] = if src[i] == dst[j] {
-                lcs[at(i + 1, j + 1)] + 1
-            } else {
-                lcs[at(i + 1, j)].max(lcs[at(i, j + 1)])
-            };
-        }
-    }
-    let mut changed = HashSet::new();
-    let (mut i, mut j) = (0, 0);
-    while i < n || j < m {
-        if i < n && j < m && src[i] == dst[j] {
-            i += 1;
-            j += 1;
-        } else if j == m || (i < n && lcs[at(i + 1, j)] >= lcs[at(i, j + 1)]) {
-            changed.insert((i, None));
-            i += 1;
-        } else {
-            changed.insert((i, Some(dst[j])));
-            j += 1;
-        }
-    }
-    changed
 }
 
 #[derive(Default)]

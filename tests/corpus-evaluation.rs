@@ -1,9 +1,11 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
+mod common;
+use common::changed_positions;
 use zhtw_mcp::engine::s2t::S2TConverter;
 use zhtw_mcp::engine::scan::{build_exclusions_for_content_type, ContentType, Scanner};
 use zhtw_mcp::engine::segment::Segmenter;
-use zhtw_mcp::fixer::{apply_fixes_with_context, FixMode};
+use zhtw_mcp::fixer::{apply_fixes_with_context, AppliedFix, FixMode, FixResult};
 use zhtw_mcp::rules::ruleset::{Issue, IssueType, Profile, ProfileConfig, Ruleset};
 
 #[derive(Debug, Deserialize)]
@@ -94,6 +96,16 @@ struct ScoreCounts {
 struct FixCounts {
     exact_docs: usize,
     total_docs: usize,
+    /// Position-level keep rate, repeat-weighted. keep_total counts spans the
+    /// scanner reported and the gold output left alone; keep_kept counts the
+    /// ones the fixer also left alone. See tally_keep.
+    keep_kept: usize,
+    keep_total: usize,
+    /// The same counts with every span weighted once, ignoring repeat, so a
+    /// repeat-heavy fixture cannot dominate the rate (the pairing NativeCounts
+    /// uses for its false-positive rate).
+    distinct_kept: usize,
+    distinct_total: usize,
 }
 
 #[derive(Debug, Default)]
@@ -241,6 +253,103 @@ fn fix_success_rate(counts: &FixCounts) -> f64 {
     pct(counts.exact_docs, counts.total_docs)
 }
 
+/// Keep rate, or None when no span was left alone by the gold output. A rate
+/// over an empty denominator is not 100%, so it is reported as not applicable
+/// and never gated.
+fn keep_rate(counts: &FixCounts) -> Option<f64> {
+    (counts.keep_total > 0).then(|| pct(counts.keep_kept, counts.keep_total))
+}
+
+/// Keep rate with every span counted once, ignoring repeat.
+fn distinct_keep_rate(counts: &FixCounts) -> Option<f64> {
+    (counts.distinct_total > 0).then(|| pct(counts.distinct_kept, counts.distinct_total))
+}
+
+fn fmt_keep(counts: &FixCounts) -> String {
+    match (keep_rate(counts), distinct_keep_rate(counts)) {
+        (Some(w), Some(d)) => format!(
+            "{w:>5.1}% ({}/{}) distinct {d:>5.1}% ({}/{})",
+            counts.keep_kept, counts.keep_total, counts.distinct_kept, counts.distinct_total
+        ),
+        _ => "  n/a".to_string(),
+    }
+}
+
+/// Byte ranges of old that new deletes or replaces. A pure insertion becomes an
+/// empty range at its position.
+fn gold_edit_ranges(old: &str, new: &str) -> Vec<(usize, usize)> {
+    if old == new {
+        return Vec::new();
+    }
+    let (mut starts, src): (Vec<usize>, Vec<char>) = old.char_indices().unzip();
+    starts.push(old.len());
+    let dst: Vec<char> = new.chars().collect();
+    changed_positions(&src, &dst)
+        .into_iter()
+        .map(|(i, inserted)| match inserted {
+            Some(_) => (starts[i], starts[i]),
+            None => (starts[i], starts[i + 1]),
+        })
+        .collect()
+}
+
+/// Whether an edit belongs to a span, inclusive at both edges. The fixer
+/// rewrites a span whole, so a pure insertion at an edge (裝置驅動 to
+/// 裝置驅動程式) is an edit to that span. Character alignment cannot say which
+/// side of a boundary an inserted character belongs to either (遞歸算法 to
+/// 遞迴演算法 folds the inserted 演 into the preceding replacement), so an
+/// adjacent edit counts as touching. The cost is a blind spot: a wrong rewrite
+/// of a span next to a legitimate edit is not in the denominator, so it is not
+/// seen. The diff also picks one alignment among equivalent ones, so repeated
+/// characters can shift a gold edit by one character.
+fn gold_touches(span: (usize, usize), edit: (usize, usize)) -> bool {
+    span.0 <= edit.1 && edit.0 <= span.1
+}
+
+/// The fixer's own edits are exact, so only a real byte overlap counts.
+fn fix_overlaps(span: (usize, usize), fix: &AppliedFix) -> bool {
+    let end = fix.offset + fix.old_len;
+    if span.0 == span.1 || fix.old_len == 0 {
+        // A zero-length span or an insertion has no interior to overlap, so
+        // touching at an edge or inside counts.
+        span.0 <= end && fix.offset <= span.1
+    } else {
+        span.0 < end && fix.offset < span.1
+    }
+}
+
+/// Position-level keep counter for one document. The denominator is every
+/// editable span (one carrying a suggestion; a flag-only span cannot be edited,
+/// so counting it would only flatter the rate) that no gold edit touches. The
+/// numerator is those the fixer also left unedited. A wrong edit inside an
+/// otherwise correct document costs one position, not the whole document.
+fn tally_keep(
+    counts: &mut FixCounts,
+    text: &str,
+    expected_fixed: &str,
+    issues: &[Issue],
+    fixed: &FixResult,
+    repeat: usize,
+) {
+    if issues.iter().all(|i| i.suggestions.is_empty()) {
+        return;
+    }
+    let gold = gold_edit_ranges(text, expected_fixed);
+    for issue in issues.iter().filter(|i| !i.suggestions.is_empty()) {
+        let span = (issue.offset, issue.offset + issue.length);
+        if gold.iter().any(|&e| gold_touches(span, e)) {
+            continue;
+        }
+        counts.keep_total += repeat;
+        counts.distinct_total += 1;
+        let edited = fixed.applied_fixes.iter().any(|f| fix_overlaps(span, f));
+        if !edited {
+            counts.keep_kept += repeat;
+            counts.distinct_kept += 1;
+        }
+    }
+}
+
 /// Repeat-weighted rate. Gated alongside the per-fixture rate.
 fn native_fp_rate(counts: &NativeCounts) -> f64 {
     pct(counts.flagged_docs, counts.total_docs)
@@ -293,6 +402,14 @@ fn evaluate_positive_corpus(
             Some(segmenter),
         );
 
+        tally_keep(
+            &mut fix,
+            scan_text,
+            &case.expected_fixed,
+            &issues,
+            &fixed,
+            case.repeat,
+        );
         total_bytes += scan_text.len() * case.repeat;
         score.tp += doc_score.tp * case.repeat;
         score.fp += doc_score.fp * case.repeat;
@@ -341,6 +458,14 @@ fn evaluate_native_corpus(
             *native.trap_hits.entry(detector.clone()).or_default() += issues.len();
         }
 
+        tally_keep(
+            &mut fix,
+            &case.input,
+            &case.expected_fixed,
+            &issues,
+            &fixed,
+            case.repeat,
+        );
         total_bytes += case.input.len() * case.repeat;
         native.total_docs += case.repeat;
         native.total_cases += 1;
@@ -386,12 +511,13 @@ fn print_inputs_line(spec: &CorpusSpec) {
 
 fn print_positive_report(spec: &CorpusSpec, score: &ScoreCounts, fix: &FixCounts, bytes: usize) {
     println!(
-        "{:<24} bytes={:>6}  precision={:>5.1}%  recall={:>5.1}%  safe_fix={:>5.1}%  tp={} fp={} fn={}  {}",
+        "{:<24} bytes={:>6}  precision={:>5.1}%  recall={:>5.1}%  safe_fix={:>5.1}%  keep={}  tp={} fp={} fn={}  {}",
         spec.id,
         bytes,
         precision(score),
         recall(score),
         fix_success_rate(fix),
+        fmt_keep(fix),
         score.tp,
         score.fp,
         score.fn_,
@@ -401,7 +527,7 @@ fn print_positive_report(spec: &CorpusSpec, score: &ScoreCounts, fix: &FixCounts
 
 fn print_native_report(spec: &CorpusSpec, native: &NativeCounts, fix: &FixCounts, bytes: usize) {
     println!(
-        "{:<24} bytes={:>6}  fp_rate(cases)={:>5.1}% ({}/{})  fp_rate(weighted)={:>5.1}% ({}/{})  fp_issues={}  safe_fix={:>5.1}%  {}",
+        "{:<24} bytes={:>6}  fp_rate(cases)={:>5.1}% ({}/{})  fp_rate(weighted)={:>5.1}% ({}/{})  fp_issues={}  safe_fix={:>5.1}%  keep={}  {}",
         spec.id,
         bytes,
         native_case_fp_rate(native),
@@ -412,6 +538,7 @@ fn print_native_report(spec: &CorpusSpec, native: &NativeCounts, fix: &FixCounts
         native.total_docs,
         native.total_fp_issues,
         fix_success_rate(fix),
+        fmt_keep(fix),
         spec.label,
     );
     let traps: Vec<String> = native
@@ -583,6 +710,36 @@ fn corpus_evaluation_suite() {
             precision(score) >= min_precision,
             "{label} precision gate failed: {:.1}% (floor {min_precision}%)",
             precision(score)
+        );
+    }
+
+    // Keep rate: of the editable spans the scanner reported and the gold output
+    // left alone, the share the fixer also left alone. The per-document rates
+    // above count a mangled document and a single wrong edit alike, and the
+    // native fixer rate says nothing about overcorrection inside documents that
+    // legitimately needed other edits, which is where a smarter fixer would do
+    // its damage.
+    //
+    // First measured value 100.0% on both dirty corpora, counted once per span
+    // (11 and 29 spans). The gate is strict: at that denominator one wrong edit
+    // is a 9 or 3 point drop and any tolerance would hide a real
+    // overcorrection. A strict distinct gate also bounds the repeat-weighted
+    // rate printed beside it, so that rate is information, not a second gate.
+    // The blind spots are documented on gold_touches. The native corpus draws
+    // no span today, so its rate is n/a and ungated; a dirty corpus measuring
+    // none is an error, because a gate that measured nothing is what this
+    // metric exists to prevent.
+    for (label, fix) in [("AI-generated", &ai_fix), ("zh-CN conversion", &cn_fix)] {
+        let distinct = distinct_keep_rate(fix).unwrap_or_else(|| {
+            panic!("{label} measured no span, so its keep-rate gate asserts nothing")
+        });
+        assert!(
+            distinct >= 100.0,
+            "{label} keep-rate gate failed: {distinct:.1}% ({}/{} spans; weighted {}/{})",
+            fix.distinct_kept,
+            fix.distinct_total,
+            fix.keep_kept,
+            fix.keep_total
         );
     }
 }

@@ -1003,6 +1003,71 @@
         );
     }
 
+    fn register_gated_rule(from: &str, gate: RegisterGate) -> SpellingRule {
+        let mut rule = SpellingRule::new(from, vec![], RuleType::AiFiller);
+        rule.severity = Some(Severity::Info);
+        rule.register = Some(gate);
+        rule
+    }
+
+    fn found_in(scanner: &Scanner, text: &str, mode: RegisterMode, found: &str) -> bool {
+        let cfg = Profile::Base.config().with_register(mode);
+        scanner
+            .scan_with_config(text, &[], cfg)
+            .issues
+            .iter()
+            .any(|issue| issue.found == found)
+    }
+
+    #[test]
+    fn casual_gated_rule_fires_only_outside_a_formal_document() {
+        let scanner = Scanner::new(
+            vec![register_gated_rule("鑑於", RegisterGate::Casual)],
+            vec![],
+        );
+        let plain = "鑑於目前的狀況，我們先暫停。";
+        let formal = "敬啟者：鑑於目前的狀況，我們先暫停。";
+        assert!(found_in(&scanner, plain, RegisterMode::Auto, "鑑於"));
+        assert!(
+            !found_in(&scanner, formal, RegisterMode::Auto, "鑑於"),
+            "a detected 公文 must silence a casual-only rule"
+        );
+    }
+
+    #[test]
+    fn explicit_register_overrides_detection_for_gated_rules() {
+        let scanner = Scanner::new(
+            vec![register_gated_rule("鑑於", RegisterGate::Casual)],
+            vec![],
+        );
+        let plain = "鑑於目前的狀況，我們先暫停。";
+        let formal = "敬啟者：鑑於目前的狀況，我們先暫停。";
+        assert!(!found_in(&scanner, plain, RegisterMode::Formal, "鑑於"));
+        assert!(found_in(&scanner, formal, RegisterMode::Casual, "鑑於"));
+    }
+
+    #[test]
+    fn formal_gated_rule_is_the_mirror_image() {
+        let scanner = Scanner::new(
+            vec![register_gated_rule("鑑於", RegisterGate::Formal)],
+            vec![],
+        );
+        let plain = "鑑於目前的狀況，我們先暫停。";
+        let formal = "敬啟者：鑑於目前的狀況，我們先暫停。";
+        assert!(!found_in(&scanner, plain, RegisterMode::Auto, "鑑於"));
+        assert!(found_in(&scanner, formal, RegisterMode::Auto, "鑑於"));
+    }
+
+    #[test]
+    fn ungated_rule_ignores_register() {
+        let mut rule = SpellingRule::new("鑑於", vec![], RuleType::AiFiller);
+        rule.severity = Some(Severity::Info);
+        let scanner = Scanner::new(vec![rule], vec![]);
+        let formal = "敬啟者：鑑於目前的狀況，我們先暫停。";
+        assert!(found_in(&scanner, formal, RegisterMode::Auto, "鑑於"));
+        assert!(found_in(&scanner, formal, RegisterMode::Casual, "鑑於"));
+    }
+
     #[test]
     fn markdown_table_cell_coordinates_attached() {
         // Issues inside a Markdown table cell get (row, col) coordinates for

@@ -21,7 +21,9 @@ use daachorse::{CharwiseDoubleArrayAhoCorasickBuilder, MatchKind as DaacMatchKin
 use crate::engine::excluded::ByteRange;
 use crate::engine::segment::BoundaryBitmap;
 use crate::engine::zhtype::ChineseType;
-use crate::rules::ruleset::{Issue, IssueType, ProfileConfig, RuleType, Severity, SpellingRule};
+use crate::rules::ruleset::{
+    Issue, IssueType, ProfileConfig, RegisterGate, RuleType, Severity, SpellingRule,
+};
 
 use super::spelling;
 use super::PositionalClue;
@@ -191,6 +193,12 @@ pub struct CompiledSpellingDb {
     pub spelling_english: Vec<Option<Arc<str>>>,
     /// Pre-interned context clues per rule.  Arc bump during inflation.
     pub spelling_context_clues: Vec<Option<Arc<[String]>>>,
+    /// Per-rule register restriction. All `None` for a ruleset with no gated
+    /// rule, which is what `has_register_gates` lets the scan skip.
+    pub spelling_register: Vec<Option<RegisterGate>>,
+    /// True when any compiled rule carries a register restriction, so a scan
+    /// resolves the document register only when something can use it.
+    pub has_register_gates: bool,
     /// Per-rule context-selected suggestion groups, pre-interned.  None for
     /// the overwhelming majority of rules, which pay only an Option check at
     /// inflation time.  A rule that has groups pays one window computation plus
@@ -1321,6 +1329,10 @@ pub fn compile_spelling_rules_filtered(
         .map(|r| r.context_clues.as_ref().map(|v| Arc::from(v.as_slice())))
         .collect();
 
+    let spelling_register: Vec<Option<RegisterGate>> =
+        spelling_rules.iter().map(|r| r.register).collect();
+    let has_register_gates = spelling_register.iter().any(Option::is_some);
+
     let spelling_context_suggestions: Vec<Option<CompiledContextSelector>> = spelling_rules
         .iter()
         .map(compile_context_selector)
@@ -1439,6 +1451,8 @@ pub fn compile_spelling_rules_filtered(
         spelling_contexts,
         spelling_english,
         spelling_context_clues,
+        spelling_register,
+        has_register_gates,
         spelling_context_suggestions,
         spelling_editorial_confidence,
         rule_pos_clue_ids,

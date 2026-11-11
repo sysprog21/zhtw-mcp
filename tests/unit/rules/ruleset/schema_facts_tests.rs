@@ -55,6 +55,7 @@ fn schema_facts() -> serde_json::Value {
         severity: Some(Severity::Info),
         editorial_confidence: Some(EditorialConfidence::Low),
         structural_guard: Some(String::new()),
+        register: Some(RegisterGate::Formal),
         ..SpellingRule::new("x", vec!["y".into()], RuleType::CrossStrait)
     };
     let case = CaseRule {
@@ -102,6 +103,12 @@ fn schema_facts() -> serde_json::Value {
         EditorialConfidence::Medium,
         EditorialConfidence::Low,
     ];
+    let gates = [RegisterGate::Formal, RegisterGate::Casual];
+    for gate in gates {
+        match gate {
+            RegisterGate::Formal | RegisterGate::Casual => {}
+        }
+    }
     let severities = [Severity::Info, Severity::Warning, Severity::Error];
     for ec in confidences {
         match ec {
@@ -130,6 +137,7 @@ fn schema_facts() -> serde_json::Value {
             .map(wire_name)
             .collect::<Vec<_>>(),
         "editorial_confidence": confidences.iter().map(wire_name).collect::<Vec<_>>(),
+        "register_gates": gates.iter().map(wire_name).collect::<Vec<_>>(),
         "severities": severities.iter().map(wire_name).collect::<Vec<_>>(),
     })
 }

@@ -930,6 +930,29 @@
           "rule_type": "ai_style"
         }
       ]
+    },
+    {
+      "id": "ai_officialese_casual",
+      "repeat": 3,
+      "input": "鑑於目前的狀況，茲將處理方式說明如下，特此通知。",
+      "expected_fixed": "鑑於目前的狀況，茲將處理方式說明如下，特此通知。",
+      "expected_issues": [
+        {
+          "found": "鑑於",
+          "replace": "",
+          "rule_type": "ai_style"
+        },
+        {
+          "found": "茲將",
+          "replace": "",
+          "rule_type": "ai_style"
+        },
+        {
+          "found": "特此通知",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
     }
   ]
 }

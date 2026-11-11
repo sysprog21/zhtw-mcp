@@ -2001,6 +2001,16 @@
       "detector": "ai_style",
       "expected_fixed": "需要注意的是版本相容性，舊版的外掛不會被載入。",
       "expected_issues": []
+    },
+    {
+      "id": "native_gongwen_officialese_formal",
+      "repeat": 1,
+      "input": "敬啟者：\n鑑於貴公司來函所述事項，茲將處理結果說明如下，特此通知。\n此致\n某某股份有限公司\n謹啟",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "敬啟者：\n鑑於貴公司來函所述事項，茲將處理結果說明如下，特此通知。\n此致\n某某股份有限公司\n謹啟",
+      "expected_issues": []
     }
   ]
 }

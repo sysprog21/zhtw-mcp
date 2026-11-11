@@ -1095,6 +1095,34 @@ impl Scanner {
         }
     }
 
+    /// Drop issues from rules whose register restriction the document does not
+    /// meet. The register is the one the structural passes use, so an explicit
+    /// override applies here too, and it is resolved only when a gated rule
+    /// actually matched.
+    fn apply_register_gates(
+        &self,
+        text: &str,
+        excluded: &[ByteRange],
+        cfg: &ProfileConfig,
+        register: &std::cell::OnceCell<Register>,
+        issues: &mut Vec<Issue>,
+    ) {
+        let db = &self.spelling_db;
+        if !db.has_register_gates {
+            return;
+        }
+        let gate_of = |issue: &Issue| {
+            issue
+                .spelling_rule_idx
+                .and_then(|i| db.spelling_register[i])
+        };
+        if !issues.iter().any(|i| gate_of(i).is_some()) {
+            return;
+        }
+        let register = *register.get_or_init(|| resolve_register(text, excluded, cfg.register));
+        issues.retain(|issue| gate_of(issue).is_none_or(|gate| gate.admits(register)));
+    }
+
     /// Access the internal segmenter for context-clue analysis.
     pub fn segmenter(&self) -> &Segmenter {
         &self.segmenter
@@ -1589,6 +1617,12 @@ impl Scanner {
             issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(b.length.cmp(&a.length)));
         }
 
+        // A rule restricted to one register drops out before overlap
+        // resolution, so a finding the document's register licenses cannot
+        // shadow a narrower one beside it.
+        let register = std::cell::OnceCell::new();
+        self.apply_register_gates(text, excluded, &cfg, &register, issues);
+
         // Remove overlapping issues: longer match wins; on tie, higher severity
         // wins. Handles both same-offset and cross-offset overlaps.
         overlap::resolve_overlaps_with_scratch(
@@ -1621,8 +1655,15 @@ impl Scanner {
             rule_ir::inflate_spelling_issues(&self.spelling_db, text, excluded, issues);
         }
 
-        let mentions =
-            run_structural_passes(text, excluded, issues, &cfg, content_type, &self.guards);
+        let mentions = run_structural_passes(
+            text,
+            excluded,
+            issues,
+            &cfg,
+            &register,
+            content_type,
+            &self.guards,
+        );
 
         // Fix CN quotation mark pairing with depth-based nesting: well-formed
         // quotes use character-based depth tracking; misordered or
@@ -1715,6 +1756,7 @@ fn run_structural_passes(
     excluded: &[ByteRange],
     issues: &mut Vec<Issue>,
     cfg: &ProfileConfig,
+    register: &std::cell::OnceCell<Register>,
     content_type: ContentType,
     guards: &rule_ir::GuardRules,
 ) -> Vec<ByteRange> {
@@ -1723,7 +1765,7 @@ fn run_structural_passes(
     // costs a pass per anchor, so skip that when no consumer is enabled, the
     // same reason the boundary index below is built on demand.
     let register = if cfg.grammar_checks || cfg.translationese_detection {
-        resolve_register(text, excluded, cfg.register)
+        *register.get_or_init(|| resolve_register(text, excluded, cfg.register))
     } else {
         Register::Casual
     };

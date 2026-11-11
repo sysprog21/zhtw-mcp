@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 // the serializer and the deserializer cannot drift. Re-exported here so every
 // existing crate::rules::ruleset::* path keeps resolving.
 pub use super::schema::{
-    CaseRule, ContextSuggestion, EditorialConfidence, RuleType, Ruleset, Severity, SpellingRule,
-    KNOWN_STRUCTURAL_GUARDS,
+    CaseRule, ContextSuggestion, EditorialConfidence, RegisterGate, RuleType, Ruleset, Severity,
+    SpellingRule, KNOWN_STRUCTURAL_GUARDS,
 };
 
 /// Linting profile controlling zh-TW norm enforcement strictness.
@@ -153,6 +153,17 @@ impl AttributionGenre {
 pub enum Register {
     Formal,
     Casual,
+}
+
+impl RegisterGate {
+    /// True when a document resolved to the given register meets this
+    /// restriction.
+    pub fn admits(self, register: Register) -> bool {
+        matches!(
+            (self, register),
+            (RegisterGate::Formal, Register::Formal) | (RegisterGate::Casual, Register::Casual)
+        )
+    }
 }
 
 /// What the caller asked for, which is what a batch-wide config can carry.
@@ -815,6 +826,7 @@ impl SpellingRule {
             tags: None,
             editorial_confidence: None,
             structural_guard: None,
+            register: None,
         }
     }
 }

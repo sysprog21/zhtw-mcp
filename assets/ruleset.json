@@ -9058,6 +9058,36 @@
       "context_clues": ["模板", "範本", "C++", "泛型"]
     },
     {
+      "from": "特此公告",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
+      "from": "特此說明",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
+      "from": "特此通知",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
       "from": "特立尼達和多巴哥",
       "to": ["千里達及托巴哥"],
       "type": "cross_strait",
@@ -11411,6 +11441,26 @@
       "english": "Commonwealth of Nations"
     },
     {
+      "from": "茲因",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
+      "from": "茲將",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
       "from": "草泥馬",
       "to": ["羊駝"],
       "type": "cross_strait",
@@ -13610,6 +13660,16 @@
       "type": "cross_strait",
       "context": "@domain 日常",
       "english": "close buddy"
+    },
+    {
+      "from": "鑑於",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
     },
     {
       "from": "鑰匙扣",

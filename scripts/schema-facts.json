@@ -13,6 +13,10 @@
   "orthographic_rule_types": [
     "variant"
   ],
+  "register_gates": [
+    "formal",
+    "casual"
+  ],
   "rule_types": [
     "political_coloring",
     "cross_strait",
@@ -38,6 +42,7 @@
     "from",
     "negative_context_clues",
     "positional_clues",
+    "register",
     "severity",
     "source",
     "structural_guard",

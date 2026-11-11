@@ -1,5 +1,7 @@
 use super::overlap::resolve_overlaps;
 use super::*;
+use crate::rules::ruleset::RegisterGate;
+use crate::rules::ruleset::RegisterMode;
 use crate::rules::ruleset::RuleFamily;
 use crate::rules::ruleset::RuleType;
 use crate::rules::ruleset::SpacingPolicy;

@@ -160,6 +160,12 @@ Only lexical rule types can carry the field. The fixer's gate is guarded on lexi
 
 The MCP `explain` output also reports `auto_fix_safe` and `needs_review`, but on a wider notion of low confidence: when a rule carries no annotation it falls back to a heuristic that treats translationese, AI-style, grammar, `Info`-severity, and anchor-rejected issues as low, with one exception: a rule whose ruleset entry pins `"severity": "info"` is giving advice rather than reporting a defect, so it stays safe to apply. The exception reads the configured severity, not the reported one, so an issue that only reached `Info` through `ignore_terms`, the translation memory, or Tier 2 suppression is still low. It reads the pin alone and not the rule type, so it holds for any rule that pins `info`, not only the `variant` family that uses it today. That fallback decides what to tell a human reviewer, not what the fixer writes. Do not read `auto_fix_safe: false` as a prediction that `--fix=lexical_safe` will decline the issue; only the explicit ruleset annotation gates the fixer.
 
+### register
+
+`"register": "formal"` or `"casual"` restricts a rule to documents that resolve to that register. A rule with `"casual"` is skipped in a formal document, and one with `"formal"` is skipped in a casual one. Omit it and the rule is register-blind, which is every rule that predates the field.
+
+It exists for forms that are a tell in one register and the house style of another. 茲 and 特此 read as officialese in a blog post and are mandated in a 公文, so the rules for them carry `"register": "casual"`. The register is the same value the `--register` flag and the MCP `register` parameter select, so `--register formal` silences them and `--register casual` keeps them on a document the detector read as formal. The gate only suppresses; it never changes what a reported finding suggests. `scripts/check-ruleset.py --lint` rejects any other value.
+
 ### context_suggestions
 
 One source term can need different corrections in different domains, and a flat `to` list cannot say so. `context_suggestions` is a list of `{clues, to}` groups: when any clue appears in the same ±40-character window the context-clue gate uses (clamped at sentence ends, paragraph breaks, and excluded ranges such as code blocks, so a clue in the next sentence or paragraph or inside a fence cannot select a group), that group's `to` replaces the rule's default for that match only. Groups are tried in order, so the first match wins and ruleset order is the precedence order.

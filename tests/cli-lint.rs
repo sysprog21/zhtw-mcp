@@ -2671,8 +2671,10 @@ fn cli_lint_rhythm_is_opt_in_advisory_and_never_fixed() {
     let added: Vec<&String> = rhythm.iter().filter(|i| !plain.contains(i)).collect();
     assert_eq!(
         added.len(),
-        2,
-        "expected the long-sentence and the monotony finding: {added:?}"
+        3,
+        // The three 了 sentences are also three bare short sentences, so the
+        // staccato check reports the same run the monotony check does.
+        "expected the long-sentence, monotony and staccato findings: {added:?}"
     );
     for issue in &added {
         assert!(

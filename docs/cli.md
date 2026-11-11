@@ -132,7 +132,7 @@ zhtw-mcp lint --content-type plain config.json   # opt out for a non-locale file
 ```
 
 `--fix` never lands inside an escape, and a fix whose replacement would contain a
-double quote or a backslash is dropped, so a fixed file stays valid JSON. If a
+double quote, a backslash or a control character is dropped, so a fixed file stays valid JSON. If a
 string never closes, the whole file is linted as plain text and one line,
 `warning: <file>: not valid JSON, linted as plain text`, goes to stderr; the exit
 code is unchanged and the `--format json` findings are not affected.
@@ -211,8 +211,9 @@ zhtw-mcp lint file.md --rhythm
 
 `--rhythm` turns on the 氣口 checks: a sentence that runs past 30 CJK
 characters without a pause, three or more consecutive sentences closing on the
-same particle (的 / 了 / 呢), and a relaxed 定語堆疊 gate that no longer asks a
-long unbroken span to contain several 的 before reporting it.
+same particle (的 / 了 / 呢), three or more consecutive bare short sentences of
+two to six CJK characters each (短句連發, 它來了。沒有猶豫。沒有退路。), and a
+relaxed 定語堆疊 gate that no longer asks a long unbroken span to contain several 的 before reporting it.
 
 Everything it reports is advisory. Rhythm findings carry `Info` severity, offer
 no suggestion, and are left alone by every `--fix` tier including

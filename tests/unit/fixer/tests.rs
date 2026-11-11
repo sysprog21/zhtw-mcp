@@ -96,7 +96,11 @@ fn make_rhythm_issue(offset: usize, found: &str, family: PhaseFamily) -> Issue {
 #[test]
 fn rhythm_issues_are_never_fixed_at_any_tier() {
     let text = "這份報告詳細說明了整個系統在過去一年之中所有功能的演進過程。";
-    for family in [PhaseFamily::RhythmLongSentence, PhaseFamily::RhythmMonotony] {
+    for family in [
+        PhaseFamily::RhythmLongSentence,
+        PhaseFamily::RhythmMonotony,
+        PhaseFamily::RhythmStaccato,
+    ] {
         // The second issue carries a lone suggestion, which is the write
         // condition for every other issue type. The family has to be what stops
         // it, or a future detector that offers a rewrite hint would start

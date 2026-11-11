@@ -1843,6 +1843,16 @@
       "input": "老師講的內容是我聽過的最實用的",
       "expected_fixed": "老師講的內容是我聽過的最實用的",
       "expected_issues": []
+    },
+    {
+      "id": "native_rhythm_staccato_legit_short_prose",
+      "repeat": 1,
+      "detector": "rhythm",
+      "detect_rhythm": true,
+      "must_be_clean": true,
+      "input": "## 安裝步驟\n\n1. 開機。\n2. 登入。\n3. 儲存。\n\n第一步：開機。第二步：登入。第三步：儲存。\n\n「好。」「走。」「去。」\n\n床前明月光，疑是地上霜。舉頭望明月，低頭思故鄉。\n\n你是誰？我是他。為什麼？\n\n門開了。老人站在門口，手裡提著一袋剛買的橘子。沒有人說話。",
+      "expected_fixed": "## 安裝步驟\n\n1. 開機。\n2. 登入。\n3. 儲存。\n\n第一步：開機。第二步：登入。第三步：儲存。\n\n「好。」「走。」「去。」\n\n床前明月光，疑是地上霜。舉頭望明月，低頭思故鄉。\n\n你是誰？我是他。為什麼？\n\n門開了。老人站在門口，手裡提著一袋剛買的橘子。沒有人說話。",
+      "expected_issues": []
     }
   ]
 }

@@ -4693,3 +4693,71 @@ fn no_ruleset_suggestion_feeds_the_fake_depth_frames() {
         }
     }
 }
+
+// Staccato burst (短句連發戲劇腔) ---------------------------------------
+
+#[test]
+fn staccato_burst_is_not_covered_by_the_other_detectors() {
+    let text = "門開了。它來了。沒有猶豫。沒有退路。我們只能面對。";
+    let issues = scan_rhythm_only(text);
+    assert!(
+        !rhythm_fires(&issues, PhaseFamily::RhythmLongSentence)
+            && !rhythm_fires(&issues, PhaseFamily::RhythmMonotony),
+        "the older rhythm checks already fire: {issues:?}"
+    );
+    let ai = scan_phase2(text);
+    assert!(ai.is_empty(), "a structural detector already fires: {ai:?}");
+}
+
+#[test]
+fn staccato_burst_flags_three_short_sentences_in_a_row() {
+    let text = "它來了。沒有猶豫。沒有退路。";
+    let issues = scan_rhythm_only(text);
+    let hits: Vec<_> = issues
+        .iter()
+        .filter(|i| i.phase_family == Some((PhaseFamily::RhythmStaccato, PhasePass::Indexed)))
+        .collect();
+    assert_eq!(hits.len(), 1, "{issues:?}");
+    assert_eq!(hits[0].severity, Severity::Info);
+    assert!(hits[0].suggestions.is_empty());
+    assert_eq!(hits[0].found, text);
+    assert_eq!(hits[0].rule_type, IssueType::Translationese);
+    assert!(hits[0].structural_family.is_none());
+}
+
+#[test]
+fn staccato_burst_is_one_finding_per_maximal_run() {
+    let text = "它來了。沒有猶豫。沒有退路。沒有人說話。";
+    let issues = scan_rhythm_only(text);
+    let n = issues
+        .iter()
+        .filter(|i| i.phase_family == Some((PhaseFamily::RhythmStaccato, PhasePass::Indexed)))
+        .count();
+    assert_eq!(n, 1, "{issues:?}");
+}
+
+#[test]
+fn staccato_burst_passes_ordinary_short_prose() {
+    for text in [
+        // Two beats are a pair, not a burst.
+        "它來了。沒有猶豫。",
+        // A long sentence breaks the run.
+        "它來了。沒有猶豫。他把門關上，轉身走回屋裡，開始整理明天要帶的東西。沒有退路。",
+        // Colon list items and numbered steps.
+        "第一步：開機。第二步：登入。第三步：儲存。",
+        "1. 開機。2. 登入。3. 儲存。",
+        // Dialogue in quotes and a question exchange.
+        "「好。」「走。」「去。」",
+        "你是誰？我是他。為什麼？",
+        // A paragraph break separates the beats.
+        "它來了。\n\n沒有猶豫。\n\n沒有退路。",
+        // Clauses with commas are not bare beats.
+        "天黑了，路遠。風起了，雲低。人散了，燈滅。",
+    ] {
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmStaccato),
+            "{text}: {issues:?}"
+        );
+    }
+}

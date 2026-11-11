@@ -914,6 +914,8 @@ pub enum PhaseFamily {
     RhythmLongSentence,
     /// Rhythm (氣口): consecutive sentences closing on the same particle.
     RhythmMonotony,
+    /// Rhythm (氣口): a burst of very short sentences in a row.
+    RhythmStaccato,
 }
 
 impl PhaseFamily {
@@ -927,7 +929,10 @@ impl PhaseFamily {
     pub fn is_advisory(self) -> bool {
         matches!(
             self,
-            Self::RhythmLongSentence | Self::RhythmMonotony | Self::RhythmLongPremodifier
+            Self::RhythmLongSentence
+                | Self::RhythmMonotony
+                | Self::RhythmStaccato
+                | Self::RhythmLongPremodifier
         )
     }
 }

@@ -240,9 +240,97 @@ fn scan_rhythm_ending_monotony(em: &mut Emitter<'_>, idx: &crate::engine::senten
     }
 }
 
+// Longest fragment, in CJK characters, that still counts as one beat of a
+// staccato burst, and the shortest: a lone character is an interjection or a
+// reply, not a drumbeat.
+const RHYTHM_STACCATO_MAX_CJK: usize = 6;
+const RHYTHM_STACCATO_MIN_CJK: usize = 2;
+
+// Consecutive fragments before the burst reads as staged drama (它來了。沒有
+// 猶豫。沒有退路。) rather than a short exchange.
+const RHYTHM_STACCATO_RUN: usize = 3;
+
+/// Whether a sentence is one bare beat of a burst: two to six CJK characters closed
+/// by a full stop or exclamation mark, with nothing else in it.
+///
+/// Anything that is not plain CJK plus the closing mark is a different kind of
+/// short sentence. A colon or comma inside (第一步：開機。) is a list item or a
+/// clause pair, a quotation mark is dialogue, a digit or Latin letter is a
+/// numbered step or an identifier, and a question mark is an exchange, not a
+/// pronouncement.
+fn rhythm_is_staccato_beat(s: &str) -> bool {
+    let body = s.trim();
+    let Some(body) = body.strip_suffix('。').or_else(|| body.strip_suffix('！')) else {
+        return false;
+    };
+    let mut n = 0usize;
+    for ch in body.chars() {
+        if !is_cjk_ideograph(ch) {
+            return false;
+        }
+        n += 1;
+    }
+    (RHYTHM_STACCATO_MIN_CJK..=RHYTHM_STACCATO_MAX_CJK).contains(&n)
+}
+
+// Rhythm check 3: RHYTHM_STACCATO_RUN or more consecutive bare beats inside one
+// paragraph. Runs are maximal and an exclusion or a gap the index left breaks
+// one, as in the monotony check. Advisory Info with no suggestion: whether the
+// burst is craft or a tic is the writer's call.
+fn scan_rhythm_staccato(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    for para in &idx.paragraphs {
+        let mut run: Vec<(usize, usize)> = Vec::new();
+        let mut prev_end: Option<usize> = None;
+        let mut flush = |run: &mut Vec<(usize, usize)>| {
+            if run.len() >= RHYTHM_STACCATO_RUN {
+                let start = run[0].0;
+                let end = run[run.len() - 1].1;
+                issues.push(
+                    Issue::new(
+                        start,
+                        end - start,
+                        &text[start..end],
+                        vec![],
+                        IssueType::Translationese,
+                        Severity::Info,
+                    )
+                    .with_phase_family(PhaseFamily::RhythmStaccato, PhasePass::Indexed)
+                    .with_context(format!(
+                        "氣口：短句連發 — 連續 {} 個六字以內的短句，戲劇腔偏重，建議合併或展開",
+                        run.len()
+                    )),
+                );
+            }
+            run.clear();
+        };
+        for sent in idx.sentence_slice(para) {
+            let interrupted =
+                prev_end.is_some_and(|end| is_excluded(end, sent.byte_start, excluded));
+            prev_end = Some(sent.byte_end);
+            if interrupted || is_excluded(sent.byte_start, sent.byte_end, excluded) {
+                flush(&mut run);
+            }
+            if is_excluded(sent.byte_start, sent.byte_end, excluded) {
+                continue;
+            }
+            let raw = &text[sent.byte_start..sent.byte_end];
+            if rhythm_is_staccato_beat(raw) {
+                let start = sent.byte_start + (raw.len() - raw.trim_start().len());
+                let end = sent.byte_start + raw.trim_end().len();
+                run.push((start, end));
+            } else {
+                flush(&mut run);
+            }
+        }
+        flush(&mut run);
+    }
+}
+
 // Entry point for the rhythm axis. Gated by ProfileConfig::rhythm, which is off
 // in every profile, so this runs only when the user asks for it.
 pub(crate) fn scan_rhythm(em: &mut Emitter<'_>, idx: &crate::engine::sentence::BoundaryIndex) {
     scan_rhythm_long_sentence(em, idx);
     scan_rhythm_ending_monotony(em, idx);
+    scan_rhythm_staccato(em, idx);
 }

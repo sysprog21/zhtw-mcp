@@ -878,6 +878,58 @@
           "rule_type": "punctuation"
         }
       ]
+    },
+    {
+      "id": "ai_knowledge_cutoff_first_person",
+      "repeat": 5,
+      "input": "基於我目前掌握的資訊，這個版本尚未釋出修補，我無法確認後續狀況。",
+      "expected_fixed": "基於我目前掌握的資訊，這個版本尚未釋出修補，我無法確認後續狀況。",
+      "expected_issues": [
+        {
+          "found": "基於我目前掌握的資訊",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_collab_opener_help",
+      "repeat": 5,
+      "input": "當然可以，我來幫你說明這個設定的用途。",
+      "expected_fixed": "當然可以，我來幫你說明這個設定的用途。",
+      "expected_issues": [
+        {
+          "found": "當然可以，我來幫你",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_collab_opener_list",
+      "repeat": 5,
+      "input": "當然可以，以下是為你整理的部署步驟。",
+      "expected_fixed": "當然可以，以下是為你整理的部署步驟。",
+      "expected_issues": [
+        {
+          "found": "當然可以，以下是",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_speculative_bio_comma",
+      "repeat": 5,
+      "input": "維護者為人低調，鮮少公開私人生活，細節不明。",
+      "expected_fixed": "維護者為人低調，鮮少公開私人生活，細節不明。",
+      "expected_issues": [
+        {
+          "found": "為人低調，鮮少公開",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
     }
   ]
 }

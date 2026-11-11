@@ -851,6 +851,14 @@ pub enum StructuralFamily {
     FalseRanges,
     MixedReaderAddress,
     StackedPoliteness,
+    /// 假坦率開場: a sentence that opens on a candour marker.
+    FakeCandor,
+    /// 開場宣告: a sentence that announces it will skip the preamble.
+    OpeningAnnouncement,
+    /// 結語套話: a paragraph whose last sentence opens on 由此可見.
+    StockConclusion,
+    /// 假深刻權威語: a cluster of 歸根結底 style frames in one paragraph.
+    FakeDepth,
 }
 
 impl StructuralFamily {

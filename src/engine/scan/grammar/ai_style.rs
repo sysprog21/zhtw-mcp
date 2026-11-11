@@ -2127,3 +2127,218 @@ pub(super) fn scan_ai_hedging_density(
         }
     }
 }
+
+// Positional tells: a stock phrase that is ordinary speech anywhere else and a
+// tell only in one slot of the sentence or paragraph. Each row is its own
+// function so a gate can be tightened without touching the others. They share
+// the switch of the other phase 2 detectors, ai_structural_patterns.
+
+/// Start of a sentence with leading whitespace trimmed, as (absolute offset,
+/// text). None for an excluded sentence, and for one inside an open quotation
+/// or bracket on its line, where the phrase is somebody's reported speech.
+fn positional_sentence<'a>(
+    text: &'a str,
+    excluded: &[ByteRange],
+    sent: &crate::engine::sentence::SentenceBound,
+) -> Option<(usize, &'a str)> {
+    if is_excluded(sent.byte_start, sent.byte_end, excluded) {
+        return None;
+    }
+    let raw = &text[sent.byte_start..sent.byte_end];
+    let body = raw.trim_start();
+    let start = sent.byte_start + (raw.len() - body.len());
+
+    // Quotes are counted from the start of the line, not the sentence: a quoted
+    // passage spans several sentences, and only the first follows the opener.
+    let line_start = text[..start].rfind('\n').map_or(0, |i| i + 1);
+    let mut depth = 0i32;
+    let mut straight = false;
+    for c in text[line_start..start].chars() {
+        match c {
+            '「' | '『' | '“' | '（' | '(' => depth += 1,
+            '」' | '』' | '”' | '）' | ')' => depth -= 1,
+            '"' => straight = !straight,
+            _ => {}
+        }
+    }
+    if depth > 0 || straight {
+        return None;
+    }
+    Some((start, body))
+}
+
+/// 假坦率開場: 說實話？ or 講白了， as the opening of a sentence.
+///
+/// 說實話 inside a sentence, and 說實話， as an opener, are ordinary speech and
+/// stay silent. Only the question form, which stages a confession the text
+/// never makes, and 講白了， opening a sentence are reported.
+pub(super) fn scan_ai_fake_candor(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    const OPENERS: &[&str] = &["說實話？", "說實話?", "講白了，", "講白了,"];
+
+    for para in &idx.paragraphs {
+        for sent in idx.sentence_slice(para) {
+            let Some((start, body)) = positional_sentence(text, excluded, sent) else {
+                continue;
+            };
+            let Some(opener) = OPENERS.iter().find(|o| body.starts_with(**o)) else {
+                continue;
+            };
+            let found = opener.trim_end_matches(['，', ',', '？', '?']);
+            issues.push(
+                ai_style_issue(
+                    start,
+                    found,
+                    "",
+                    "AI structural: 假坦率開場；先聲明坦白不增加資訊，直接說出判斷",
+                    Severity::Info,
+                )
+                .with_structural_family(StructuralFamily::FakeCandor),
+            );
+        }
+    }
+}
+
+/// 開場宣告: 廢話不多說 opening a sentence.
+///
+/// Announcing that the preamble is skipped is itself the preamble. Only the
+/// sentence-initial form is reported. 廢話少說 is a different, ordinary idiom
+/// and is not in the list.
+pub(super) fn scan_ai_opening_announcement(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    const PHRASE: &str = "廢話不多說";
+
+    for para in &idx.paragraphs {
+        for sent in idx.sentence_slice(para) {
+            let Some((start, body)) = positional_sentence(text, excluded, sent) else {
+                continue;
+            };
+            if !body.starts_with(PHRASE) {
+                continue;
+            }
+            issues.push(
+                ai_style_issue(
+                    start,
+                    PHRASE,
+                    "",
+                    "AI structural: 開場宣告；宣告跳過鋪陳本身就是鋪陳，直接進入內容",
+                    Severity::Info,
+                )
+                .with_structural_family(StructuralFamily::OpeningAnnouncement),
+            );
+        }
+    }
+}
+
+/// 結語套話: 由此可見 opening the last sentence of a paragraph.
+///
+/// scan_ai_paragraph_endings already counts 由此可見 among its closers, but
+/// only once three of five or more paragraphs end that way. This reports the
+/// single paragraph-final use. Mid-paragraph 由此可見 is an ordinary
+/// inference marker, and a one-sentence paragraph has no argument above the
+/// closer to be summarised, so both stay silent.
+pub(super) fn scan_ai_stock_conclusion(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    const PHRASE: &str = "由此可見";
+
+    for para in &idx.paragraphs {
+        let sentences = idx.sentence_slice(para);
+        if sentences.len() < 2 {
+            continue;
+        }
+        let Some((start, body)) = sentences
+            .last()
+            .and_then(|s| positional_sentence(text, excluded, s))
+        else {
+            continue;
+        };
+        if !body.starts_with(PHRASE) {
+            continue;
+        }
+        issues.push(
+            ai_style_issue(
+                start,
+                PHRASE,
+                "",
+                "AI structural: 結語套話；段末「由此可見」只是複述上文，刪去或改寫成新的判斷",
+                Severity::Info,
+            )
+            .with_structural_family(StructuralFamily::StockConclusion),
+        );
+    }
+}
+
+/// Frames that claim the next clause is the root of the matter. No ruleset
+/// rule may suggest one of these: the fixer would rewrite a flagged phrase into
+/// a phrase this detector then reports.
+pub(super) const FAKE_DEPTH_FRAMES: &[&str] = &["歸根結底", "歸根究底", "說到底", "真正的問題是"];
+
+/// Words that may precede a frame without changing what it does.
+const FAKE_DEPTH_LEAD_INS: &[&str] = &["但是", "但", "然而", "可是", "而", "所以", "那麼", "其實"];
+
+/// 假深刻權威語: two distinct depth frames opening sentences of one paragraph.
+///
+/// Each frame alone is common in competent prose, so a single use is silent.
+/// A paragraph that reaches for two different ones to announce its own
+/// conclusion is the tell. Reported once per paragraph, at the first frame.
+pub(super) fn scan_ai_fake_depth(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+
+    for para in &idx.paragraphs {
+        // (offset, frame) of each sentence-initial frame, in order.
+        let mut hits: Vec<(usize, &'static str)> = Vec::new();
+        for sent in idx.sentence_slice(para) {
+            let Some((start, body)) = positional_sentence(text, excluded, sent) else {
+                continue;
+            };
+            let mut rest = body;
+            if let Some(lead) = FAKE_DEPTH_LEAD_INS.iter().find(|l| rest.starts_with(**l)) {
+                rest = rest[lead.len()..].trim_start_matches(['，', ',']);
+            }
+            if let Some(frame) = FAKE_DEPTH_FRAMES.iter().find(|f| rest.starts_with(**f)) {
+                hits.push((start + (body.len() - rest.len()), frame));
+            }
+        }
+        let distinct: std::collections::BTreeSet<&str> = hits.iter().map(|&(_, f)| f).collect();
+        if distinct.len() < 2 {
+            continue;
+        }
+        let (offset, frame) = hits[0];
+        issues.push(
+            ai_style_issue(
+                offset,
+                frame,
+                "",
+                &format!(
+                    "AI structural: 假深刻權威語 ×{}；同一段用多個「歸根結底」式句型宣告結論，\
+                     直接寫出結論",
+                    hits.len()
+                ),
+                Severity::Info,
+            )
+            .with_structural_family(StructuralFamily::FakeDepth),
+        );
+    }
+}
+
+pub(super) fn scan_ai_positional_tells(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    scan_ai_fake_candor(em, idx);
+    scan_ai_opening_announcement(em, idx);
+    scan_ai_stock_conclusion(em, idx);
+    scan_ai_fake_depth(em, idx);
+}

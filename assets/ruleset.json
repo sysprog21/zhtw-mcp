@@ -3806,6 +3806,16 @@
       "english": "object based"
     },
     {
+      "from": "基於我目前掌握的資訊",
+      "to": [],
+      "type": "ai_filler",
+      "context": "AI knowledge-cutoff disclaimer in the first person; gated on a hedge that shows the cutoff sense, since a human reporting status says the bare phrase too. State the source and date concretely instead",
+      "source": "ai_knowledge_cutoff_first_person",
+      "context_clues": ["無法確認", "無法保證", "無法驗證", "可能已", "最新消息", "最新資訊", "以官方為準", "請查證"],
+      "negative_context_clues": ["://", "「", "他說", "她說", "表示"],
+      "tags": ["src:humanizer"]
+    },
+    {
       "from": "基於消息的",
       "to": ["以訊息為基礎的"],
       "type": "cross_strait",
@@ -8759,6 +8769,15 @@
       "tags": ["src:humanizer"]
     },
     {
+      "from": "為人低調，鮮少公開",
+      "to": [],
+      "type": "ai_filler",
+      "context": "Speculative biographical filler without evidence; comma form of the rule below, which spelling matching cannot reach across punctuation",
+      "source": "ai_speculative_bio_comma",
+      "negative_context_clues": ["://", "doi", "參見", "註", "受訪", "本人", "自稱", "「"],
+      "tags": ["src:humanizer"]
+    },
+    {
       "from": "烏茲別克斯坦",
       "to": ["烏茲別克"],
       "type": "cross_strait",
@@ -9354,6 +9373,26 @@
       "type": "ai_filler",
       "context": "sycophantic chatbot opener; the answer shows the agreement",
       "negative_context_clues": ["當然可以，", "當然可以。"],
+      "tags": ["src:humanizer"]
+    },
+    {
+      "from": "當然可以，以下是",
+      "to": [],
+      "type": "ai_filler",
+      "context": "sycophantic chatbot opener paired with a list lead-in; bare 當然可以， stays unflagged as ordinary speech, so this needs an addressee or deliverable nearby",
+      "source": "ai_collab_opener_list",
+      "context_clues": ["為你", "為您", "幫你", "幫您", "整理", "範例", "步驟", "重點"],
+      "negative_context_clues": ["「", "『", "他說", "她說", "回答", "回覆"],
+      "tags": ["src:humanizer"]
+    },
+    {
+      "from": "當然可以，我來幫你",
+      "to": [],
+      "type": "ai_filler",
+      "context": "sycophantic chatbot opener paired with an offer to help; bare 當然可以， stays unflagged as ordinary speech, so this needs a task verb nearby",
+      "source": "ai_collab_opener_help",
+      "context_clues": ["說明", "整理", "解釋", "分析", "介紹", "解答", "撰寫", "改寫", "翻譯"],
+      "negative_context_clues": ["「", "『", "他說", "她說", "回答", "回覆"],
       "tags": ["src:humanizer"]
     },
     {
@@ -12254,9 +12293,9 @@
     },
     {
       "from": "說白了",
-      "to": ["說到底", "歸根究底"],
+      "to": ["簡單來說", "簡單地說"],
       "type": "translationese",
-      "context": "PRC colloquial discourse marker (basically); zh-TW formal/informal both use 說到底 or 歸根究底",
+      "context": "PRC colloquial discourse marker (basically); zh-TW says 簡單來說. Not 說到底 or 歸根結底, which are fake-depth frames the structural scan reports",
       "english": "basically (colloquial)",
       "tags": ["src:cuimao", "topic:false_friends"]
     },

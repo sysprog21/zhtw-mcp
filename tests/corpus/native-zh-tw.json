@@ -1666,6 +1666,163 @@
       "input": "他去過的地方是我最想去的。",
       "expected_fixed": "他去過的地方是我最想去的。",
       "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_public_data_report",
+      "repeat": 1,
+      "input": "基於現有公開資料，本季報告估計國內市場規模約三百億元。",
+      "must_be_clean": true,
+      "expected_fixed": "基於現有公開資料，本季報告估計國內市場規模約三百億元。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_first_person_status_report",
+      "repeat": 1,
+      "input": "基於我目前掌握的資訊，這次延遲是供應商造成的，我會在週五前回報。",
+      "must_be_clean": true,
+      "expected_fixed": "基於我目前掌握的資訊，這次延遲是供應商造成的，我會在週五前回報。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_customer_service_reschedule",
+      "repeat": 1,
+      "input": "客人問能不能改期，我說當然可以，我來幫你換成週三的場次。",
+      "must_be_clean": true,
+      "expected_fixed": "客人問能不能改期，我說當然可以，我來幫你換成週三的場次。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_faq_answer_with_citation",
+      "repeat": 1,
+      "input": "你問能不能補考？當然可以，以下是校規第三條的原文。",
+      "must_be_clean": true,
+      "expected_fixed": "你問能不能補考？當然可以，以下是校規第三條的原文。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_interviewee_self_description",
+      "repeat": 1,
+      "input": "他在受訪時說自己為人低調，鮮少公開演講，這次是破例。",
+      "must_be_clean": true,
+      "expected_fixed": "他在受訪時說自己為人低調，鮮少公開演講，這次是破例。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_candor_midsentence",
+      "repeat": 1,
+      "input": "我說實話，這個決定想了很久，也和家人談過。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "我說實話，這個決定想了很久，也和家人談過。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_candor_comma_opener",
+      "repeat": 1,
+      "input": "說實話，這份草稿還需要兩位同事再看一輪才能送出。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "說實話，這份草稿還需要兩位同事再看一輪才能送出。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_candor_quoted_speech",
+      "repeat": 1,
+      "input": "他苦笑著說：「講白了，就是預算不夠。」會議室安靜了一下。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "他苦笑著說：「講白了，就是預算不夠。」會議室安靜了一下。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_candor_quoted_question",
+      "repeat": 1,
+      "input": "記者問他：「說實話？」他搖搖頭，沒有回答。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "記者問他：「說實話？」他搖搖頭，沒有回答。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_announce_midsentence",
+      "repeat": 1,
+      "input": "他常把廢話不多說掛在嘴邊，開會卻總是講最久。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "他常把廢話不多說掛在嘴邊，開會卻總是講最久。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_announce_quoted",
+      "repeat": 1,
+      "input": "老闆在群組裡交代：「廢話不多說，週五前要交。」大家都照辦。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "老闆在群組裡交代：「廢話不多說，週五前要交。」大家都照辦。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_announce_idiom_shao",
+      "repeat": 1,
+      "input": "廢話少說，先把測試跑完再討論下一步。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "廢話少說，先把測試跑完再討論下一步。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_conclusion_midparagraph",
+      "repeat": 1,
+      "input": "兩次壓測的結果相同。由此可見，瓶頸不在網路層。我們接著檢查磁碟的佇列深度。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "兩次壓測的結果相同。由此可見，瓶頸不在網路層。我們接著檢查磁碟的佇列深度。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_conclusion_single_sentence",
+      "repeat": 1,
+      "input": "由此可見，這項設計取捨符合當時的人力限制。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "由此可見，這項設計取捨符合當時的人力限制。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_conclusion_quoted",
+      "repeat": 1,
+      "input": "審查意見寫道：「兩次壓測結果相同。由此可見，瓶頸在儲存層。」",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "審查意見寫道：「兩次壓測結果相同。由此可見，瓶頸在儲存層。」",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_depth_single_frame",
+      "repeat": 1,
+      "input": "團隊討論了三週。歸根結底，這個取捨來自人力限制。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "團隊討論了三週。歸根結底，這個取捨來自人力限制。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_depth_midsentence",
+      "repeat": 1,
+      "input": "他認為歸根結底是預算問題，也有人覺得說到底是人力不足。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "他認為歸根結底是預算問題，也有人覺得說到底是人力不足。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_depth_split_paragraphs",
+      "repeat": 1,
+      "input": "歸根結底，這個取捨來自人力限制。\n\n說到底，每個團隊都要在時程與品質之間選一邊。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "歸根結底，這個取捨來自人力限制。\n\n說到底，每個團隊都要在時程與品質之間選一邊。",
+      "expected_issues": []
     }
   ]
 }

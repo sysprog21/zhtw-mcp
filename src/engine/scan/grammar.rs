@@ -1298,6 +1298,7 @@ pub(crate) fn scan_ai_structural_phase2(
     scan_ai_abstract_line_metaphor(em, boundary_index);
     scan_ai_repeated_parallel_slogan(em, boundary_index);
     scan_ai_rhetorical_self_qa(em, boundary_index);
+    scan_ai_positional_tells(em, boundary_index);
 
     // assert, not debug_assert: compiled out, this checks nothing in the build
     // people run, and the cost is one pass over the findings just pushed,

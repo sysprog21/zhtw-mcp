@@ -4523,3 +4523,156 @@ fn zy5_under_rhythm_exempts_a_span_broken_by_an_aside() {
         "the aside is a pause: {on:?}"
     );
 }
+
+fn has_family(issues: &[Issue], family: StructuralFamily) -> bool {
+    issues
+        .iter()
+        .any(|i| i.structural_family == Some(family) && i.suggestions.is_empty())
+}
+
+#[test]
+fn fake_candor_opener_fires_only_as_a_sentence_opener() {
+    for text in [
+        "團隊評估了三個月。說實話？我們一開始也沒想到。\n\n後續再補。",
+        "團隊評估了三個月。講白了，是設計太急。\n\n後續再補。",
+        "講白了，這是流程問題。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(has_family(&issues, StructuralFamily::FakeCandor), "{text}");
+        let hit = issues
+            .iter()
+            .find(|i| i.structural_family == Some(StructuralFamily::FakeCandor))
+            .unwrap();
+        assert_eq!(hit.severity, Severity::Info);
+        assert!(text[hit.offset..].starts_with(hit.found.as_str()));
+    }
+}
+
+#[test]
+fn fake_candor_leaves_ordinary_speech_alone() {
+    for text in [
+        // 說實話 mid-sentence and as a comma opener are ordinary speech.
+        "我說實話，這個決定想了很久。",
+        "說實話，這個決定我想了很久。",
+        // Reported speech.
+        "他笑著說：「講白了，就是沒錢。」",
+        // Not a sentence opener.
+        "這份報告寫得很白，講白了，是給外行看的。",
+        "他問我：「說實話？」我點了點頭。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::FakeCandor),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn opening_announcement_fires_only_sentence_initially() {
+    for text in [
+        "廢話不多說，直接看結果。延遲降到八十毫秒。",
+        "壓測做完了。廢話不多說，先看數字。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            has_family(&issues, StructuralFamily::OpeningAnnouncement),
+            "{text}"
+        );
+    }
+    for text in [
+        "他常說廢話不多說，結果話最多。",
+        "老闆交代：「廢話不多說，今天就要交。」",
+        "廢話少說，開始吧。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::OpeningAnnouncement),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn positional_tells_skip_later_sentences_of_a_quotation() {
+    // Only the first sentence of a quotation follows the opening mark, so the
+    // check has to count quotes from the start of the line.
+    for text in [
+        "老闆交代：「大家先別慌。廢話不多說，今天就要交。」",
+        "他說：「別急。講白了，就是沒錢。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::OpeningAnnouncement)
+                && !has_family(&issues, StructuralFamily::FakeCandor),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn stock_conclusion_fires_on_the_paragraph_final_sentence_only() {
+    let text =
+        "三個節點在第二輪完成同步，其餘兩個花了更久。由此可見，網路分區是主因。\n\n後續再補。";
+    let issues = scan_phase2(text);
+    assert!(has_family(&issues, StructuralFamily::StockConclusion));
+
+    for text in [
+        // Mid-paragraph inference marker.
+        "三個節點在第二輪完成同步。由此可見，網路分區不是主因。我們接著檢查磁碟。",
+        // A one-sentence paragraph has nothing above it to summarise.
+        "由此可見，網路分區是主因。\n\n後續再補。",
+        // Reported speech.
+        "委員說：「兩次壓測結果相同。由此可見，瓶頸在儲存層。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::StockConclusion),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn fake_depth_needs_two_distinct_frames_in_one_paragraph() {
+    let text = "團隊討論了三週。真正的問題是流程。歸根結底，這是組織問題。";
+    let issues = scan_phase2(text);
+    assert!(has_family(&issues, StructuralFamily::FakeDepth));
+
+    for text in [
+        // One frame is ordinary prose.
+        "團隊討論了三週。歸根結底，這是組織問題。",
+        // The same frame twice is one frame.
+        "說到底，沒人負責。我們再看一次，說到底，還是沒人負責。",
+        // Two frames in different paragraphs.
+        "歸根結底，這是組織問題。\n\n說到底，沒人負責。",
+        // Mid-sentence frames are not openers.
+        "他認為歸根結底是預算，也有人覺得說到底是人力。",
+        // Quoted speech.
+        "他說：「歸根結底，這是組織問題。說到底，沒人負責。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::FakeDepth),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn no_ruleset_suggestion_feeds_the_fake_depth_frames() {
+    // 說白了 once suggested 說到底 and 歸根究底: the fixer would swap one
+    // finding for the cluster this detector reports.
+    let ruleset: crate::rules::ruleset::Ruleset =
+        serde_json::from_str(include_str!("../../../../../assets/ruleset.json"))
+            .expect("embedded ruleset parses");
+    for rule in &ruleset.spelling_rules {
+        for to in rule.to.iter() {
+            assert!(
+                !FAKE_DEPTH_FRAMES.iter().any(|f| to.contains(f)),
+                "rule {:?} suggests the fake-depth frame {to:?}",
+                rule.from
+            );
+        }
+    }
+}

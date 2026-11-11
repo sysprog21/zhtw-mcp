@@ -937,7 +937,7 @@ impl Scanner {
     /// independently of eval/overlap/line-col).  Returns `None` when the
     /// scanner fell back to bytewise AC (daachorse build failure).
     pub fn ac_charwise(&self) -> Option<&daachorse::CharwiseDoubleArrayAhoCorasick<usize>> {
-        self.spelling_db.ac_charwise.as_ref()
+        self.spelling_db.patterns.charwise.as_ref()
     }
 
     /// Build boundary bitmap for the given text (for benchmarking).
@@ -964,7 +964,8 @@ impl Scanner {
         let mut issues = Vec::new();
         let mut clue_buf = Vec::new();
         let mut em = Emitter::new(text, excluded, &mut issues);
-        self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap);
+        let register = std::cell::OnceCell::new();
+        self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap, &register);
         issues.len()
     }
 
@@ -987,7 +988,8 @@ impl Scanner {
         let mut clue_buf = Vec::new();
         let mut em = Emitter::new(text, excluded, &mut issues);
         if cfg.lexical_pass_enabled() {
-            self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap);
+            let register = std::cell::OnceCell::new();
+            self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap, &register);
         }
         if cfg.casing {
             self.scan_case(&mut em);
@@ -1095,59 +1097,34 @@ impl Scanner {
         }
     }
 
-    /// Drop issues from rules whose register restriction the document does not
-    /// meet. The register is the one the structural passes use, so an explicit
-    /// override applies here too, and it is resolved only when a gated rule
-    /// actually matched.
-    fn apply_register_gates(
-        &self,
-        text: &str,
-        excluded: &[ByteRange],
-        cfg: &ProfileConfig,
-        register: &std::cell::OnceCell<Register>,
-        issues: &mut Vec<Issue>,
-    ) {
-        let db = &self.spelling_db;
-        if !db.has_register_gates {
-            return;
-        }
-        let gate_of = |issue: &Issue| {
-            issue
-                .spelling_rule_idx
-                .and_then(|i| db.spelling_register[i])
-        };
-        if !issues.iter().any(|i| gate_of(i).is_some()) {
-            return;
-        }
-        let register = *register.get_or_init(|| resolve_register(text, excluded, cfg.register));
-        issues.retain(|issue| gate_of(issue).is_none_or(|gate| gate.admits(register)));
-    }
-
     /// Access the internal segmenter for context-clue analysis.
     pub fn segmenter(&self) -> &Segmenter {
         &self.segmenter
     }
 
-    /// Force the scanner to use the bytewise AC fallback path for testing.
-    /// Disables charwise and builds bytewise if not already present.
+    /// Force the scanner onto the bytewise AC fallback path for testing, in
+    /// the full automaton and in the register subsets.
     #[cfg(test)]
     fn force_bytewise(&mut self) {
-        if self.spelling_db.ac_bytewise.is_none() {
-            let patterns: Vec<&str> = self
-                .spelling_db
-                .spelling_rules
-                .iter()
-                .map(|r| r.from.as_str())
-                .chain(self.spelling_db.absorber_strings.iter().map(|s| s.as_str()))
-                .collect();
-            self.spelling_db.ac_bytewise = Some(
-                AhoCorasickBuilder::new()
-                    .match_kind(MatchKind::LeftmostLongest)
-                    .build(&patterns)
-                    .expect("build bytewise AC for test"),
-            );
-        }
-        self.spelling_db.ac_charwise = None;
+        let db = &mut self.spelling_db;
+        let patterns: Vec<(&str, usize)> = db
+            .spelling_rules
+            .iter()
+            .map(|r| r.from.as_str())
+            .chain(db.absorber_strings.iter().map(|s| s.as_str()))
+            .enumerate()
+            .map(|(i, p)| (p, i))
+            .collect();
+        db.patterns = rule_ir::PatternSet::build(&patterns, rule_ir::BuildFault::Charwise);
+        self.force_subset_fault(rule_ir::BuildFault::Charwise);
+    }
+
+    /// Drop the register subsets so they are rebuilt under the fault, leaving
+    /// the full automaton as it is.
+    #[cfg(test)]
+    fn force_subset_fault(&mut self, fault: rule_ir::BuildFault) {
+        self.spelling_db.subset_fault = fault;
+        self.spelling_db.register_subsets = Default::default();
     }
 
     /// Scan text with Profile::Base and return all issues found.
@@ -1457,9 +1434,10 @@ impl Scanner {
         cfg: &ProfileConfig,
         clue_index: &mut Vec<(usize, u16)>,
         boundary_bitmap: &BoundaryBitmap,
+        register: &std::cell::OnceCell<Register>,
     ) {
         if cfg.lexical_pass_enabled() {
-            self.scan_spelling(em, zh_type, cfg, clue_index, boundary_bitmap);
+            self.scan_spelling(em, zh_type, cfg, clue_index, boundary_bitmap, register);
         }
         if cfg.casing {
             self.scan_case(em);
@@ -1604,8 +1582,18 @@ impl Scanner {
             ref mut overlap_accepted,
         } = *scratch;
 
+        // Resolved lazily: by the spelling scan when it meets a gated pattern,
+        // by the structural passes otherwise.
+        let register = std::cell::OnceCell::new();
         let mut em = Emitter::new(text, excluded, issues);
-        self.run_lexical_passes(&mut em, zh_type, &cfg, clue_index, &boundary_bitmap);
+        self.run_lexical_passes(
+            &mut em,
+            zh_type,
+            &cfg,
+            clue_index,
+            &boundary_bitmap,
+            &register,
+        );
 
         // All scanners (AC, punctuation, spacing, ellipsis, quotes) emit issues
         // in offset order. Skip the O(n log n) sort when already sorted (common
@@ -1616,12 +1604,6 @@ impl Scanner {
         if !already_sorted {
             issues.sort_by(|a, b| a.offset.cmp(&b.offset).then(b.length.cmp(&a.length)));
         }
-
-        // A rule restricted to one register drops out before overlap
-        // resolution, so a finding the document's register licenses cannot
-        // shadow a narrower one beside it.
-        let register = std::cell::OnceCell::new();
-        self.apply_register_gates(text, excluded, &cfg, &register, issues);
 
         // Remove overlapping issues: longer match wins; on tie, higher severity
         // wins. Handles both same-offset and cross-offset overlaps.

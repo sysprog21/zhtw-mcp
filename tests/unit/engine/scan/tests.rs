@@ -366,7 +366,7 @@ fn api_case_correct_alternatives() {
 fn charwise_ac_is_built_for_cjk_patterns() {
     let scanner = Scanner::new(sample_spelling_rules(), vec![]);
     assert!(
-        scanner.spelling_db.ac_charwise.is_some(),
+        scanner.spelling_db.patterns.charwise.is_some(),
         "charwise AC should be built for CJK-only patterns"
     );
 }
@@ -433,7 +433,7 @@ fn charwise_leftmost_longest_on_overlapping_patterns() {
         SpellingRule::new("數據庫", vec!["資料庫".into()], RuleType::CrossStrait),
     ];
     let scanner = Scanner::new(rules, vec![]);
-    assert!(scanner.spelling_db.ac_charwise.is_some());
+    assert!(scanner.spelling_db.patterns.charwise.is_some());
 
     let issues = scanner.scan("這個數據庫很大").issues;
     assert_eq!(issues.len(), 1);
@@ -450,7 +450,7 @@ fn charwise_single_char_cjk_pattern() {
         RuleType::Variant,
     )];
     let scanner = Scanner::new(rules, vec![]);
-    assert!(scanner.spelling_db.ac_charwise.is_some());
+    assert!(scanner.spelling_db.patterns.charwise.is_some());
 
     let issues = scanner.scan_profiled("裏面有東西", Profile::Strict).issues;
     assert_eq!(issues.len(), 1);
@@ -470,7 +470,7 @@ fn charwise_mixed_cjk_ascii_patterns() {
         ),
     ];
     let scanner = Scanner::new(rules, vec![]);
-    assert!(scanner.spelling_db.ac_charwise.is_some());
+    assert!(scanner.spelling_db.patterns.charwise.is_some());
 
     let issues = scanner.scan("查看IP地址和CPU使用率").issues;
     let spelling: Vec<_> = issues
@@ -684,7 +684,7 @@ fn charwise_exception_phrase_respected() {
         ..SpellingRule::new("著", vec!["著".into()], RuleType::Variant)
     }];
     let scanner = Scanner::new(rules, vec![]);
-    assert!(scanner.spelling_db.ac_charwise.is_some());
+    assert!(scanner.spelling_db.patterns.charwise.is_some());
 
     // "下著" is an exception: should not fire.
     let issues = scanner.scan_profiled("下著棋", Profile::Strict).issues;
@@ -702,7 +702,7 @@ fn charwise_context_clues_gate() {
         ..SpellingRule::new("支持", vec!["支援".into()], RuleType::CrossStrait)
     }];
     let scanner = Scanner::new(rules, vec![]);
-    assert!(scanner.spelling_db.ac_charwise.is_some());
+    assert!(scanner.spelling_db.patterns.charwise.is_some());
 
     // No context clue present: should NOT fire.
     let issues = scanner.scan("我支持你的決定").issues;
@@ -725,7 +725,7 @@ fn charwise_negative_clues_veto() {
         ..SpellingRule::new("卸載", vec!["解除安裝".into()], RuleType::CrossStrait)
     }];
     let scanner = Scanner::new(rules, vec![]);
-    assert!(scanner.spelling_db.ac_charwise.is_some());
+    assert!(scanner.spelling_db.patterns.charwise.is_some());
 
     // No negative clue: should fire.
     let issues = scanner.scan("請卸載這個應用程式").issues;
@@ -768,7 +768,7 @@ fn charwise_many_patterns_same_prefix() {
         SpellingRule::new("數據結構", vec!["資料結構".into()], RuleType::CrossStrait),
     ];
     let scanner = Scanner::new(rules, vec![]);
-    assert!(scanner.spelling_db.ac_charwise.is_some());
+    assert!(scanner.spelling_db.patterns.charwise.is_some());
 
     // Leftmost-longest: "數據結構" beats "數據" beats "數".
     let issues = scanner.scan("學習數據結構").issues;
@@ -794,7 +794,7 @@ fn charwise_adjacent_non_overlapping_matches() {
         SpellingRule::new("開發", vec!["研發".into()], RuleType::CrossStrait),
     ];
     let scanner = Scanner::new(rules, vec![]);
-    assert!(scanner.spelling_db.ac_charwise.is_some());
+    assert!(scanner.spelling_db.patterns.charwise.is_some());
 
     // "軟件開發": both patterns match adjacently.
     let issues = scanner.scan("軟件開發很重要").issues;
@@ -809,7 +809,7 @@ fn charwise_full_ruleset_builds() {
     let ruleset = crate::rules::loader::load_embedded_ruleset().unwrap();
     let scanner = Scanner::new(ruleset.spelling_rules, ruleset.case_rules);
     assert!(
-        scanner.spelling_db.ac_charwise.is_some(),
+        scanner.spelling_db.patterns.charwise.is_some(),
         "charwise AC should build for the full embedded ruleset"
     );
 }

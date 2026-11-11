@@ -1020,6 +1020,71 @@
     }
 
     #[test]
+    fn bytewise_fallback_also_scans_without_a_rejected_gated_rule() {
+        let mut scanner = Scanner::new(
+            vec![
+                register_gated_rule("特此公告", RegisterGate::Casual),
+                SpellingRule::new("公告", vec!["佈告".into()], RuleType::CrossStrait),
+            ],
+            vec![],
+        );
+        scanner.force_bytewise();
+        let text = "我們特此公告，大家都知道了。";
+        assert!(found_in(&scanner, text, RegisterMode::Formal, "公告"));
+        assert!(found_in(&scanner, text, RegisterMode::Casual, "特此公告"));
+        assert!(!found_in(&scanner, text, RegisterMode::Casual, "公告"));
+    }
+
+    fn gated_overlap_scanner() -> Scanner {
+        Scanner::new(
+            vec![
+                register_gated_rule("特此公告", RegisterGate::Casual),
+                SpellingRule::new("公告", vec!["佈告".into()], RuleType::CrossStrait),
+                SpellingRule::new("軟件", vec!["軟體".into()], RuleType::CrossStrait),
+            ],
+            vec![],
+        )
+    }
+
+    #[test]
+    fn bytewise_register_subset_keeps_the_shorter_rule() {
+        // Full automaton stays charwise; only the subset build is forced onto
+        // the bytewise path, so its id map is what maps hits back to rules.
+        let mut scanner = gated_overlap_scanner();
+        scanner.force_subset_fault(rule_ir::BuildFault::Charwise);
+        let text = "軟件更新，我們特此公告。";
+        assert!(found_in(&scanner, text, RegisterMode::Formal, "公告"));
+        assert!(found_in(&scanner, text, RegisterMode::Formal, "軟件"));
+        assert!(!found_in(&scanner, text, RegisterMode::Formal, "特此公告"));
+        let sub = scanner.spelling_db.register_subset(Register::Formal);
+        assert!(sub.charwise.is_none() && sub.bytewise.is_some());
+    }
+
+    #[test]
+    fn unbuildable_register_subset_falls_back_to_skipping_hits() {
+        // Neither subset matcher builds: the scan must still report its ungated
+        // issues. It keeps the full automaton and drops the rejected gated hit,
+        // which is the behavior before the subsets existed.
+        let mut scanner = gated_overlap_scanner();
+        scanner.force_subset_fault(rule_ir::BuildFault::Both);
+        let text = "軟件更新，我們特此公告。";
+        let formal = |s: &Scanner| {
+            let cfg = Profile::Base.config().with_register(RegisterMode::Formal);
+            s.scan_with_config(text, &[], cfg)
+                .issues
+                .into_iter()
+                .map(|i| i.found)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(formal(&scanner), ["軟件"]);
+        assert!(!scanner
+            .spelling_db
+            .register_subset(Register::Formal)
+            .is_usable());
+        assert!(found_in(&scanner, text, RegisterMode::Casual, "特此公告"));
+    }
+
+    #[test]
     fn casual_gated_rule_fires_only_outside_a_formal_document() {
         let scanner = Scanner::new(
             vec![register_gated_rule("鑑於", RegisterGate::Casual)],

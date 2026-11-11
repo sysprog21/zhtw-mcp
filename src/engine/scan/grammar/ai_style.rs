@@ -2575,7 +2575,14 @@ const STOCK_CONCLUSION_MAX_CHARS: usize = 20;
 
 /// Cues that only a reported study names: its subjects, instrument or
 /// statistic. A paragraph needs at least one of these.
-const STUDY_HARD_CUES: &[&str] = &["受試者", "施測", "迴歸", "相關係數", "效果量"];
+const STUDY_HARD_CUES: &[&str] = &[
+    "受試者",
+    "施測",
+    "迴歸分析",
+    "迴歸係數",
+    "相關係數",
+    "效果量",
+];
 
 /// Cues that also appear in ordinary prose (樣本機, 顯著提升), counted only
 /// beside a hard cue.
@@ -2598,8 +2605,8 @@ const STUDY_MIN_CUES: usize = 3;
 /// closer: a qualified, specific inference. The tell is the bare verdict that
 /// only repeats the paragraph, which is short. A closer longer than
 /// STOCK_CONCLUSION_MAX_CHARS is an elaborated inference and stays silent.
-/// A paragraph above the closer that reads as a reported study (see
-/// STUDY_HARD_CUES) stays silent too.
+/// The text above the closer in its paragraph, when it reads as a reported
+/// study (see STUDY_HARD_CUES), keeps the closer silent too.
 pub(super) fn scan_ai_stock_conclusion(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
@@ -2635,7 +2642,7 @@ pub(super) fn scan_ai_stock_conclusion(
         let above = &text[para.byte_start..start];
         let hits = |cues: &[&str]| cues.iter().filter(|c| above.contains(**c)).count();
         let hard = hits(STUDY_HARD_CUES);
-        if hard >= 1 && hard + hits(STUDY_WEAK_CUES) >= STUDY_MIN_CUES {
+        if hard >= 1 && (hard >= STUDY_MIN_CUES || hard + hits(STUDY_WEAK_CUES) >= STUDY_MIN_CUES) {
             continue;
         }
         issues.push(

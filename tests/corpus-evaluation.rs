@@ -358,6 +358,32 @@ fn evaluate_native_corpus(
     (native, fix, total_bytes)
 }
 
+/// Digest of a corpus's case ids and inputs, taken in id order so reordering
+/// the file does not change it. Each field is length-prefixed, so two corpora
+/// cannot collide by moving bytes between an id and an input. A result figure
+/// quoted in a doc is only comparable while this value is unchanged.
+fn corpus_input_digest(spec: &CorpusSpec) -> String {
+    let mut cases: Vec<&CorpusCase> = spec.cases.iter().collect();
+    cases.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut hasher = blake3::Hasher::new();
+    for case in cases {
+        for field in [case.id.as_bytes(), case.input.as_bytes()] {
+            hasher.update(&(field.len() as u64).to_le_bytes());
+            hasher.update(field);
+        }
+    }
+    hasher.finalize().to_hex()[..16].to_string()
+}
+
+fn print_inputs_line(spec: &CorpusSpec) {
+    println!(
+        "inputs: {} cases={} blake3={}",
+        spec.id,
+        spec.cases.len(),
+        corpus_input_digest(spec)
+    );
+}
+
 fn print_positive_report(spec: &CorpusSpec, score: &ScoreCounts, fix: &FixCounts, bytes: usize) {
     println!(
         "{:<24} bytes={:>6}  precision={:>5.1}%  recall={:>5.1}%  safe_fix={:>5.1}%  tp={} fp={} fn={}  {}",
@@ -459,6 +485,9 @@ fn corpus_evaluation_suite() {
         precision(&aggregate),
         recall(&aggregate),
     );
+    for spec in [&ai, &native, &cn] {
+        print_inputs_line(spec);
+    }
     println!();
     // Printed before the gates so the caveats appear even when one fails.
     println!("Caveats: the corpora are synthetic and small. Precision is per matched issue,");

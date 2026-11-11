@@ -4084,6 +4084,23 @@ fn zy5_passes_when_a_predicate_separates_the_de_phrases() {
 }
 
 #[test]
+fn zy5_passes_when_a_copula_separates_the_de_phrases() {
+    // 老師教的方法 is the subject and 我用過的最有效的 the predicate of a 是
+    // clause, not one stacked modifier. Both were native-corpus false
+    // positives.
+    for text in [
+        "老師教的方法是我用過的最有效的",
+        "老師講的內容是我聽過的最實用的",
+    ] {
+        let issues = scan_general(text);
+        assert!(
+            !fires(&issues, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+            "unexpected ZY5 for {text:?}: {issues:?}"
+        );
+    }
+}
+
+#[test]
 fn marker_words_are_all_two_characters() {
     // opens_a_predicate masks with two fixed-width window lookups, so a longer
     // entry would be silently ignored rather than masking anything.

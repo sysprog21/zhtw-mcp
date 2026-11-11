@@ -1428,14 +1428,17 @@ pub(super) const MARKER_WORDS: &[&str] = &[
     "便當", "便宜", "便條", "便捷", "便民", "便箋",
     // 卻.  Absent on purpose: 除卻 and 省卻 are verbs.
     "忘卻", "退卻", "冷卻", "推卻", "了卻", "拋卻", "卻步", // 也
-    "也許",
+    "也許", // 是. A copula between two 的 closes the first noun phrase, as in
+    // 老師教的方法是我用過的最有效的. Absent on purpose: 是否 is a predicate.
+    "是非", "國是",
 ];
 
 /// Adverbs and auxiliaries that open a predicate.  See `first_predicate_close`.
+/// 是 splits a chain into subject and predicate (X的N是Y的), the 是…的 frame.
 /// 要 and 能 are excluded because they would match inside 需要 and 才能, which
 /// appear in genuine pre-modifier chains.
 const PREDICATE_MARKERS: &[&str] = &[
-    "也", "就", "才", "卻", "便", "可以", "應該", "必須", "已經", "正在",
+    "也", "就", "才", "卻", "便", "是", "可以", "應該", "必須", "已經", "正在",
 ];
 
 /// What a span has to clear before ZY5 will report it.

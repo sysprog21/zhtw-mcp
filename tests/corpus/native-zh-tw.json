@@ -1823,6 +1823,26 @@
       "must_be_clean": true,
       "expected_fixed": "歸根結底，這個取捨來自人力限制。\n\n說到底，每個團隊都要在時程與品質之間選一邊。",
       "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_teacher_method",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "must_be_clean": true,
+      "input": "老師教的方法是我用過的最有效的",
+      "expected_fixed": "老師教的方法是我用過的最有效的",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_teacher_content",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "must_be_clean": true,
+      "input": "老師講的內容是我聽過的最實用的",
+      "expected_fixed": "老師講的內容是我聽過的最實用的",
+      "expected_issues": []
     }
   ]
 }

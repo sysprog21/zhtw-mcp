@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use zhtw_mcp::engine::s2t::S2TConverter;
 use zhtw_mcp::engine::scan::{build_exclusions_for_content_type, ContentType, Scanner};
 use zhtw_mcp::engine::segment::Segmenter;
@@ -38,6 +39,17 @@ struct CorpusCase {
     /// fail immediately rather than consuming up to five percent of the budget.
     #[serde(default)]
     must_be_clean: bool,
+    /// Per-case switches for the translationese and rhythm detectors. The
+    /// profile config leaves both off, so without these a native case could not
+    /// fail on either.
+    #[serde(default)]
+    detect_translationese: bool,
+    #[serde(default)]
+    detect_rhythm: bool,
+    /// Detector family a trap case guards (for example "ai_style" or
+    /// "lexical"). Native cases only; the report counts hits per family.
+    #[serde(default)]
+    detector: Option<String>,
     expected_fixed: String,
     expected_issues: Vec<ExpectedIssue>,
 }
@@ -98,6 +110,9 @@ struct NativeCounts {
     flagged_cases: usize,
     total_cases: usize,
     total_fp_issues: usize,
+    /// Issues raised on cases tagged with a "detector", keyed by that tag.
+    /// A tag with no hits still appears, so the report shows what is guarded.
+    trap_hits: BTreeMap<String, usize>,
 }
 
 fn load_scanner() -> (Scanner, Segmenter) {
@@ -108,7 +123,7 @@ fn load_scanner() -> (Scanner, Segmenter) {
     (scanner, segmenter)
 }
 
-fn build_config(spec: &CorpusSpec, detect_ai: bool) -> ProfileConfig {
+fn build_config(spec: &CorpusSpec, case: &CorpusCase, detect_ai: bool) -> ProfileConfig {
     let profile = Profile::from_str_strict(&spec.profile)
         .unwrap_or_else(|| panic!("unknown profile: {}", spec.profile));
     let mut cfg = profile.config();
@@ -118,6 +133,8 @@ fn build_config(spec: &CorpusSpec, detect_ai: bool) -> ProfileConfig {
         cfg.ai_density_detection = true;
         cfg.ai_structural_patterns = true;
     }
+    cfg.translationese_detection |= case.detect_translationese;
+    cfg.rhythm |= case.detect_rhythm;
     cfg
 }
 
@@ -263,7 +280,7 @@ fn evaluate_positive_corpus(
 
         let expected = resolve_expected_issues(scan_text, &case.expected_issues);
         let content_type = case_content_type(case);
-        let cfg = build_config(spec, case.detect_ai.unwrap_or(spec.detect_ai));
+        let cfg = build_config(spec, case, case.detect_ai.unwrap_or(spec.detect_ai));
         let issues = scanner
             .scan_for_content_type_with_config(scan_text, content_type, cfg)
             .issues;
@@ -300,7 +317,7 @@ fn evaluate_native_corpus(
 
     for case in &spec.cases {
         let content_type = case_content_type(case);
-        let cfg = build_config(spec, case.detect_ai.unwrap_or(spec.detect_ai));
+        let cfg = build_config(spec, case, case.detect_ai.unwrap_or(spec.detect_ai));
         let issues = scanner
             .scan_for_content_type_with_config(&case.input, content_type, cfg)
             .issues;
@@ -319,6 +336,10 @@ fn evaluate_native_corpus(
             &build_exclusions_for_content_type(&case.input, content_type),
             Some(segmenter),
         );
+
+        if let Some(detector) = &case.detector {
+            *native.trap_hits.entry(detector.clone()).or_default() += issues.len();
+        }
 
         total_bytes += case.input.len() * case.repeat;
         native.total_docs += case.repeat;
@@ -367,6 +388,12 @@ fn print_native_report(spec: &CorpusSpec, native: &NativeCounts, fix: &FixCounts
         fix_success_rate(fix),
         spec.label,
     );
+    let traps: Vec<String> = native
+        .trap_hits
+        .iter()
+        .map(|(detector, hits)| format!("{detector}={hits}"))
+        .collect();
+    println!("traps: {}", traps.join(" "));
 }
 
 fn load_corpus(path: &str) -> CorpusSpec {

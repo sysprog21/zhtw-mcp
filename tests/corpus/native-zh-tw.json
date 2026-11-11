@@ -732,6 +732,7 @@
     },
     {
       "id": "native_lexical_trap_bushu_gongbu",
+      "detector": "lexical",
       "repeat": 1,
       "input": "行政院公佈署長人選。",
       "expected_fixed": "行政院公佈署長人選。",
@@ -739,6 +740,7 @@
     },
     {
       "id": "native_lexical_trap_bushu_xuanbu",
+      "detector": "lexical",
       "repeat": 1,
       "input": "他宣佈署理主席的任命。",
       "expected_fixed": "他宣佈署理主席的任命。",
@@ -746,6 +748,7 @@
     },
     {
       "id": "native_lexical_trap_siyu",
+      "detector": "lexical",
       "repeat": 1,
       "input": "這屬於個人隱私域流量的討論。",
       "expected_fixed": "這屬於個人隱私域流量的討論。",
@@ -753,6 +756,7 @@
     },
     {
       "id": "native_lexical_trap_latong",
+      "detector": "lexical",
       "repeat": 1,
       "input": "工人正在拉通風管的繩索。",
       "expected_fixed": "工人正在拉通風管的繩索。",
@@ -760,6 +764,7 @@
     },
     {
       "id": "native_lexical_trap_laxin",
+      "detector": "lexical",
       "repeat": 1,
       "input": "他拉新娘的手走上紅毯。",
       "expected_fixed": "他拉新娘的手走上紅毯。",
@@ -767,6 +772,7 @@
     },
     {
       "id": "native_lexical_trap_jianli",
+      "detector": "lexical",
       "repeat": 1,
       "input": "精簡歷史年表可以幫助理解。",
       "expected_fixed": "精簡歷史年表可以幫助理解。",
@@ -774,6 +780,7 @@
     },
     {
       "id": "native_lexical_trap_chengdu",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "誤差控制在一定程度上限之內。",
       "detect_ai": true,
@@ -782,6 +789,7 @@
     },
     {
       "id": "native_lexical_trap_shensi",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "這份報告值得我們深思熟慮後再決定。",
       "detect_ai": true,
@@ -790,6 +798,7 @@
     },
     {
       "id": "native_lexical_trap_maoni",
+      "detector": "lexical",
       "repeat": 1,
       "input": "我家的貓膩在我腿上不肯走。",
       "expected_fixed": "我家的貓膩在我腿上不肯走。",
@@ -797,6 +806,7 @@
     },
     {
       "id": "native_lexical_trap_chuzhong",
+      "detector": "lexical",
       "repeat": 1,
       "input": "當初中央銀行的決議影響深遠。",
       "expected_fixed": "當初中央銀行的決議影響深遠。",
@@ -804,6 +814,7 @@
     },
     {
       "id": "native_lexical_trap_cinai",
+      "detector": "lexical",
       "repeat": 1,
       "input": "此乃天意，非人力所能挽回。",
       "expected_fixed": "此乃天意，非人力所能挽回。",
@@ -811,6 +822,7 @@
     },
     {
       "id": "native_lexical_trap_bubian",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "請提前辦理，以免造成不便。",
       "detect_ai": true,
@@ -819,6 +831,7 @@
     },
     {
       "id": "native_lexical_trap_hehuo",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "本條款適用於甲方和／或乙方。",
       "detect_ai": true,
@@ -859,6 +872,7 @@
     },
     {
       "id": "native_specimen_bad_example_bullet",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "- ❌ 值得注意的是，這個做法更清晰、更精確、更有效率。\n- ✅ 這個做法更精確。\n",
       "detect_ai": true,
@@ -867,6 +881,7 @@
     },
     {
       "id": "native_specimen_blockquote_nested",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "> - ❌ 值得注意的是這件事。\n",
       "detect_ai": true,
@@ -875,6 +890,7 @@
     },
     {
       "id": "native_specimen_ordered_list",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "1. ❌ 值得注意的是這件事。\n",
       "detect_ai": true,
@@ -949,6 +965,7 @@
     },
     {
       "id": "native_antiovercorrection_isolated_ranran",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "然而，這項測試仍需在實際裝置上確認。",
       "detect_ai": true,
@@ -958,6 +975,7 @@
     },
     {
       "id": "native_antiovercorrection_isolated_ciwai",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "此外，部署前應備份目前的設定。",
       "detect_ai": true,
@@ -967,6 +985,7 @@
     },
     {
       "id": "native_antiovercorrection_single_emdash",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "這個差異很小，但對離線使用者很重要——更新前請先匯出資料。",
       "detect_ai": true,
@@ -976,6 +995,7 @@
     },
     {
       "id": "native_antiovercorrection_short_emphasis",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "這很重要。請先完成備份再繼續。",
       "detect_ai": true,
@@ -985,6 +1005,7 @@
     },
     {
       "id": "native_antiovercorrection_faq_question",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "Q：如何重設密碼？A：在登入頁選擇「忘記密碼」，再依指示驗證信箱。",
       "detect_ai": true,
@@ -994,6 +1015,7 @@
     },
     {
       "id": "native_antiovercorrection_list_colon",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "支援三種設定格式：JSON、YAML、TOML。",
       "detect_ai": true,
@@ -1003,6 +1025,7 @@
     },
     {
       "id": "native_antiovercorrection_clean_grammar",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "系統完成驗證後才會寫入資料，失敗時會保留原有內容。",
       "detect_ai": true,
@@ -1012,6 +1035,7 @@
     },
     {
       "id": "native_antiovercorrection_formal_vocabulary",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "本規範援引既有測試結果，以釐清相容性要求的構成要件。",
       "detect_ai": true,
@@ -1021,6 +1045,7 @@
     },
     {
       "id": "native_antiovercorrection_metalinguistic_term",
+      "detector": "lexical",
       "repeat": 1,
       "input": "「軟件」是中國用語；臺灣技術文件通常寫作「軟體」。",
       "detect_ai": true,
@@ -1030,6 +1055,7 @@
     },
     {
       "id": "native_antiovercorrection_suoyou_technical",
+      "detector": "lexical",
       "repeat": 1,
       "input": "當快取失效時，所有連線將導向備援伺服器。",
       "detect_ai": true,
@@ -1039,6 +1065,7 @@
     },
     {
       "id": "native_antiovercorrection_xiangmu_list_item",
+      "detector": "lexical",
       "repeat": 1,
       "input": "待辦項目包含資料庫遷移與權限審查。",
       "detect_ai": true,
@@ -1048,6 +1075,7 @@
     },
     {
       "id": "native_antiovercorrection_opinion_command_shape",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "我支持保留全部練習題，這對初學者理解架構很有幫助。",
       "detect_ai": true,
@@ -1057,6 +1085,7 @@
     },
     {
       "id": "native_antiovercorrection_shuoshihua_midsentence",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "說實話，這個決定我想了很久。",
       "detect_ai": true,
@@ -1066,6 +1095,7 @@
     },
     {
       "id": "native_antiovercorrection_parenthetical_self_correction",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "我們預計下週發布（更正是下下週一），請團隊先做好準備。",
       "detect_ai": true,
@@ -1075,6 +1105,7 @@
     },
     {
       "id": "native_antiovercorrection_tutorial_rhetorical_question",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "為什麼這裡要用指標？因為我們需要就地修改記憶體內容。",
       "detect_ai": true,
@@ -1084,6 +1115,7 @@
     },
     {
       "id": "native_antiovercorrection_counter_mainstream_with_evidence",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "多數人認為快取越大越好，但我們量測發現，把快取從四百 MB 縮到一百 MB 後，命中率只掉兩個百分點，記憶體用量卻少了四分之三。",
       "detect_ai": true,
@@ -1553,6 +1585,86 @@
       "input": "統計課上，他對數學期望過高。",
       "must_be_clean": true,
       "expected_fixed": "統計課上，他對數學期望過高。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_translationese_cooperation",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "這是非常重要的結果。大家需要合作，也要仔細地看文件。",
+      "expected_fixed": "這是非常重要的結果。大家需要合作，也要仔細地看文件。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_translationese_hudong",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "他一邊開會一邊回訊息，同時還要盯著專案進度。",
+      "expected_fixed": "他一邊開會一邊回訊息，同時還要盯著專案進度。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_translationese_tongshi",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "這個平台整合了多個資料來源，使用者互動也很順暢。",
+      "expected_fixed": "這個平台整合了多個資料來源，使用者互動也很順暢。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_speech",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "他說的話是我聽過的最有趣的。",
+      "expected_fixed": "他說的話是我聽過的最有趣的。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_plan",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "這是我們討論過的最實際的方案。",
+      "expected_fixed": "這是我們討論過的最實際的方案。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_book",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "她寫的書是我讀過的最動人的。",
+      "expected_fixed": "她寫的書是我讀過的最動人的。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_kitchen",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "媽媽煮的菜是我吃過的最好吃的。",
+      "expected_fixed": "媽媽煮的菜是我吃過的最好吃的。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_trip",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "他去過的地方是我最想去的。",
+      "expected_fixed": "他去過的地方是我最想去的。",
       "expected_issues": []
     }
   ]

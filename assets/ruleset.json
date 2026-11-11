@@ -9371,17 +9371,17 @@
       "from": "當然可以",
       "to": [],
       "type": "ai_filler",
-      "context": "sycophantic chatbot opener; the answer shows the agreement",
-      "negative_context_clues": ["當然可以，", "當然可以。"],
+      "context": "sycophantic chatbot opener; the answer shows the agreement; a subject pronoun right before it (你當然可以這樣做) is ordinary speech, so only the sentence-initial 當然可以！ and 當然可以這樣做 openers stay flagged",
+      "negative_context_clues": ["當然可以，", "當然可以。", "你當然可以", "您當然可以", "他當然可以", "她當然可以", "我們當然可以", "他們當然可以", "這當然可以", "那當然可以"],
       "tags": ["src:humanizer"]
     },
     {
       "from": "當然可以，以下是",
       "to": [],
       "type": "ai_filler",
-      "context": "sycophantic chatbot opener paired with a list lead-in; bare 當然可以， stays unflagged as ordinary speech, so this needs an addressee or deliverable nearby",
+      "context": "sycophantic chatbot opener paired with a list lead-in; bare 當然可以， stays unflagged as ordinary speech, so this needs an addressee nearby; deliverable nouns such as 整理 or 步驟 open genuine tutorials too",
       "source": "ai_collab_opener_list",
-      "context_clues": ["為你", "為您", "幫你", "幫您", "整理", "範例", "步驟", "重點"],
+      "context_clues": ["為你", "為您", "幫你", "幫您"],
       "negative_context_clues": ["「", "『", "他說", "她說", "回答", "回覆"],
       "tags": ["src:humanizer"]
     },
@@ -13731,15 +13731,6 @@
       "tags": ["src:dewesternise"]
     },
     {
-      "from": "關鍵在於：",
-      "to": [],
-      "type": "ai_filler",
-      "disabled": true,
-      "context": "Watchlist only: a colon after 關鍵在於 ordinarily introduces the answer in technical zh-TW. Needs a second signal, or native-corpus counterexamples.",
-      "source": "tests/fixtures/writing_humanizer/pattern35_bad.txt",
-      "tags": ["src:humanizer"]
-    },
-    {
       "from": "阿司匹林",
       "to": ["阿斯匹靈"],
       "type": "cross_strait",
@@ -14082,7 +14073,8 @@
       "from": "需要注意的是",
       "to": [""],
       "type": "ai_filler",
-      "context": "AI filler phrase with zero information content; delete"
+      "context": "AI filler phrase with zero information content; delete. Only the comma form is filler: 需要注意的是版本相容性 and 需要注意的是：以下三點 are copular or list lead-ins that native tutorials write, and deleting the phrase from them leaves a fragment",
+      "context_clues": ["需要注意的是，", "需要注意的是,"]
     },
     {
       "from": "靈活性",

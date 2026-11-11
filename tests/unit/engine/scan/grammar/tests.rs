@@ -4651,6 +4651,61 @@ fn stock_conclusion_fires_on_the_paragraph_final_sentence_only() {
 }
 
 #[test]
+fn self_qa_reveal_span_starts_at_the_trimmed_question() {
+    let text = "我們換了三次工具。   到底為什麼會這樣？因為沒人負責。";
+    let issues = scan_phase2(text);
+    let hit = issues
+        .iter()
+        .find(|i| i.structural_family == Some(StructuralFamily::SelfQaReveal))
+        .expect("self Q and A reveal");
+    assert_eq!(hit.found, "到底為什麼會這樣？");
+    assert_eq!(&text[hit.offset..hit.offset + hit.length], hit.found);
+}
+
+#[test]
+fn stock_conclusion_yields_to_paragraph_endings() {
+    let para = "前面的實驗在三個環境得到相同結果，我們因此排除了網路因素。由此可見，瓶頸在儲存層。";
+    let text = std::iter::repeat_n(para, 5)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let idx = BoundaryIndex::build(&text, &[]);
+    let mut issues = Vec::new();
+    scan_ai_structural(&mut Emitter::new(&text, &[], &mut issues), 1.0);
+    scan_ai_structural_phase2(
+        &mut Emitter::new(&text, &[], &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    assert!(
+        has_family(&issues, StructuralFamily::ParagraphEndings),
+        "{issues:?}"
+    );
+    assert!(
+        !has_family(&issues, StructuralFamily::StockConclusion),
+        "the same evidence was reported twice: {issues:?}"
+    );
+}
+
+#[test]
+fn quote_state_clamps_stray_closers_and_resumes_along_a_line() {
+    // A list marker 1） must not leave the depth negative: the later opener
+    // would then net to zero and the quoted phrase would be reported.
+    let text = "1）先備份。他說：「廢話不多說，開始。」";
+    let issues = scan_phase2(text);
+    assert!(!has_family(&issues, StructuralFamily::OpeningAnnouncement));
+
+    let mut q = QuoteState::default();
+    let text = "他說：「好。廢話。」之後。\n新的一行。";
+    let at = |t: &str| text.find(t).unwrap();
+    assert!(!q.open_at(text, at("他說")));
+    assert!(q.open_at(text, at("廢話")));
+    assert!(!q.open_at(text, at("之後")));
+    assert!(!q.open_at(text, at("新的")));
+    // A step backwards restarts from the line start.
+    assert!(q.open_at(text, at("廢話")));
+}
+
+#[test]
 fn fake_depth_needs_two_distinct_frames_in_one_paragraph() {
     let text = "團隊討論了三週。真正的問題是流程。歸根結底，這是組織問題。";
     let issues = scan_phase2(text);
@@ -4671,6 +4726,140 @@ fn fake_depth_needs_two_distinct_frames_in_one_paragraph() {
         let issues = scan_phase2(text);
         assert!(
             !has_family(&issues, StructuralFamily::FakeDepth),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn colon_reveal_needs_a_contrast_reveal_after_a_short_frame() {
+    let text = "我們花了三個月重構。關鍵在於：不是技術，是人。";
+    assert!(has_family(
+        &scan_phase2(text),
+        StructuralFamily::ColonReveal
+    ));
+
+    for text in [
+        // Plain answer after the colon.
+        "我們花了三個月重構。關鍵在於：磁碟 IO 的排程。",
+        // Definition and list colons.
+        "名詞定義：不是所有快取都需要失效，是有些才需要。",
+        "需要注意的是：\n- 備份\n- 還原",
+        // Quoted speech.
+        "他說：「關鍵在於：不是技術，是人。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::ColonReveal),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn self_qa_reveal_needs_a_staging_cue_and_no_faq_label() {
+    for text in [
+        "我們換了三次工具。到底為什麼會這樣？因為沒人負責。",
+        "為什麼會這樣？因為問題不是技術，而是分工。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            has_family(&issues, StructuralFamily::SelfQaReveal),
+            "{text}: {issues:?}"
+        );
+    }
+
+    for text in [
+        // Tutorial questions that merely carry 其實, 真的 or 真正.
+        "為什麼其實不需要加鎖？因為這段程式只由單一執行緒讀取。",
+        "為什麼真的要先建立索引？因為索引能加速查詢。",
+        "為什麼真正執行的是子程序？因為殼層會先分岔。",
+        // The bare pair is how tutorials explain.
+        "為什麼要先建立索引？因為索引能加速查詢。",
+        "那為什麼會變慢？主要是因為鎖競爭。",
+        // FAQ label.
+        "常見問題\n到底為什麼要升級？因為舊版不再維護。",
+        "Q：為什麼會失敗？因為問題不是網路，而是權限。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::SelfQaReveal),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn golden_contrast_is_a_cluster_rule() {
+    let text = "這不是效率問題，而是信任問題。它不是工具，而是習慣。成功不是終點，而是起點。";
+    assert!(has_family(
+        &scan_phase2(text),
+        StructuralFamily::GoldenContrast
+    ));
+    // A later valid contrast is found behind a first 不是 that fails the gates.
+    let text = "他不是因為想念才回來的人。這不是效率問題，而是信任問題。它不是工具，而是習慣。成功不是終點，而是起點。";
+    assert!(has_family(
+        &scan_phase2(text),
+        StructuralFamily::GoldenContrast
+    ));
+
+    for text in [
+        // One contrast.
+        "這不是效率問題，而是信任問題。我們接著看數據。",
+        // Two contrasts are ordinary expository prose.
+        "這並不是效率問題，而是信任問題。它不是工具，而是習慣。",
+        // 是不是 is a question form, not a negation.
+        "是不是工具，而是習慣？我也不確定。是不是設定，而是權限？再看看。是不是版本，而是環境？",
+        // Two in different paragraphs.
+        "這不是效率問題，而是信任問題。\n\n它不是工具，而是習慣。",
+        // Long argumentative sentence.
+        "這次事故不是因為單一工程師在深夜操作時疏忽了檢查清單上的每一個步驟，而是整套交接流程缺乏任何可驗證的機制。它不是工具，而是習慣。",
+        // Quoted speech.
+        "他說：「這不是效率問題，而是信任問題。它不是工具，而是習慣。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::GoldenContrast),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn psych_verdict_is_a_cluster_rule() {
+    let text = "你不是不夠好，你只是還沒被看見。你值得被好好對待。";
+    assert!(has_family(
+        &scan_phase2(text),
+        StructuralFamily::PsychVerdict
+    ));
+
+    for text in [
+        "你不是不夠好，你只是還沒被看見。",
+        "你不是漏了設定，你只是用錯了版本。\n\n你值得換一套工具。",
+        // Support and bug-report copy says 不是你的錯 about a concrete fault.
+        "登入失敗不是你的錯，是伺服器逾時。不是你的錯，我們已經修正。",
+        "她對他說：「你不是不夠好，你只是還沒被看見。你值得被好好對待。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::PsychVerdict),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn false_range_two_plain_ranges_cannot_be_separated_from_schedules() {
+    // Evidence for dropping the plain 從X到Y row: the abstract and the concrete
+    // fixture have the same shape, and neither fires the chain detector. Any
+    // rule that flags the first flags the second.
+    for text in [
+        "從技術到文化，從個人到組織，一切都在改變。",
+        "營業時間從週一到週五，從早上九點到晚上六點。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::FalseRanges),
             "{text}: {issues:?}"
         );
     }

@@ -1700,6 +1700,14 @@
       "expected_issues": []
     },
     {
+      "id": "native_antiovercorrection_tutorial_opener_deliverable_nouns",
+      "repeat": 1,
+      "input": "你問能不能自己架設？當然可以，以下是整理好的安裝步驟與重點範例。",
+      "must_be_clean": true,
+      "expected_fixed": "你問能不能自己架設？當然可以，以下是整理好的安裝步驟與重點範例。",
+      "expected_issues": []
+    },
+    {
       "id": "native_antiovercorrection_interviewee_self_description",
       "repeat": 1,
       "input": "他在受訪時說自己為人低調，鮮少公開演講，這次是破例。",
@@ -1852,6 +1860,146 @@
       "must_be_clean": true,
       "input": "## 安裝步驟\n\n1. 開機。\n2. 登入。\n3. 儲存。\n\n第一步：開機。第二步：登入。第三步：儲存。\n\n「好。」「走。」「去。」\n\n床前明月光，疑是地上霜。舉頭望明月，低頭思故鄉。\n\n你是誰？我是他。為什麼？\n\n門開了。老人站在門口，手裡提著一袋剛買的橘子。沒有人說話。",
       "expected_fixed": "## 安裝步驟\n\n1. 開機。\n2. 登入。\n3. 儲存。\n\n第一步：開機。第二步：登入。第三步：儲存。\n\n「好。」「走。」「去。」\n\n床前明月光，疑是地上霜。舉頭望明月，低頭思故鄉。\n\n你是誰？我是他。為什麼？\n\n門開了。老人站在門口，手裡提著一袋剛買的橘子。沒有人說話。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_self_qa_tutorial_modifiers",
+      "repeat": 1,
+      "input": "為什麼其實不需要加鎖？因為這段程式只由單一執行緒讀取。為什麼真的要先建立索引？因為索引能加速查詢。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "為什麼其實不需要加鎖？因為這段程式只由單一執行緒讀取。為什麼真的要先建立索引？因為索引能加速查詢。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_colon_plain_answer",
+      "repeat": 1,
+      "input": "這次重構花了三個月。關鍵在於：磁碟 IO 的排程方式。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這次重構花了三個月。關鍵在於：磁碟 IO 的排程方式。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_colon_definition_list",
+      "repeat": 1,
+      "input": "名詞定義：快取是暫存常用資料的區域。\n\n備份項目：\n- 設定\n- 資料\n- 日誌",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "名詞定義：快取是暫存常用資料的區域。\n\n備份項目：\n- 設定\n- 資料\n- 日誌",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_selfqa_tutorial",
+      "repeat": 1,
+      "input": "為什麼要先建立索引？因為索引能加速查詢。那為什麼寫入會變慢？主要是因為每次寫入都要更新索引。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "為什麼要先建立索引？因為索引能加速查詢。那為什麼寫入會變慢？主要是因為每次寫入都要更新索引。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_selfqa_faq",
+      "repeat": 1,
+      "input": "常見問題\n\n問：到底為什麼要升級？因為舊版不再維護，也不會收到安全修補。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "常見問題\n\n問：到底為什麼要升級？因為舊版不再維護，也不會收到安全修補。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_contrast_single",
+      "repeat": 1,
+      "input": "這次事故不是個人疏忽，而是交接流程缺少檢查點。後續會補上檢查清單。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這次事故不是個人疏忽，而是交接流程缺少檢查點。後續會補上檢查清單。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_contrast_two_paragraphs",
+      "repeat": 1,
+      "input": "這個錯誤不是網路問題，而是憑證過期。\n\n那個警告不是設定錯誤，而是版本差異。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這個錯誤不是網路問題，而是憑證過期。\n\n那個警告不是設定錯誤，而是版本差異。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_verdict_support_single",
+      "repeat": 1,
+      "input": "你不是漏了設定，你只是用錯了版本。請把版本改成 2.1 再重新執行。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "你不是漏了設定，你只是用錯了版本。請把版本改成 2.1 再重新執行。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_verdict_dialogue",
+      "repeat": 1,
+      "input": "她對他說：「你不是不夠好，你只是還沒被看見。你值得被好好對待。」",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "她對他說：「你不是不夠好，你只是還沒被看見。你值得被好好對待。」",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_dangran_keyi_second_person",
+      "repeat": 1,
+      "input": "你當然可以選擇自己架設，只是要先備份。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "你當然可以選擇自己架設，只是要先備份。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_dangran_keyi_third_person",
+      "repeat": 1,
+      "input": "他當然可以拒絕這份合約，沒有人能強迫他簽字。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "他當然可以拒絕這份合約，沒有人能強迫他簽字。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_attention_list_colon",
+      "repeat": 1,
+      "input": "升級前需要注意的是：以下三點，請依序確認。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "升級前需要注意的是：以下三點，請依序確認。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_attention_copular_noun",
+      "repeat": 1,
+      "input": "這個函式需要注意的是參數順序，不是回傳值。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這個函式需要注意的是參數順序，不是回傳值。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_attention_bare_clause",
+      "repeat": 1,
+      "input": "需要注意的是版本相容性，舊版的外掛不會被載入。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "需要注意的是版本相容性，舊版的外掛不會被載入。",
       "expected_issues": []
     }
   ]

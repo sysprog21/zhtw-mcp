@@ -250,8 +250,9 @@ const RHYTHM_STACCATO_MIN_CJK: usize = 2;
 // 猶豫。沒有退路。) rather than a short exchange.
 const RHYTHM_STACCATO_RUN: usize = 3;
 
-/// Whether a sentence is one bare beat of a burst: two to six CJK characters closed
-/// by a full stop or exclamation mark, with nothing else in it.
+/// Whether a sentence is one bare beat of a burst: two to six CJK
+/// characters closed by a full stop or exclamation mark, with nothing else in
+/// it.
 ///
 /// Anything that is not plain CJK plus the closing mark is a different kind of
 /// short sentence. A colon or comma inside (第一步：開機。) is a list item or a

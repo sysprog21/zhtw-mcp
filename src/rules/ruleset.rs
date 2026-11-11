@@ -859,6 +859,14 @@ pub enum StructuralFamily {
     StockConclusion,
     /// 假深刻權威語: a cluster of 歸根結底 style frames in one paragraph.
     FakeDepth,
+    /// 冒號揭曉: a short frame, a colon and a 不是X，是Y reveal.
+    ColonReveal,
+    /// 自問自答: one why-question and its answer, with a staging cue.
+    SelfQaReveal,
+    /// 金句公式: a cluster of 不是X，而是Z sentences in one paragraph.
+    GoldenContrast,
+    /// 心理判斷腔: a cluster of second-person emotional verdicts.
+    PsychVerdict,
 }
 
 impl StructuralFamily {

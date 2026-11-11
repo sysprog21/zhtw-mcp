@@ -2219,7 +2219,7 @@ fn cli_fix_never_deletes_a_load_bearing_span() {
         "這一點毫無疑問。",
         "這是一個好問題。",
         "他提出非常棒的觀點。",
-        "你當然可以這樣做。",
+        "當然可以！以下是為你整理的步驟。",
         "這一切都是為了實現這一目標。",
         "讓我來為你介紹。",
         "希望這對你有幫助。",
@@ -2253,6 +2253,9 @@ fn cli_fix_never_deletes_a_load_bearing_span() {
         "我理解了你的意思。",
         "隨著時間過去，傷口慢慢癒合。",
         "在當今的制度下，這條路走不通。",
+        "你當然可以這樣做。",
+        "您當然可以隨時取消訂閱。",
+        "他當然可以拒絕。",
     ];
     for input in silent {
         let json = run_lint_stdin(&["--format", "json"], input);

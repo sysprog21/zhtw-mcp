@@ -65,7 +65,7 @@ Unified lint / fix / gate for zh-TW text.
 | `exempt_blockquotes` | boolean | Treat Markdown blockquotes as quoted material rather than content |
 | `detect_ai` | boolean | AI-filler detection; overrides the profile default |
 | `detect_translationese` | boolean | Translationese (翻譯腔 / 歐化) detection; overrides the profile default |
-| `detect_style` | boolean | Composite three-axis scorecard (ai, translationese, regional_density) |
+| `detect_style` | boolean | Composite three-axis scorecard (ai, translationese, regional_density). The three axis scores rank documents against each other; a per-sentence finding, not an axis score, is what justifies an edit, and there is no single composite number |
 | `translationese_domain` | `"general"` / `"technical"` / `"literary"` / `"news"` | Per-domain calibration for translationese thresholds |
 | `document_genre` | `"casual"` / `"technical"` / `"financial"` | How strictly sourcing is expected for unsupported authority attributions. Requires `detect_ai` |
 | `register` | `"auto"` / `"formal"` / `"casual"` | Register the prose is written in. `auto` reads it off the text; `formal` licenses the forms a 公文 mandates. Suppression only |

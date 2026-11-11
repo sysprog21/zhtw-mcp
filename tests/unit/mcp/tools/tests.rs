@@ -1332,3 +1332,40 @@ fn tools_call_summary_output_keeps_document_level_flags() {
         .iter()
         .any(|v| v == "high_oral_density"));
 }
+
+/// The tool description and every parameter description reach the agent that
+/// decides how hard to rewrite, so none of them may state a rewrite goal.
+#[test]
+fn tool_descriptions_state_no_rewrite_goal() {
+    fn walk(v: &serde_json::Value, out: &mut Vec<String>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                for (k, x) in m {
+                    if k == "description" {
+                        if let Some(s) = x.as_str() {
+                            out.push(s.to_string());
+                        }
+                    }
+                    walk(x, out);
+                }
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let defs = serde_json::to_value(tool_definitions()).unwrap();
+    let mut texts = Vec::new();
+    walk(&defs, &mut texts);
+    assert!(
+        texts.len() > 10,
+        "found too few descriptions: {}",
+        texts.len()
+    );
+    for text in texts {
+        let hits = crate::mcp::rewrite_goal::rewrite_goal_hits(&text);
+        assert!(
+            hits.is_empty(),
+            "description states a rewrite goal: {hits:?}"
+        );
+    }
+}

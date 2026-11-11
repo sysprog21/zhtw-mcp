@@ -120,3 +120,36 @@ fn generate_for_all_hosts_succeeds() {
         assert!(output.is_object());
     }
 }
+
+/// Every text the setup module hands an agent must be free of rewrite goals.
+#[test]
+fn setup_texts_state_no_rewrite_goal() {
+    let mut texts = vec![
+        ("translation_guide", translation_guide_text()),
+        ("claude_code_section", claude_code_section()),
+        ("opencode_skill", opencode_skill()),
+        ("codex_instructions", codex_instructions()),
+        ("cursor_rules", cursor_rules()),
+        ("windsurf_rules", windsurf_rules()),
+        ("cline_rules", cline_rules()),
+        ("continuedev_config", continuedev_config()),
+        ("generic_instructions", generic_instructions()),
+        ("copilot_instructions", copilot_config().0),
+        ("copilot_settings", copilot_config().1),
+    ];
+    for host in ALL_HOSTS {
+        let v = generate_for_host(*host);
+        // Copilot returns a files array; every other host one content string.
+        let contents: Vec<&str> = match v["files"].as_array() {
+            Some(files) => files.iter().filter_map(|f| f["content"].as_str()).collect(),
+            None => vec![v["content"].as_str().expect("host content is a string")],
+        };
+        for content in contents {
+            texts.push(("host content", content.to_string()));
+        }
+    }
+    for (name, text) in texts {
+        let hits = crate::mcp::rewrite_goal::rewrite_goal_hits(&text);
+        assert!(hits.is_empty(), "{name} states a rewrite goal: {hits:?}");
+    }
+}

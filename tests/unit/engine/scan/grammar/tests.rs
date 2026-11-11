@@ -313,6 +313,22 @@ fn excessive_de_chain_reports_each_occurrence_with_correct_offset() {
 }
 
 #[test]
+fn excessive_de_chain_threshold_is_four_per_clause() {
+    // Three 的 in one clause is ordinary prose (他說的話是我聽過的最有趣的),
+    // and the corpus harness does not run translationese, so lowering the
+    // threshold has no false-positive evidence behind it.
+    let count = |text: &str| {
+        scan_phase2(text)
+            .iter()
+            .filter(|i| i.context.as_ref().is_some_and(|c| c.contains("的的不休")))
+            .count()
+    };
+    assert_eq!(count("他說的話是我聽過的最有趣的"), 0);
+    assert_eq!(count("公司的新的產品的宣傳方案"), 0);
+    assert_eq!(count("公司的新的產品的宣傳的方案"), 1);
+}
+
+#[test]
 fn numbered_list_marker_len_matches_multi_digit() {
     assert_eq!(numbered_list_marker_len("1. item"), Some(2));
     assert_eq!(numbered_list_marker_len("10. item"), Some(3));

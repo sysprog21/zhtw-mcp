@@ -2859,3 +2859,68 @@ fn cli_lint_json_file_plain_opt_out_restores_prose_lint() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.lines().count() > 1, "quotes should warn: {stdout}");
 }
+
+#[test]
+fn cli_lint_bing_misuse_flags_bing_for_bing() {
+    for (text, finding) in [
+        ("程式會讀檔，併且回報結果。", "typo:併且→並且"),
+        ("先分群，併把結果合併。", "typo:併把→並把"),
+    ] {
+        let output = run_lint_stdin(&["--format", "compact"], text);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains(finding), "{text}: {stdout}");
+    }
+}
+
+#[test]
+fn cli_lint_bing_misuse_keeps_merge_senses() {
+    for text in [
+        "兩個檔案可以合併，也可以併入主幹。",
+        "併發症的風險很低。",
+        "大公司兼併了小公司，也有併購案。",
+        "兩所學校將併校，兩張桌子併桌用餐。",
+        "資料合併且去重，請合併把兩邊結果放進來。",
+        "公司吞併且整合了對手，請合併不同的欄位。",
+        "學校整併且縮減班級，也有裁併把兩校合一。",
+    ] {
+        let output = run_lint_stdin(&["--format", "compact"], text);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.trim().is_empty(), "{text}: {stdout}");
+    }
+}
+
+#[test]
+fn cli_lint_bing_exceptions_cover_every_listed_compound() {
+    // Each merge compound the 併把 and 併且 rules list must keep both quiet, so
+    // deleting one exception fails here and not in a corner nobody tests.
+    for prefix in ["合", "兼", "吞", "歸", "整", "裁", "縮"] {
+        for tail in ["且", "把"] {
+            let text = format!("這裡是{prefix}併{tail}之後的內容。");
+            let output = run_lint_stdin(&["--format", "compact"], &text);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(!stdout.contains("typo:併"), "{text}: {stdout}");
+        }
+    }
+}
+
+#[test]
+fn cli_lint_rules_starting_with_bing_still_fire_after_a_merge_word() {
+    // 整合併發執行 is 整合 plus 併發執行. A segmenter word 合併 would span the
+    // start of the match and hide this finding, so the merge compounds are
+    // exceptions on the two misuse rules and not dictionary words.
+    let output = run_lint_stdin(&["--format", "compact"], "整合併發執行的結果。");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("併發執行→並行執行"), "{stdout}");
+}
+
+#[test]
+fn cli_lint_bing_misuse_is_not_a_safe_fix() {
+    // The rule carries low editorial confidence, so the safe fixer must leave
+    // the text alone.
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("bing.md");
+    let bad = "程式會讀檔，併且回報結果。";
+    std::fs::write(&file, bad).unwrap();
+    run_lint_args(&[file.to_str().unwrap(), "--fix"]);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), bad);
+}

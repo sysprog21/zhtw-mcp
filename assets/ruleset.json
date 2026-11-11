@@ -932,6 +932,26 @@
       "tags": ["src:dewesternise"]
     },
     {
+      "from": "併且",
+      "to": ["並且"],
+      "type": "typo",
+      "context": "「併」作「並」用的錯字，常見於簡轉繁後的「并」誤轉。只列有實例的誤用詞（併把、併且）；合併、兼併、吞併、歸併、整併、裁併、縮併等合併義複詞後接「且」時屬合併義，列為例外。未列的合併義複詞仍可能誤報，所以標為低信心，不進安全修正，須補入 exceptions",
+      "english": "and also (typo)",
+      "source": "tests/fixtures/opencc_residuals.tsv",
+      "exceptions": ["合併且", "兼併且", "吞併且", "歸併且", "整併且", "裁併且", "縮併且"],
+      "editorial_confidence": "low"
+    },
+    {
+      "from": "併把",
+      "to": ["並把"],
+      "type": "typo",
+      "context": "「併」作「並」用的錯字，常見於簡轉繁後的「并」誤轉。只列有實例的誤用詞（併把、併且）；合併、兼併、吞併、歸併、整併、裁併、縮併等合併義複詞後接「把」時屬合併義，列為例外。未列的合併義複詞仍可能誤報，所以標為低信心，不進安全修正，須補入 exceptions",
+      "english": "and also (typo)",
+      "source": "tests/fixtures/opencc_residuals.tsv",
+      "exceptions": ["合併把", "兼併把", "吞併把", "歸併把", "整併把", "裁併把", "縮併把"],
+      "editorial_confidence": "low"
+    },
+    {
       "from": "併發",
       "to": ["並行"],
       "type": "cross_strait",
@@ -9760,8 +9780,10 @@
       "from": "社區",
       "to": ["社群"],
       "type": "cross_strait",
-      "context": "@domain 社群。「社區」指實體住宅區，online/tech community 語意不同",
-      "english": "community"
+      "context": "@domain 社群。「社區」指實體住宅區，online/tech community 語意不同；以線上/技術社群語境詞為條件，並排除住宅區語境",
+      "english": "community",
+      "context_clues": ["開源", "開發者", "軟體", "程式", "技術", "論壇", "線上", "網路", "貢獻", "社交", "演算法", "社群發現", "GitHub", "專案", "維護者", "使用者", "平台", "生態", "原始碼"],
+      "negative_context_clues": ["住戶", "居民", "管理委員會", "大樓", "里長", "鄰里", "住宅", "房價", "巷弄", "守望相助", "社區大學", "社區發展"]
     },
     {
       "from": "祕",

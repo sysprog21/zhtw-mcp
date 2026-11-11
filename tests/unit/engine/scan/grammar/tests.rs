@@ -2950,7 +2950,7 @@ fn ai_hedging_density_leaves_a_pinned_advisory_alone() {
         issue
     };
     let mut issues = vec![pinned(0)];
-    scan_ai_hedging_density(text, &[], &mut issues, &idx);
+    scan_ai_hedging_density(text, &mut issues, &idx);
     assert_eq!(
         issues[0].severity,
         Severity::Info,
@@ -2968,7 +2968,7 @@ fn ai_hedging_density_leaves_a_pinned_advisory_alone() {
         Severity::Info,
     )
     .with_context("AI hedging: 在某種程度上")];
-    scan_ai_hedging_density(text, &[], &mut unpinned, &idx);
+    scan_ai_hedging_density(text, &mut unpinned, &idx);
     assert_eq!(
         unpinned[0].severity,
         Severity::Warning,
@@ -2996,7 +2996,11 @@ fn ai_hedging_density_ignores_excluded_markers() {
     )
     .with_context("AI hedging: 在某種程度上")];
 
-    scan_ai_hedging_density(text, &excluded, &mut issues, &idx);
+    scan_ai_hedging_density(
+        &crate::engine::excluded::mask_excluded(text, &excluded),
+        &mut issues,
+        &idx,
+    );
 
     assert_eq!(
         issues[0].severity,
@@ -5084,4 +5088,253 @@ fn staccato_burst_passes_ordinary_short_prose() {
             "{text}: {issues:?}"
         );
     }
+}
+
+// Cue search over the visible view -------------------------------------
+//
+// Each test below scans a Markdown document whose cue sits only inside a code
+// span, then the same document with the cue as prose. The first must not change
+// the outcome, the second must.
+
+fn markdown_ranges(doc: &str) -> Vec<ByteRange> {
+    crate::engine::scan::build_exclusions_for_content_type(
+        doc,
+        crate::engine::scan::ContentType::Markdown,
+    )
+}
+
+fn markdown_phase2(doc: &str) -> Vec<Issue> {
+    let ranges = markdown_ranges(doc);
+    let idx = BoundaryIndex::build(doc, &ranges);
+    let mut issues = Vec::new();
+    scan_ai_structural_phase2(
+        &mut Emitter::new(doc, &ranges, &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    issues
+}
+
+#[test]
+fn ai_didactic_noun_inside_a_code_span_is_not_read() {
+    let fires = |doc: &str| {
+        let ranges = markdown_ranges(doc);
+        let mut issues = Vec::new();
+        scan_ai_grammar(&mut Emitter::new(doc, &ranges, &mut issues));
+        has_context_with(&issues, "didactic")
+    };
+    assert!(
+        !fires("這個專案`的歷史`告訴我們一個道理。"),
+        "a 的noun inside a code span is not what the sentence teaches about"
+    );
+    assert!(
+        fires("這個專案的歷史告訴我們一個道理。"),
+        "the same noun as prose must still count"
+    );
+}
+
+#[test]
+fn rhetorical_self_qa_faq_label_inside_a_code_span_does_not_spare() {
+    let fires = |doc: &str| has_context_with(&markdown_phase2(doc), "連續自問自答");
+    let body =
+        "你以為只是網路慢嗎？錯了，每次請求都重新計算。為什麼快取沒生效？因為 TTL 設定到期。";
+    assert!(
+        fires(&format!("請看 `faq` 設定。{body}")),
+        "a label inside a code span must not exempt the paragraph"
+    );
+    assert!(
+        !fires(&format!("請看 faq 設定。{body}")),
+        "a label in prose still exempts it"
+    );
+}
+
+#[test]
+fn a_caller_range_splitting_a_character_keeps_the_code_span_blanked() {
+    // A range that cuts the final character must widen to it, not make the
+    // whole document fall back to unmasked text and read the label in code.
+    let doc = "請看 `faq` 設定。你以為只是網路慢嗎？錯了，每次請求都重新計算。為什麼快取沒生效？因為 TTL 設定到期。";
+    let mut ranges = markdown_ranges(doc);
+    ranges.push(ByteRange {
+        start: doc.len() - 1,
+        end: doc.len(),
+    });
+    ranges.sort_by_key(|r| r.start);
+    let idx = BoundaryIndex::build(doc, &ranges);
+    let mut issues = Vec::new();
+    scan_ai_structural_phase2(
+        &mut Emitter::new(doc, &ranges, &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    assert!(
+        has_context_with(&issues, "連續自問自答"),
+        "the label inside the code span must stay blanked: {issues:?}"
+    );
+}
+
+#[test]
+fn self_qa_reveal_faq_label_inside_a_code_span_does_not_spare() {
+    let fires = |doc: &str| has_family(&markdown_phase2(doc), StructuralFamily::SelfQaReveal);
+    let body = "到底為什麼會這樣？因為沒人負責。";
+    assert!(
+        fires(&format!("請看 `faq` 設定。{body}")),
+        "a label inside a code span must not exempt the paragraph"
+    );
+    assert!(
+        !fires(&format!("請看 faq 設定。{body}")),
+        "a label in prose still exempts it"
+    );
+}
+
+#[test]
+fn copula_tech_context_in_a_code_span_still_counts() {
+    // Deliberately read raw: a code span beside the prose is itself a sign the
+    // topic is technical, so nearby code keeps the context gate open.
+    let doc = "`API` 提供入口，它作為整個流程的起點。";
+    let ranges = markdown_ranges(doc);
+    let mut issues = Vec::new();
+    scan_ai_copula_avoidance(&mut Emitter::new(doc, &ranges, &mut issues));
+    assert!(
+        has_context_with(&issues, "copula avoidance"),
+        "code beside the verb signals a technical context: {issues:?}"
+    );
+}
+
+#[test]
+fn formulaic_ending_inside_a_code_span_is_not_read() {
+    let fires = |doc: &str| has_formulaic(&markdown_phase2(doc));
+    assert!(
+        !fires("效能提升相當顯著，這個函式叫做 `展望未來` 而已。"),
+        "a closing phrase inside a code span is not the author's close"
+    );
+    assert!(
+        fires("效能提升相當顯著，這個函式叫做 展望未來 而已。"),
+        "the same phrase as prose must still count"
+    );
+}
+
+#[test]
+fn paragraph_ending_inside_a_code_span_is_not_read() {
+    let fires = |closer: &str| {
+        let para = format!("這個技術的發展{closer}人工智慧的潛力。");
+        let doc = vec![para; 8].join("\n\n");
+        let ranges = markdown_ranges(&doc);
+        let mut issues = Vec::new();
+        scan_ai_paragraph_endings(&mut Emitter::new(&doc, &ranges, &mut issues));
+        has_context_with(&issues, "公式化宣言")
+    };
+    assert!(!fires("`證明了`"), "a closing phrase inside a code span");
+    assert!(fires("證明了"), "the same phrase as prose must still count");
+}
+
+// A cue word inside a code span is not the author's prose. The sentence index
+// is built with the excluded ranges and never lets a sentence hold code, so the
+// sentence-bounded translationese cue searches are already blind to it. These
+// tests pin that outcome through the real index; they cannot bite a raw search
+// because the index, not the search, provides the guarantee.
+
+fn run_trans_with_code(
+    scan: fn(&mut Emitter<'_>, &BoundaryIndex),
+    text: &str,
+    code: &str,
+) -> Vec<Issue> {
+    let start = text.find(code).unwrap();
+    let excluded = vec![ByteRange {
+        start,
+        end: start + code.len(),
+    }];
+    let idx = BoundaryIndex::build(text, &excluded);
+    let mut issues = Vec::new();
+    scan(&mut Emitter::new(text, &excluded, &mut issues), &idx);
+    issues
+}
+
+fn run_trans_plain(scan: fn(&mut Emitter<'_>, &BoundaryIndex), text: &str) -> Vec<Issue> {
+    let idx = BoundaryIndex::build(text, &[]);
+    let mut issues = Vec::new();
+    scan(&mut Emitter::new(text, &[], &mut issues), &idx);
+    issues
+}
+
+#[test]
+fn abstract_subject_ignores_a_verb_inside_code() {
+    // 導致 is the only verb and sits in a code span.
+    let text = "預算的減少使服務縮減，參見 `導致` 欄位。";
+    let in_code = run_trans_with_code(scan_trans_abstract_subject, text, "`導致`");
+    assert!(
+        in_code.is_empty(),
+        "verb in code built the pattern: {in_code:?}"
+    );
+    // The same verb as prose still reports.
+    let prose = run_trans_plain(scan_trans_abstract_subject, text);
+    assert_eq!(prose.len(), 1, "verb in prose should report: {prose:?}");
+}
+
+#[test]
+fn abstract_subject_ignores_a_noun_inside_code() {
+    // 的減少 sits in the head window only as code; the verb is prose.
+    let text = "預算與成本表 `的減少` 導致服務縮減。";
+    let in_code = run_trans_with_code(scan_trans_abstract_subject, text, "`的減少`");
+    assert!(
+        in_code.is_empty(),
+        "noun in code built the pattern: {in_code:?}"
+    );
+    let prose = run_trans_plain(scan_trans_abstract_subject, text);
+    assert_eq!(prose.len(), 1, "noun in prose should report: {prose:?}");
+}
+
+#[test]
+fn displaced_conditional_ignores_dehua_inside_code() {
+    let text = "我們明天會一起出發去爬山，如果天氣好 `的話`";
+    let calque = |issues: &[Issue]| {
+        issues
+            .iter()
+            .any(|i| i.context.as_ref().is_some_and(|c| c.contains("…如果…的話")))
+    };
+    let in_code = run_trans_with_code(scan_trans_displaced_conditional, text, "`的話`");
+    assert!(
+        in_code.iter().any(|i| i.found == "如果"),
+        "the conditional itself still reports: {in_code:?}"
+    );
+    assert!(
+        !calque(&in_code),
+        "的話 in code raised the calque: {in_code:?}"
+    );
+    // The same 的話 as prose still adds the signal.
+    let prose = run_trans_plain(scan_trans_displaced_conditional, text);
+    assert!(calque(&prose), "的話 in prose should count: {prose:?}");
+}
+
+#[test]
+fn copula_classifier_ignores_a_de_inside_code() {
+    let text = "他是一個好人參見 `的` 設定。";
+    let in_code = run_trans_with_code(scan_trans_copula_classifier, text, "`的`");
+    assert!(
+        in_code.is_empty(),
+        "的 in code opened the clause: {in_code:?}"
+    );
+    let prose = run_trans_plain(scan_trans_copula_classifier, text);
+    assert_eq!(prose.len(), 1, "的 in prose should report: {prose:?}");
+}
+
+#[test]
+fn superlative_yi_zhi_keeps_a_later_opener_after_a_code_zhi() {
+    // Kept raw on purpose: a 之 inside code in the gap disqualifies that
+    // opener, and the walk goes on to the next 最. Reading the blanked view
+    // would treat the first span as valid but excluded and skip past the second
+    // opener, which is a real finding.
+    let text = "最好 `之` 的最佳之一";
+    let start = text.find("`之`").unwrap();
+    let excluded = vec![ByteRange {
+        start,
+        end: start + "`之`".len(),
+    }];
+    let mut issues = Vec::new();
+    scan_zy1a_superlative_yi_zhi(&mut Emitter::new(text, &excluded, &mut issues));
+    assert_eq!(
+        issues.len(),
+        1,
+        "the later opener should report: {issues:?}"
+    );
+    assert_eq!(issues[0].found, "最佳之一");
 }

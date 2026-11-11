@@ -122,6 +122,7 @@ impl Scanner {
             text,
             excluded,
             issues,
+            ..
         } = em;
         let register = st.register;
         let (text, excluded) = (*text, *excluded);

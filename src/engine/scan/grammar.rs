@@ -1272,7 +1272,7 @@ pub(crate) fn scan_ai_structural_phase2(
     boundary_index: &crate::engine::sentence::BoundaryIndex,
     content_type: crate::engine::scan::ContentType,
 ) {
-    let (text, excluded) = (em.text, em.excluded);
+    let text = em.text;
 
     // Every finding these produce must name its detector: the score counts
     // distinct families, and an untagged one silently moves to per-occurrence
@@ -1294,7 +1294,8 @@ pub(crate) fn scan_ai_structural_phase2(
     scan_ai_emdash_overuse(em, boundary_index);
     scan_ai_formulaic_despite(em, boundary_index);
     scan_ai_false_ranges(em, boundary_index);
-    scan_ai_hedging_density(text, excluded, em.issues, boundary_index);
+    let (_, _, visible, issues) = em.parts();
+    scan_ai_hedging_density(&visible, issues, boundary_index);
     scan_ai_abstract_line_metaphor(em, boundary_index);
     scan_ai_repeated_parallel_slogan(em, boundary_index);
     scan_ai_rhetorical_self_qa(em, boundary_index);

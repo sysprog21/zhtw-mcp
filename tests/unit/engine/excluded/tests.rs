@@ -237,3 +237,62 @@ fn backticks_not_excluded_by_content_ranges() {
         );
     }
 }
+
+#[test]
+fn mask_excluded_blanks_ranges_and_keeps_every_offset() {
+    let text = "前文 `受試者` 後文";
+    let start = text.find('`').unwrap();
+    let end = text.rfind('`').unwrap() + 1;
+    let masked = mask_excluded(text, &[ByteRange { start, end }]);
+    assert_eq!(masked.len(), text.len());
+    assert!(!masked.contains("受試者"));
+    assert!(masked.starts_with("前文 "));
+    assert!(masked.ends_with(" 後文"));
+    assert_eq!(&masked[start..end], " ".repeat(end - start));
+}
+
+#[test]
+fn mask_excluded_keeps_line_breaks_inside_a_range() {
+    let text = "a `b\n「\nc` d";
+    let end = text.rfind('`').unwrap() + 1;
+    let masked = mask_excluded(text, &[ByteRange { start: 2, end }]);
+    assert_eq!(masked.matches('\n').count(), 2);
+    assert_eq!(masked.len(), text.len());
+    assert!(!masked.contains('「'));
+}
+
+#[test]
+fn mask_excluded_with_no_ranges_is_the_text() {
+    assert_eq!(mask_excluded("原文", &[]), "原文");
+}
+
+#[test]
+fn mask_excluded_clamps_a_range_past_the_end() {
+    let masked = mask_excluded("ab", &[ByteRange { start: 1, end: 99 }]);
+    assert_eq!(masked, "a ");
+}
+
+#[test]
+fn mask_excluded_widens_a_range_that_splits_a_character() {
+    // 茲 is three bytes; a range covering only its first byte still blanks the
+    // whole character, and the result is valid text of the same length.
+    let text = "茲將";
+    let masked = mask_excluded(text, &[ByteRange { start: 1, end: 2 }]);
+    assert_eq!(masked.len(), text.len());
+    assert_eq!(masked, "   將");
+}
+
+#[test]
+fn mask_excluded_handles_overlapping_unsorted_and_inverted_ranges() {
+    let text = "abcdef";
+    let masked = mask_excluded(
+        text,
+        &[
+            ByteRange { start: 4, end: 6 },
+            ByteRange { start: 1, end: 3 },
+            ByteRange { start: 2, end: 5 },
+            ByteRange { start: 4, end: 2 },
+        ],
+    );
+    assert_eq!(masked, "a     ");
+}

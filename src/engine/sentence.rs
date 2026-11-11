@@ -12,6 +12,11 @@ use crate::engine::excluded::{is_excluded, ByteRange};
 use crate::engine::scan::is_cjk_ideograph;
 
 /// A sentence span identified by byte offsets into the source text.
+///
+/// A sentence never contains excluded bytes: the index cuts at every excluded
+/// range, so a cue search over a sentence slice needs no masking. A paragraph
+/// slice or a fixed window can hold code or a URL; search the blanked view for
+/// those (see Emitter::parts).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SentenceBound {
     pub byte_start: usize,

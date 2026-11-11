@@ -2651,8 +2651,8 @@ fn cli_lint_rhythm_is_opt_in_advisory_and_never_fixed() {
     // Off by default: the flag is the only thing that can add a finding. Byte
     // identity against the pre-change binary was measured out of band over 214
     // runs (every corpus and fixture file crossed with the profiles, renderers,
-    // fix tiers and convert) and recorded in DONE.md; what a test can hold is
-    // that nothing rhythm-shaped reaches the default path.
+    // fix tiers and convert); what a test can hold is that nothing
+    // rhythm-shaped reaches the default path.
     let plain = issues(&["--format", "json"], bad);
     let rhythm = issues(&["--rhythm", "--format", "json"], bad);
     for issue in &plain {
@@ -2862,7 +2862,10 @@ fn cli_lint_json_file_plain_opt_out_restores_prose_lint() {
         &["--content-type", "plain", "--format", "compact"],
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.lines().count() > 1, "quotes should warn: {stdout}");
+    assert!(
+        stdout.contains("punctuation:\"→「"),
+        "straight quotes should be linted under plain: {stdout}"
+    );
 }
 
 #[test]
@@ -2887,6 +2890,7 @@ fn cli_lint_bing_misuse_keeps_merge_senses() {
         "資料合併且去重，請合併把兩邊結果放進來。",
         "公司吞併且整合了對手，請合併不同的欄位。",
         "學校整併且縮減班級，也有裁併把兩校合一。",
+        "請一併把附件寄出，不要漏掉任何一份。",
     ] {
         let output = run_lint_stdin(&["--format", "compact"], text);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2955,4 +2959,35 @@ fn zijiang_exception_spares_only_a_notice_comma_directly_before_it() {
     ));
     // A different separator is not the frame.
     assert!(found("公告：茲將重點整理如下，供大家參考。"));
+}
+
+#[test]
+fn study_cues_inside_a_code_span_do_not_spare_a_closer() {
+    // Cues in an excluded span are not the author's prose. The same words in
+    // the paragraph itself still mark a reported study and spare the closer.
+    let found = |text: &str| {
+        let out = run_lint_stdin(
+            &[
+                "--detect-ai",
+                "--content-type",
+                "markdown",
+                "--format",
+                "compact",
+            ],
+            text,
+        );
+        String::from_utf8_lossy(&out.stdout).contains("由此可見")
+    };
+    assert!(found(
+        "`受試者 本研究 樣本 顯著 施測` 這是一段與研究無關的產品介紹。外觀精美，續航也不錯。由此可見，它很值得購買。\n"
+    ));
+    assert!(!found(
+        "本研究蒐集一百二十位受試者的睡眠日誌，並與隔日的注意力測驗成績對照。睡眠時數與錯誤率的相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。\n"
+    ));
+
+    // A cue that occurs in a code span and again in the prose still counts, in
+    // a paragraph that does not start at the beginning of the text.
+    assert!(!found(
+        "前言。\n\n欄位 `受試者` 記錄編號。本研究蒐集一百二十位受試者的睡眠日誌，相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。\n"
+    ));
 }

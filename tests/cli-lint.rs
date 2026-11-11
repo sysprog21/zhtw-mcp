@@ -2929,3 +2929,30 @@ fn cli_lint_bing_misuse_is_not_a_safe_fix() {
     run_lint_args(&[file.to_str().unwrap(), "--fix"]);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), bad);
 }
+
+#[test]
+fn zijiang_exception_spares_only_a_notice_comma_directly_before_it() {
+    // 公告，茲將 reports a notice; anywhere else 茲將 is the author's own
+    // voice.
+    let found = |text: &str| {
+        let out = run_lint_stdin(&["--detect-ai", "--format", "compact"], text);
+        String::from_utf8_lossy(&out.stdout).contains("茲將")
+    };
+    assert!(!found(
+        "區公所昨天發布公告，茲將下週三的垃圾清運時間調整為下午四點。"
+    ));
+    assert!(!found("據校方公告內容，茲將期末考試時間改為十二月二十日。"));
+
+    // An earlier 公告 elsewhere in the sentence, or after the match, is no
+    // frame.
+    assert!(found(
+        "在這篇文章中，我先說明背景，再談公告，我認為茲將重點整理如下。"
+    ));
+    assert!(found("茲將重點整理如下，以便讀者理解本文的公告，請參考。"));
+    // The second of two occurrences is judged on its own neighbours.
+    assert!(found(
+        "昨天發布公告，茲將時間調整。今天的會議很重要。茲將重點整理如下。"
+    ));
+    // A different separator is not the frame.
+    assert!(found("公告：茲將重點整理如下，供大家參考。"));
+}

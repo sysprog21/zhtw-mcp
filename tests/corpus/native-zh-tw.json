@@ -2181,6 +2181,76 @@
       "detector": "ai_style",
       "expected_fixed": "鑑於今年入學人數下降，教育部將調整兩所國中的招生班級數，相關名單已公布在網站上。",
       "expected_issues": []
+    },
+    {
+      "id": "native_acad_short_closer_corr",
+      "repeat": 1,
+      "input": "本研究蒐集一百二十位受試者的睡眠日誌，並與隔日的注意力測驗成績對照。睡眠時數與錯誤率的相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "本研究蒐集一百二十位受試者的睡眠日誌，並與隔日的注意力測驗成績對照。睡眠時數與錯誤率的相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_short_closer_support",
+      "repeat": 1,
+      "input": "預試階段的結果顯示，間隔複習組在四週後的保留率明顯較高。正式施測也得到相同的趨勢，且效果量中等，差異達顯著水準。由此可見，假說獲得支持。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "預試階段的結果顯示，間隔複習組在四週後的保留率明顯較高。正式施測也得到相同的趨勢，且效果量中等，差異達顯著水準。由此可見，假說獲得支持。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_short_closer_sample",
+      "repeat": 1,
+      "input": "將樣本數由三百減為一百五十後，迴歸係數的方向與顯著性均未改變。排除離群值之後，結果亦同。由此可見，問題不在樣本數。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "將樣本數由三百減為一百五十後，迴歸係數的方向與顯著性均未改變。排除離群值之後，結果亦同。由此可見，問題不在樣本數。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_short_closer_limit",
+      "repeat": 1,
+      "input": "本研究僅取樣自北部兩所高中，無法代表全國的狀況。受試者也都是自願參加，可能有自我選擇的偏誤。由此可見，推論範圍有限。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "本研究僅取樣自北部兩所高中，無法代表全國的狀況。受試者也都是自願參加，可能有自我選擇的偏誤。由此可見，推論範圍有限。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zijiang_1",
+      "repeat": 1,
+      "input": "區公所昨天發布公告，茲將下週三的垃圾清運時間調整為下午四點，請居民配合，逾時不收。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "區公所昨天發布公告，茲將下週三的垃圾清運時間調整為下午四點，請居民配合，逾時不收。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zijiang_2",
+      "repeat": 1,
+      "input": "市府今天在官網公告，茲將市立停車場的月租費率自下月一日起調整，前三十分鐘仍維持免費，相關辦法已公布。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "市府今天在官網公告，茲將市立停車場的月租費率自下月一日起調整，前三十分鐘仍維持免費，相關辦法已公布。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zijiang_3",
+      "repeat": 1,
+      "input": "據校方公告內容，茲將期末考試時間改為十二月二十日，考場與座位表另行通知，學生請自行上網查詢。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "據校方公告內容，茲將期末考試時間改為十二月二十日，考場與座位表另行通知，學生請自行上網查詢。",
+      "expected_issues": []
     }
   ]
 }

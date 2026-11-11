@@ -2573,6 +2573,18 @@ pub(super) fn scan_ai_opening_announcement(
 /// Longest closing sentence, in characters, still read as a bare verdict.
 const STOCK_CONCLUSION_MAX_CHARS: usize = 20;
 
+/// Cues that only a reported study names: its subjects, instrument or
+/// statistic. A paragraph needs at least one of these.
+const STUDY_HARD_CUES: &[&str] = &["受試者", "施測", "迴歸", "相關係數", "效果量"];
+
+/// Cues that also appear in ordinary prose (樣本機, 顯著提升), counted only
+/// beside a hard cue.
+const STUDY_WEAK_CUES: &[&str] = &["本研究", "樣本", "取樣", "顯著", "假說"];
+
+/// Distinct cues, hard and weak together, a paragraph needs before its short
+/// closer is spared.
+const STUDY_MIN_CUES: usize = 3;
+
 /// 結語套話: 由此可見 opening the last sentence of a paragraph.
 ///
 /// scan_ai_paragraph_endings already counts 由此可見 among its closers, but
@@ -2586,6 +2598,8 @@ const STOCK_CONCLUSION_MAX_CHARS: usize = 20;
 /// closer: a qualified, specific inference. The tell is the bare verdict that
 /// only repeats the paragraph, which is short. A closer longer than
 /// STOCK_CONCLUSION_MAX_CHARS is an elaborated inference and stays silent.
+/// A paragraph above the closer that reads as a reported study (see
+/// STUDY_HARD_CUES) stays silent too.
 pub(super) fn scan_ai_stock_conclusion(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
@@ -2616,6 +2630,12 @@ pub(super) fn scan_ai_stock_conclusion(
             continue;
         };
         if !body.starts_with(PHRASE) || body.chars().count() > STOCK_CONCLUSION_MAX_CHARS {
+            continue;
+        }
+        let above = &text[para.byte_start..start];
+        let hits = |cues: &[&str]| cues.iter().filter(|c| above.contains(**c)).count();
+        let hard = hits(STUDY_HARD_CUES);
+        if hard >= 1 && hard + hits(STUDY_WEAK_CUES) >= STUDY_MIN_CUES {
             continue;
         }
         issues.push(

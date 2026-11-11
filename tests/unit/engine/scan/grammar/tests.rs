@@ -4631,6 +4631,112 @@ fn positional_tells_skip_later_sentences_of_a_quotation() {
 }
 
 #[test]
+fn stock_conclusion_needs_a_hard_study_cue_to_stay_silent() {
+    // Study words in ordinary prose do not make a results paragraph: it takes a
+    // subject, instrument or statistic word beside them.
+    for text in [
+        "這款手機的樣本機表現不錯，電池續航力顯著提升。外觀也很漂亮。由此可見，它很值得買。",
+        "現代社會變遷快速，顯著影響每個人。科技帶來便利。由此可見，科技很重要。",
+        "這個產品的假說很吸引人。使用者回饋不錯。由此可見，市場需要它。",
+        "本研究取樣有限。結果不具代表性。由此可見，仍需更多證據。",
+        "我們的調查樣本涵蓋各年齡層。結果顯示滿意度顯著提升，假說成立。由此可見，我們的產品很重要。",
+        "在當今社會，顯著的變化影響樣本之外的人。本研究認為科技很重要。由此可見，科技改變生活。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            has_family(&issues, StructuralFamily::StockConclusion),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn stock_conclusion_recall_on_model_written_paragraphs() {
+    // 60 paragraphs written by four Claude subagents asked for ordinary
+    // explanatory writing across technology, health, society and science, each
+    // ending in a short 由此可見 closer (generated 2026-11-11, not told what
+    // the detector looks for). This is recall on that prompted sample, not on
+    // unconstrained model output, and four subagents are one model family.
+    // Measured: 58 of 60 fire. The floor of 55 tolerates three more misses, so
+    // a change that spares many typical closers fails and a deliberately more
+    // precise detector needs a deliberate floor edit.
+    let paragraphs: Vec<String> =
+        serde_json::from_str(include_str!("../../../../fixtures/ai-study-closers.json"))
+            .expect("fixture is a JSON array of strings");
+    assert_eq!(paragraphs.len(), 60);
+    let fired = paragraphs
+        .iter()
+        .filter(|text| has_family(&scan_phase2(text), StructuralFamily::StockConclusion))
+        .count();
+    assert!(fired >= 55, "only {fired} of 60 model paragraphs fire");
+}
+
+#[test]
+fn stock_conclusion_study_gate_evidence() {
+    // Authored (not harvested) paragraphs that measure the study gate. Native
+    // rows are academic paragraphs whose last sentence is a short 由此可見
+    // closer, so the ideal answer is that nothing fires. AI rows borrow study
+    // words but end in a bare verdict, so the ideal answer is that it fires.
+    // Each row pins what the gate does today and where that differs from the
+    // ideal; a change to STUDY_HARD_CUES, STUDY_WEAK_CUES or STUDY_MIN_CUES
+    // flips named rows here.
+    //
+    // Measured 2026-11-11: 13 native rows without a hard cue plus weak cues all
+    // fire, because ordinary results prose carries no cue the gate counts (the
+    // figures and the design words mark it, and neither is a cue). Three native
+    // rows that do carry one are spared. Lowering STUDY_MIN_CUES to 2 spares no
+    // more native row and silences three more AI rows, so the data does not
+    // justify it. Two AI rows stuffed with cues are spared, which no count can
+    // separate from a native paragraph.
+    const KNOWN_GAPS: usize = 15;
+    let mut gaps = 0;
+    for (name, ideal, actual, text) in [
+        ("edu_reading", false, true, "本研究在兩個班級實施為期八週的共讀計畫，並在前後測比較學生的閱讀理解分數。實驗班的平均進步幅度為九點三分，對照班僅有三點一分，差異達顯著水準。由此可見，共讀計畫確有助益。"),
+        ("edu_homework", false, true, "我們訪談了十二位國小導師，詢問他們如何安排回家作業的份量。多數老師表示會依據班級進度調整，少數則沿用學年統一的作業單。由此可見，作業政策各校差異很大。"),
+        ("med_bp", false, true, "這項試驗共收案四百二十名高血壓患者，隨機分派到藥物組與生活型態介入組。追蹤六個月後，兩組的收縮壓都下降，但藥物組下降幅度較大，且無嚴重不良反應。由此可見，藥物治療見效較快。"),
+        ("med_sleep", false, true, "護理人員輪班的紀錄顯示，連續三個夜班之後，工作失誤的通報件數明顯增加。夜班之間若多休息一天，件數便回到平常水準。由此可見，班表間隔需要重新檢討。"),
+        ("eng_bridge", false, true, "我們在三座跨河橋梁安裝加速規，連續記錄了一年的振動資料。尖峰時段的主頻率比設計值低約百分之五，且在雨季更為明顯。由此可見，橋墩的剛度已有下降。"),
+        ("eng_cache", false, true, "兩組壓力測試使用相同的硬體與相同的請求分布，只差在是否啟用快取層。啟用後的平均延遲由一百八十毫秒降到六十毫秒，尾端延遲也同步下降。由此可見，快取層的效果相當明顯。"),
+        ("soc_vote", false, true, "我們以全國電話訪問的資料，比較不同年齡層對投票意願的自我回報。三十歲以下的受訪者表示會投票的比例，低於六十歲以上者約二十個百分點。由此可見，年齡仍是重要的解釋變項。"),
+        ("soc_migrant", false, true, "田野調查期間，研究者在市場旁的小吃攤待了三個月，記錄攤販之間的借貸與換工。這些往來多半沒有書面約定，卻很少出現倒帳。由此可見，信任是靠長期往來累積的。"),
+        ("ling_tone", false, true, "本文蒐集二十位發音人的錄音，分析閩南語連續變調在快速語流中的實際表現。多數發音人在三字詞中保留了完整的變調規則，只有兩位出現簡化。由此可見，變調規則相當穩定。"),
+        ("ling_corpus", false, true, "我們從語料庫中抽出一千筆含有「被」字的句子，逐筆標記主詞的有生性。結果有七成的主詞為人，其餘多為事件或物品。由此可見，被動句偏好有生的主詞。"),
+        ("edu_sample", false, true, "調查樣本包含北中南共十五所國中，總計一千兩百名學生，問卷回收率達八成六。學生的補習時數與數學成績呈中度正相關，但與英文成績關係不明顯。由此可見，補習的影響因科目而異。"),
+        ("med_hypothesis", false, true, "我們原本假設運動介入會降低憂鬱量表的分數，並以樣本數三十的先導研究檢驗。結果兩組的差異未達顯著，信賴區間也相當寬。由此可見，需要更大的樣本才能下結論。"),
+        ("eng_subjects", false, true, "二十名受試者分別在三種照明條件下完成組裝作業，並記錄完成時間與錯誤次數。低照度下的平均錯誤次數是正常照度的兩倍，完成時間則沒有明顯差別。由此可見，照明主要影響精確度。"),
+        ("ai_sample_1", true, true, "本研究的樣本涵蓋多個年齡層，結果呈現出顯著的差異。這些發現為相關領域提供了重要的參考。由此可見，這是一個值得深入探討的議題。"),
+        ("ai_hyp_1", true, true, "我們提出了一個全新的假說，並透過多方面的角度驗證。整體而言，這個方向具有廣闊的發展前景。由此可見，未來充滿無限可能。"),
+        ("ai_sig_1", true, true, "這款產品在使用者體驗上有顯著的提升，樣本回饋也相當正面。無論是外觀還是性能，都展現了出色的水準。由此可見，它是市場上的佼佼者。"),
+        ("ai_study_1", true, true, "本研究指出，數位轉型對企業競爭力具有重要影響。企業必須積極擁抱變革，才能在激烈的市場中脫穎而出。由此可見，轉型勢在必行。"),
+        ("ai_hyp_2", true, true, "根據假說，員工的滿意度與組織績效密切相關。越來越多的企業開始重視員工的感受，並採取多元的措施。由此可見，以人為本是成功的關鍵。"),
+        ("ai_sample_2", true, true, "從樣本的分布來看，年輕族群對新科技的接受度較高。這反映出世代之間在價值觀與生活方式上的差異。由此可見，世代差距不容忽視。"),
+        ("ai_sig_2", true, true, "顯著的成長讓這個產業成為投資人矚目的焦點。隨著技術不斷演進，各項應用也日益普及。由此可見，前景一片光明。"),
+        ("ai_hard_1", true, true, "本研究針對受試者進行了多面的觀察，並提出了不少深刻的見解。這些見解對於教育現場有重要的啟發。由此可見，教育是國家的根本。"),
+        ("ai_hard_2", true, true, "迴歸分析顯示，各項因素之間存在錯綜複雜的關係。在這樣的背景下，我們需要以更全面的視野來看待問題。由此可見，系統思考至關重要。"),
+        ("ai_hard_3", true, false, "本研究的樣本包含受試者的多元背景，結果顯著且具有啟發性。相關係數也印證了各變項之間的緊密連結。由此可見，這是一項重要的成果。"),
+        ("ai_hard_4", true, true, "施測的過程十分順利，受試者的反應也相當熱烈。這代表著整個活動取得了圓滿的成功。由此可見，團隊的努力得到了回報。"),
+        ("ai_hard_5", true, false, "效果量顯示，這套方法在各種情境下都表現出色。本研究的假說因此得到了充分的印證，樣本的代表性也十分良好。由此可見，成效不言而喻。"),
+        ("ai_hard_6", true, true, "受試者普遍表示，這套課程為他們帶來了全新的視野。顯著的成長與收穫，是每一位學員有目共睹的。由此可見，學習永無止境。"),
+        ("native_hard_noise", false, false, "本研究招募三十名受試者，分別在安靜與嘈雜環境中完成記憶作業。樣本雖小，兩組成績的差異仍達顯著。由此可見，噪音確實干擾記憶。"),
+        ("native_hard_sleep", false, false, "我們以迴歸分析檢驗睡眠時數與成績的關係，樣本取自兩所大學的大一學生。結果顯示睡眠時數的係數為正，且達顯著。由此可見，充足睡眠有助學習。"),
+        ("native_hard_retest", false, false, "施測結果顯示，受試者在第二次作答的正確率提高了。本研究的假說獲得部分支持。由此可見，練習效果存在。"),
+    ] {
+        let issues = scan_phase2(text);
+        assert_eq!(
+            has_family(&issues, StructuralFamily::StockConclusion),
+            actual,
+            "{name}: the gate no longer answers as pinned (ideal {ideal}): {text}"
+        );
+        gaps += usize::from(actual != ideal);
+    }
+    assert_eq!(
+        gaps, KNOWN_GAPS,
+        "the number of rows where the gate departs from the ideal changed; \
+         update KNOWN_GAPS deliberately"
+    );
+}
+
+#[test]
 fn stock_conclusion_fires_on_the_paragraph_final_sentence_only() {
     let text =
         "三個節點在第二輪完成同步，其餘兩個花了更久。由此可見，網路分區是主因。\n\n後續再補。";
@@ -4646,6 +4752,11 @@ fn stock_conclusion_fires_on_the_paragraph_final_sentence_only() {
         "委員說：「兩次壓測結果相同。由此可見，瓶頸在儲存層。」",
         // An elaborated inference says something the paragraph did not.
         "線上組平均七十二點四分，面授組平均七十八點一分。由此可見，在未控制先備知識的情況下，授課形式與成績之間存在穩定的負相關。",
+
+        // A short verdict closing a results paragraph that reports its sample
+        // and statistic.
+        "本研究蒐集一百二十位受試者的睡眠日誌。相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。",
+        "正式施測後，間隔複習組在四週後的保留率明顯較高，效果量中等，差異達顯著水準。由此可見，假說獲得支持。",
     ] {
         let issues = scan_phase2(text);
         assert!(

@@ -935,6 +935,194 @@
           "rule_type": "ai_style"
         }
       ]
+    },
+    {
+      "id": "ai_study_closer_sample_1",
+      "repeat": 1,
+      "input": "本研究的樣本涵蓋多個年齡層，結果呈現出顯著的差異。這些發現為相關領域提供了重要的參考。由此可見，這是一個值得深入探討的議題。",
+      "expected_fixed": "本研究的樣本涵蓋多個年齡層，結果呈現出顯著的差異。這些發現為相關領域提供了重要的參考。由此可見，這是一個值得深入探討的議題。",
+      "expected_issues": [
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        },
+        {
+          "found": "是一個",
+          "replace": "",
+          "rule_type": "translationese"
+        },
+        {
+          "found": "深入探討",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_hyp_1",
+      "repeat": 1,
+      "input": "我們提出了一個全新的假說，並透過多方面的角度驗證。整體而言，這個方向具有廣闊的發展前景。由此可見，未來充滿無限可能。",
+      "expected_fixed": "我們提出了一個全新的假說，並透過多方面的角度驗證。整體而言，這個方向具有廣闊的發展前景。由此可見，未來充滿無限可能。",
+      "expected_issues": [
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_sig_1",
+      "repeat": 1,
+      "input": "這款產品在使用者體驗上有顯著的提升，樣本回饋也相當正面。無論是外觀還是性能，都展現了出色的水準。由此可見，它是市場上的佼佼者。",
+      "expected_fixed": "這款產品在使用者體驗上有顯著的提升，樣本回饋也相當正面。無論是外觀還是效能，都展現了出色的水準。由此可見，它是市場上的佼佼者。",
+      "expected_issues": [
+        {
+          "found": "性能",
+          "replace": "效能",
+          "rule_type": "cross_strait"
+        },
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_study_1",
+      "repeat": 1,
+      "input": "本研究指出，數位轉型對企業競爭力具有重要影響。企業必須積極擁抱變革，才能在激烈的市場中脫穎而出。由此可見，轉型勢在必行。",
+      "expected_fixed": "本研究指出，數位轉型對企業競爭力具有重要影響。企業必須積極擁抱變革，才能在激烈的市場中脫穎而出。由此可見，轉型勢在必行。",
+      "expected_issues": [
+        {
+          "found": "擁抱變革",
+          "replace": "",
+          "rule_type": "ai_style"
+        },
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_hyp_2",
+      "repeat": 1,
+      "input": "根據假說，員工的滿意度與組織績效密切相關。越來越多的企業開始重視員工的感受，並採取多元的措施。由此可見，以人為本是成功的關鍵。",
+      "expected_fixed": "根據假說，員工的滿意度與組織績效密切相關。越來越多的企業開始重視員工的感受，並採取多元的措施。由此可見，以人為本是成功的關鍵。",
+      "expected_issues": [
+        {
+          "found": "越來越多的企業開始重視員工的感受",
+          "replace": "",
+          "rule_type": "translationese"
+        },
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_sample_2",
+      "repeat": 1,
+      "input": "從樣本的分布來看，年輕族群對新科技的接受度較高。這反映出世代之間在價值觀與生活方式上的差異。由此可見，世代差距不容忽視。",
+      "expected_fixed": "從樣本的分布來看，年輕族群對新科技的接受度較高。這反映出世代之間在價值觀與生活方式上的差異。由此可見，世代差距不容忽視。",
+      "expected_issues": [
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        },
+        {
+          "found": "不容忽視",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_sig_2",
+      "repeat": 1,
+      "input": "顯著的成長讓這個產業成為投資人矚目的焦點。隨著技術不斷演進，各項應用也日益普及。由此可見，前景一片光明。",
+      "expected_fixed": "顯著的成長讓這個產業成為投資人矚目的焦點。隨著技術不斷演進，各項應用也日益普及。由此可見，前景一片光明。",
+      "expected_issues": [
+        {
+          "found": "顯著的成長讓這個產業成為投資人矚目的焦點",
+          "replace": "",
+          "rule_type": "translationese"
+        },
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_hard_1",
+      "repeat": 1,
+      "input": "本研究針對受試者進行了多面的觀察，並提出了不少深刻的見解。這些見解對於教育現場有重要的啟發。由此可見，教育是國家的根本。",
+      "expected_fixed": "本研究針對受試者進行了多面的觀察，並提出了不少深刻的見解。這些見解對於教育現場有重要的啟發。由此可見，教育是國家的根本。",
+      "expected_issues": [
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_hard_2",
+      "repeat": 1,
+      "input": "迴歸分析顯示，各項因素之間存在錯綜複雜的關係。在這樣的背景下，我們需要以更全面的視野來看待問題。由此可見，系統思考至關重要。",
+      "expected_fixed": "迴歸分析顯示，各項因素之間存在錯綜複雜的關係。在這樣的背景下，我們需要以更全面的視野來看待問題。由此可見，系統思考至關重要。",
+      "expected_issues": [
+        {
+          "found": "錯綜複雜",
+          "replace": "",
+          "rule_type": "ai_style"
+        },
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        },
+        {
+          "found": "至關重要",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_hard_4",
+      "repeat": 1,
+      "input": "施測的過程十分順利，受試者的反應也相當熱烈。這代表著整個活動取得了圓滿的成功。由此可見，團隊的努力得到了回報。",
+      "expected_fixed": "施測的過程十分順利，受試者的反應也相當熱烈。這代表著整個活動取得了圓滿的成功。由此可見，團隊的努力得到了回報。",
+      "expected_issues": [
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
+    },
+    {
+      "id": "ai_study_closer_hard_6",
+      "repeat": 1,
+      "input": "受試者普遍表示，這套課程為他們帶來了全新的視野。顯著的成長與收穫，是每一位學員有目共睹的。由此可見，學習永無止境。",
+      "expected_fixed": "受試者普遍表示，這套課程為他們帶來了全新的視野。顯著的成長與收穫，是每一位學員有目共睹的。由此可見，學習永無止境。",
+      "expected_issues": [
+        {
+          "found": "由此可見",
+          "replace": "",
+          "rule_type": "ai_style"
+        }
+      ]
     }
   ]
 }

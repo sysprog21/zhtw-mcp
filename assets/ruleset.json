@@ -948,7 +948,7 @@
       "context": "「併」作「並」用的錯字，常見於簡轉繁後的「并」誤轉。只列有實例的誤用詞（併把、併且）；合併、兼併、吞併、歸併、整併、裁併、縮併等合併義複詞後接「把」時屬合併義，列為例外。未列的合併義複詞仍可能誤報，所以標為低信心，不進安全修正，須補入 exceptions",
       "english": "and also (typo)",
       "source": "tests/fixtures/opencc_residuals.tsv",
-      "exceptions": ["合併把", "兼併把", "吞併把", "歸併把", "整併把", "裁併把", "縮併把"],
+      "exceptions": ["合併把", "兼併把", "吞併把", "歸併把", "整併把", "裁併把", "縮併把", "一併把"],
       "editorial_confidence": "low"
     },
     {
@@ -11459,6 +11459,7 @@
       "severity": "info",
       "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
       "source": "ai_officialese_casual",
+      "exceptions": ["公告，茲將", "公告內容，茲將"],
       "tags": ["src:humanizer"],
       "register": "casual"
     },

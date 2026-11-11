@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 mod common;
-use common::{changed_positions, MAX_DIFF_CELLS};
+use common::changed_positions;
 use zhtw_mcp::engine::s2t::S2TConverter;
 use zhtw_mcp::engine::scan::{build_exclusions_for_content_type, ContentType, Scanner};
 use zhtw_mcp::engine::segment::Segmenter;
@@ -285,15 +285,9 @@ fn gold_edit_ranges(old: &str, new: &str) -> Vec<(usize, usize)> {
     starts.push(old.len());
     let dst: Vec<char> = new.chars().collect();
 
-    // Past the diff's size limit it reports every character as dropped, which
-    // would exclude every span from the keep rate instead of failing.
-    assert!(
-        src.len().saturating_mul(dst.len()) <= MAX_DIFF_CELLS,
-        "a corpus case is too long for the character diff: split it"
-    );
     changed_positions(&src, &dst)
         .into_iter()
-        .map(|(i, inserted)| match inserted {
+        .map(|(i, inserted, _)| match inserted {
             Some(_) => (starts[i], starts[i]),
             None => (starts[i], starts[i + 1]),
         })
@@ -492,8 +486,9 @@ fn evaluate_native_corpus(
 
 /// Digest of a corpus's case ids and inputs, taken in id order so reordering
 /// the file does not change it. Each field is length-prefixed, so two corpora
-/// cannot collide by moving bytes between an id and an input. A result figure
-/// quoted in a doc is only comparable while this value is unchanged.
+/// cannot collide by moving bytes between an id and an input. It covers
+/// the inputs only, so a result figure quoted in a doc is comparable only while
+/// this value, the gold labels and the per-case flags are all unchanged.
 fn corpus_input_digest(spec: &CorpusSpec) -> String {
     let mut cases: Vec<&CorpusCase> = spec.cases.iter().collect();
     cases.sort_by(|a, b| a.id.cmp(&b.id));
@@ -749,4 +744,16 @@ fn corpus_evaluation_suite() {
             fix.keep_total
         );
     }
+}
+
+#[test]
+fn the_diff_counts_each_inserted_character() {
+    // Inserting two identical characters at one place is two edits, so it does
+    // not score the same as inserting one.
+    let chars = |t: &str| t.chars().collect::<Vec<_>>();
+    let one = changed_positions(&chars("ab"), &chars("a哈b"));
+    let two = changed_positions(&chars("ab"), &chars("a哈哈b"));
+    assert_eq!(one.len(), 1);
+    assert_eq!(two.len(), 2);
+    assert_ne!(one, two);
 }

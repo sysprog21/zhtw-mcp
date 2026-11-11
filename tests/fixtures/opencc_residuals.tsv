@@ -18,7 +18,7 @@ PyPI 包	請安裝這個 PyPI 包。	none	silent
 鏈路	認證鏈路出了問題。	cross_strait:鏈路→流程	fired
 鏈路	光纖鏈路的頻寬很高。	none	gated
 提供方	模型提供方有三家。	cross_strait:提供方→提供者	fired
-使用跟蹤	系統會做使用跟蹤。	none	silent
+使用跟蹤	系統會做使用跟蹤。	none	gated
 拉取	從遠端拉取最新的程式碼。	none	silent
 底層	底層邏輯相當複雜。	ai_style:底層邏輯→邏輯	fired
 項	每一項都需要檢查。	none	silent
@@ -31,12 +31,12 @@ configure	請配置這個選項。	none	gated
 configure	請配置路由器的網路。	cross_strait:配置→設定	fired
 併（作並用）	用演算法做分群，併把兩邊結果合併到圖裡。	typo:併把→並把	fired
 併（作並用）	程式會讀檔，併且回報結果。	typo:併且→並且	fired
-併（作並用）	兩個檔案可以合併，也可以併入主幹。	none	silent
-併（作並用）	併發症的風險很低。	none	silent
-併（作並用）	大公司兼併了小公司。	none	silent
+併（合併義）	兩個檔案可以合併，也可以併入主幹。	none	silent
+併（合併義）	併發症的風險很低。	none	gated
+併（合併義）	大公司兼併了小公司。	none	silent
 併（合併義）	兩所學校將併校。	none	silent
 併（合併義）	兩張桌子併桌用餐。	none	silent
 併（合併義）	資料合併且去重後再輸出。	none	gated
 併（合併義）	請合併把兩邊結果放進來。	none	gated
 象（作像用）	這張圖象很清楚。	cross_strait:圖象→影像	fired
-象（作像用）	這個對象的現象令人印象深刻。	none	silent
+象（作像用）	這個對象的現象令人印象深刻。	none	gated

@@ -8775,7 +8775,7 @@
       "type": "ai_filler",
       "disabled": true,
       "context": "disabled: speculative biographical filler without evidence; comma form of the rule below, which spelling matching cannot reach across punctuation. It fired on plain native biography, and the tell is not lexical",
-      "source": "ai_speculative_bio_comma",
+      "source": "tests/fixtures/writing_humanizer/pattern33_bad.txt",
       "negative_context_clues": ["://", "doi", "參見", "註", "受訪", "本人", "自稱", "「"],
       "tags": ["src:humanizer"]
     },

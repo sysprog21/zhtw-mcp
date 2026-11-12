@@ -313,6 +313,22 @@ fn excessive_de_chain_reports_each_occurrence_with_correct_offset() {
 }
 
 #[test]
+fn excessive_de_chain_threshold_is_four_per_clause() {
+    // Three 的 in one clause is ordinary prose (他說的話是我聽過的最有趣的),
+    // and the corpus harness does not run translationese, so lowering the
+    // threshold has no false-positive evidence behind it.
+    let count = |text: &str| {
+        scan_phase2(text)
+            .iter()
+            .filter(|i| i.context.as_ref().is_some_and(|c| c.contains("的的不休")))
+            .count()
+    };
+    assert_eq!(count("他說的話是我聽過的最有趣的"), 0);
+    assert_eq!(count("公司的新的產品的宣傳方案"), 0);
+    assert_eq!(count("公司的新的產品的宣傳的方案"), 1);
+}
+
+#[test]
 fn numbered_list_marker_len_matches_multi_digit() {
     assert_eq!(numbered_list_marker_len("1. item"), Some(2));
     assert_eq!(numbered_list_marker_len("10. item"), Some(3));
@@ -2934,7 +2950,7 @@ fn ai_hedging_density_leaves_a_pinned_advisory_alone() {
         issue
     };
     let mut issues = vec![pinned(0)];
-    scan_ai_hedging_density(text, &[], &mut issues, &idx);
+    scan_ai_hedging_density(&mut Emitter::new(text, &[], &mut issues), &idx);
     assert_eq!(
         issues[0].severity,
         Severity::Info,
@@ -2952,7 +2968,7 @@ fn ai_hedging_density_leaves_a_pinned_advisory_alone() {
         Severity::Info,
     )
     .with_context("AI hedging: 在某種程度上")];
-    scan_ai_hedging_density(text, &[], &mut unpinned, &idx);
+    scan_ai_hedging_density(&mut Emitter::new(text, &[], &mut unpinned), &idx);
     assert_eq!(
         unpinned[0].severity,
         Severity::Warning,
@@ -2980,13 +2996,83 @@ fn ai_hedging_density_ignores_excluded_markers() {
     )
     .with_context("AI hedging: 在某種程度上")];
 
-    scan_ai_hedging_density(text, &excluded, &mut issues, &idx);
+    scan_ai_hedging_density(&mut Emitter::new(text, &excluded, &mut issues), &idx);
 
     assert_eq!(
         issues[0].severity,
         Severity::Info,
         "excluded hedging examples should not promote the real issue"
     );
+}
+
+#[test]
+fn ai_hedging_density_measures_length_on_the_authors_prose() {
+    // Three hedges in about 50 characters of prose promote. A long code span in
+    // the same paragraph is not the author's prose, so it must not raise the
+    // density threshold and spare the promotion.
+    let prose = "在某種程度上，從某個角度來看，這個做法可以說是相當合理，不過細節上仍有討論的空間，所以先說到這裡，其餘之後再補充。";
+    let code = "寫".repeat(300);
+    let text = format!("{prose}`{code}`");
+    let code_start = text.find('`').unwrap();
+    let excluded = vec![ByteRange {
+        start: code_start,
+        end: text.len(),
+    }];
+    let idx = BoundaryIndex::build(&text, &excluded);
+    let hedge = || {
+        Issue::new(
+            0,
+            "在某種程度上".len(),
+            "在某種程度上",
+            vec![],
+            IssueType::AiStyle,
+            Severity::Info,
+        )
+        .with_context("AI hedging: 在某種程度上")
+    };
+
+    let mut issues = vec![hedge()];
+    scan_ai_hedging_density(&mut Emitter::new(&text, &excluded, &mut issues), &idx);
+    assert_eq!(
+        issues[0].severity,
+        Severity::Warning,
+        "an excluded span must not raise the threshold and spare the promotion"
+    );
+
+    // The same prose with no code in it promotes, so the code span is what the
+    // test removes from the length, not the hedges.
+    let mut plain = vec![hedge()];
+    scan_ai_hedging_density(
+        &mut Emitter::new(prose, &[], &mut plain),
+        &BoundaryIndex::build(prose, &[]),
+    );
+    assert_eq!(plain[0].severity, Severity::Warning);
+}
+
+#[test]
+fn ai_hedging_density_ignores_a_short_paragraph_padded_by_code() {
+    // About 20 characters of prose are below the 50 character minimum, however
+    // long the code span beside them is.
+    let prose = "在某種程度上，從某個角度來看，可以說是。";
+    let code = "寫".repeat(300);
+    let text = format!("{prose}`{code}`");
+    let code_start = text.find('`').unwrap();
+    let excluded = vec![ByteRange {
+        start: code_start,
+        end: text.len(),
+    }];
+    let idx = BoundaryIndex::build(&text, &excluded);
+    let mut issues = vec![Issue::new(
+        0,
+        "在某種程度上".len(),
+        "在某種程度上",
+        vec![],
+        IssueType::AiStyle,
+        Severity::Info,
+    )
+    .with_context("AI hedging: 在某種程度上")];
+    scan_ai_hedging_density(&mut Emitter::new(&text, &excluded, &mut issues), &idx);
+    assert_eq!(issues[0].severity, Severity::Info);
 }
 
 #[test]
@@ -4068,6 +4154,23 @@ fn zy5_passes_when_a_predicate_separates_the_de_phrases() {
 }
 
 #[test]
+fn zy5_passes_when_a_copula_separates_the_de_phrases() {
+    // 老師教的方法 is the subject and 我用過的最有效的 the predicate of a 是
+    // clause, not one stacked modifier. Both were native-corpus false
+    // positives.
+    for text in [
+        "老師教的方法是我用過的最有效的",
+        "老師講的內容是我聽過的最實用的",
+    ] {
+        let issues = scan_general(text);
+        assert!(
+            !fires(&issues, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
+            "unexpected ZY5 for {text:?}: {issues:?}"
+        );
+    }
+}
+
+#[test]
 fn marker_words_are_all_two_characters() {
     // opens_a_predicate masks with two fixed-width window lookups, so a longer
     // entry would be silently ignored rather than masking anything.
@@ -4506,4 +4609,847 @@ fn zy5_under_rhythm_exempts_a_span_broken_by_an_aside() {
         !fires(&on, (PhaseFamily::LongPremodifier, PhasePass::Lexical)),
         "the aside is a pause: {on:?}"
     );
+}
+
+fn has_family(issues: &[Issue], family: StructuralFamily) -> bool {
+    issues
+        .iter()
+        .any(|i| i.structural_family == Some(family) && i.suggestions.is_empty())
+}
+
+#[test]
+fn fake_candor_opener_fires_only_as_a_sentence_opener() {
+    for text in [
+        "團隊評估了三個月。說實話？我們一開始也沒想到。\n\n後續再補。",
+        "團隊評估了三個月。說實話？是設計太急。\n\n後續再補。",
+        "說實話？這是流程問題。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(has_family(&issues, StructuralFamily::FakeCandor), "{text}");
+        let hit = issues
+            .iter()
+            .find(|i| i.structural_family == Some(StructuralFamily::FakeCandor))
+            .unwrap();
+        assert_eq!(hit.severity, Severity::Info);
+        assert!(text[hit.offset..].starts_with(hit.found.as_str()));
+    }
+}
+
+#[test]
+fn fake_candor_leaves_ordinary_speech_alone() {
+    for text in [
+        // 說實話 mid-sentence and as a comma opener are ordinary speech.
+        "我說實話，這個決定想了很久。",
+        "說實話，這個決定我想了很久。",
+        // 講白了， is ordinary speech, in any position.
+        "團隊評估了三個月。講白了，是設計太急。\n\n後續再補。",
+        "講白了，這是流程問題。",
+        // Reported speech.
+        "他笑著說：「說實話？就是沒錢。」",
+        // Not a sentence opener.
+        "這份報告寫得很白，講白了，是給外行看的。",
+        "他問我：「說實話？」我點了點頭。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::FakeCandor),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn opening_announcement_fires_only_sentence_initially() {
+    for text in [
+        "廢話不多說，直接看結果。延遲降到八十毫秒。",
+        "壓測做完了。廢話不多說，先看數字。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            has_family(&issues, StructuralFamily::OpeningAnnouncement),
+            "{text}"
+        );
+    }
+    for text in [
+        "他常說廢話不多說，結果話最多。",
+        "老闆交代：「廢話不多說，今天就要交。」",
+        "廢話少說，開始吧。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::OpeningAnnouncement),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn positional_tells_skip_later_sentences_of_a_quotation() {
+    // Only the first sentence of a quotation follows the opening mark, so the
+    // check has to count quotes from the start of the line.
+    for text in [
+        "老闆交代：「大家先別慌。廢話不多說，今天就要交。」",
+        "他說：「別急。說實話？就是沒錢。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::OpeningAnnouncement)
+                && !has_family(&issues, StructuralFamily::FakeCandor),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn stock_conclusion_weak_study_words_do_not_spare_a_closer() {
+    // Study words in ordinary prose do not make a results paragraph: it takes a
+    // subject, instrument or statistic word beside them.
+    for text in [
+        "這款手機的樣本機表現不錯，電池續航力顯著提升。外觀也很漂亮。由此可見，它很值得買。",
+        "現代社會變遷快速，顯著影響每個人。科技帶來便利。由此可見，科技很重要。",
+        "這個產品的假說很吸引人。使用者回饋不錯。由此可見，市場需要它。",
+        "本研究取樣有限。結果不具代表性。由此可見，仍需更多證據。",
+        "我們的調查樣本涵蓋各年齡層。結果顯示滿意度顯著提升，假說成立。由此可見，我們的產品很重要。",
+        "在當今社會，顯著的變化影響樣本之外的人。本研究認為科技很重要。由此可見，科技改變生活。",
+        "迴歸本質是這個時代的課題，顯著的趨勢反映在樣本之外的生活。我們應回到初心。由此可見，價值仍是核心。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            has_family(&issues, StructuralFamily::StockConclusion),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn stock_conclusion_recall_on_model_written_paragraphs() {
+    // 60 paragraphs written by four Claude subagents asked for ordinary
+    // explanatory writing across technology, health, society and science, each
+    // ending in a 由此可見 closer (generated 2026-11-11, not told what the
+    // detector looks for). This is recall on that prompted sample, not on
+    // unconstrained model output, and four subagents are one model family. The
+    // closers were not all bare verdicts: some state a qualified inference.
+    //
+    // The detector reads a closing sentence of at most 20 characters, counting
+    // the 由此可見 and the final mark. Two of the 60 closers run to 23 and 24,
+    // so they are spared by design; every other paragraph must fire. Asserting
+    // that, instead of a count with a tolerance, makes one spared paragraph
+    // inside the cap fail the test.
+    let paragraphs: Vec<String> =
+        serde_json::from_str(include_str!("../../../../fixtures/ai-study-closers.json"))
+            .expect("fixture is a JSON array of strings");
+    assert_eq!(paragraphs.len(), 60);
+    let (mut within_cap, mut over_cap) = (0, 0);
+    for text in &paragraphs {
+        let closer = &text[text
+            .rfind("由此可見")
+            .expect("every paragraph has a closer")..];
+        let fires = has_family(&scan_phase2(text), StructuralFamily::StockConclusion);
+        if closer.chars().count() <= super::ai_style::STOCK_CONCLUSION_MAX_CHARS {
+            within_cap += 1;
+            assert!(fires, "a closer within the cap must fire: {text}");
+        } else {
+            over_cap += 1;
+            assert!(!fires, "a closer over the cap is spared: {text}");
+        }
+    }
+    assert_eq!((within_cap, over_cap), (58, 2));
+}
+
+#[test]
+fn stock_conclusion_study_gate_evidence() {
+    // Authored (not harvested) paragraphs that measure the study gate. Native
+    // rows are academic paragraphs whose last sentence is a short 由此可見
+    // closer, so the ideal answer is that nothing fires. AI rows borrow study
+    // words but end in a bare verdict, so the ideal answer is that it fires.
+    // Each row pins what the gate does today, and the message names where that
+    // differs from the ideal: those are the known limits of the gate, and a
+    // change to the cue lists or the minimum flips named rows.
+    for (name, ideal, actual, text) in [
+        ("edu_reading", false, true, "本研究在兩個班級實施為期八週的共讀計畫，並在前後測比較學生的閱讀理解分數。實驗班的平均進步幅度為九點三分，對照班僅有三點一分，差異達顯著水準。由此可見，共讀計畫確有助益。"),
+        ("edu_homework", false, true, "我們訪談了十二位國小導師，詢問他們如何安排回家作業的份量。多數老師表示會依據班級進度調整，少數則沿用學年統一的作業單。由此可見，作業政策各校差異很大。"),
+        ("med_bp", false, true, "這項試驗共收案四百二十名高血壓患者，隨機分派到藥物組與生活型態介入組。追蹤六個月後，兩組的收縮壓都下降，但藥物組下降幅度較大，且無嚴重不良反應。由此可見，藥物治療見效較快。"),
+        ("med_sleep", false, true, "護理人員輪班的紀錄顯示，連續三個夜班之後，工作失誤的通報件數明顯增加。夜班之間若多休息一天，件數便回到平常水準。由此可見，班表間隔需要重新檢討。"),
+        ("eng_bridge", false, true, "我們在三座跨河橋梁安裝加速規，連續記錄了一年的振動資料。尖峰時段的主頻率比設計值低約百分之五，且在雨季更為明顯。由此可見，橋墩的剛度已有下降。"),
+        ("eng_cache", false, true, "兩組壓力測試使用相同的硬體與相同的請求分布，只差在是否啟用快取層。啟用後的平均延遲由一百八十毫秒降到六十毫秒，尾端延遲也同步下降。由此可見，快取層的效果相當明顯。"),
+        ("soc_vote", false, true, "我們以全國電話訪問的資料，比較不同年齡層對投票意願的自我回報。三十歲以下的受訪者表示會投票的比例，低於六十歲以上者約二十個百分點。由此可見，年齡仍是重要的解釋變項。"),
+        ("soc_migrant", false, true, "田野調查期間，研究者在市場旁的小吃攤待了三個月，記錄攤販之間的借貸與換工。這些往來多半沒有書面約定，卻很少出現倒帳。由此可見，信任是靠長期往來累積的。"),
+        ("ling_tone", false, true, "本文蒐集二十位發音人的錄音，分析閩南語連續變調在快速語流中的實際表現。多數發音人在三字詞中保留了完整的變調規則，只有兩位出現簡化。由此可見，變調規則相當穩定。"),
+        ("ling_corpus", false, true, "我們從語料庫中抽出一千筆含有「被」字的句子，逐筆標記主詞的有生性。結果有七成的主詞為人，其餘多為事件或物品。由此可見，被動句偏好有生的主詞。"),
+        ("edu_sample", false, true, "調查樣本包含北中南共十五所國中，總計一千兩百名學生，問卷回收率達八成六。學生的補習時數與數學成績呈中度正相關，但與英文成績關係不明顯。由此可見，補習的影響因科目而異。"),
+        ("med_hypothesis", false, true, "我們原本假設運動介入會降低憂鬱量表的分數，並以樣本數三十的先導研究檢驗。結果兩組的差異未達顯著，信賴區間也相當寬。由此可見，需要更大的樣本才能下結論。"),
+        ("eng_subjects", false, true, "二十名受試者分別在三種照明條件下完成組裝作業，並記錄完成時間與錯誤次數。低照度下的平均錯誤次數是正常照度的兩倍，完成時間則沒有明顯差別。由此可見，照明主要影響精確度。"),
+        ("ai_sample_1", true, true, "本研究的樣本涵蓋多個年齡層，結果呈現出顯著的差異。這些發現為相關領域提供了重要的參考。由此可見，這是一個值得深入探討的議題。"),
+        ("ai_hyp_1", true, true, "我們提出了一個全新的假說，並透過多方面的角度驗證。整體而言，這個方向具有廣闊的發展前景。由此可見，未來充滿無限可能。"),
+        ("ai_sig_1", true, true, "這款產品在使用者體驗上有顯著的提升，樣本回饋也相當正面。無論是外觀還是性能，都展現了出色的水準。由此可見，它是市場上的佼佼者。"),
+        ("ai_study_1", true, true, "本研究指出，數位轉型對企業競爭力具有重要影響。企業必須積極擁抱變革，才能在激烈的市場中脫穎而出。由此可見，轉型勢在必行。"),
+        ("ai_hyp_2", true, true, "根據假說，員工的滿意度與組織績效密切相關。越來越多的企業開始重視員工的感受，並採取多元的措施。由此可見，以人為本是成功的關鍵。"),
+        ("ai_sample_2", true, true, "從樣本的分布來看，年輕族群對新科技的接受度較高。這反映出世代之間在價值觀與生活方式上的差異。由此可見，世代差距不容忽視。"),
+        ("ai_sig_2", true, true, "顯著的成長讓這個產業成為投資人矚目的焦點。隨著技術不斷演進，各項應用也日益普及。由此可見，前景一片光明。"),
+        ("ai_hard_1", true, true, "本研究針對受試者進行了多面的觀察，並提出了不少深刻的見解。這些見解對於教育現場有重要的啟發。由此可見，教育是國家的根本。"),
+        ("ai_hard_2", true, true, "迴歸分析顯示，各項因素之間存在錯綜複雜的關係。在這樣的背景下，我們需要以更全面的視野來看待問題。由此可見，系統思考至關重要。"),
+        ("ai_hard_3", true, false, "本研究的樣本包含受試者的多元背景，結果顯著且具有啟發性。相關係數也印證了各變項之間的緊密連結。由此可見，這是一項重要的成果。"),
+        ("ai_hard_4", true, true, "施測的過程十分順利，受試者的反應也相當熱烈。這代表著整個活動取得了圓滿的成功。由此可見，團隊的努力得到了回報。"),
+        ("ai_hard_5", true, false, "效果量顯示，這套方法在各種情境下都表現出色。本研究的假說因此得到了充分的印證，樣本的代表性也十分良好。由此可見，成效不言而喻。"),
+        ("ai_hard_6", true, true, "受試者普遍表示，這套課程為他們帶來了全新的視野。顯著的成長與收穫，是每一位學員有目共睹的。由此可見，學習永無止境。"),
+        ("native_hard_noise", false, false, "本研究招募三十名受試者，分別在安靜與嘈雜環境中完成記憶作業。樣本雖小，兩組成績的差異仍達顯著。由此可見，噪音確實干擾記憶。"),
+        ("native_hard_sleep", false, false, "我們以迴歸分析檢驗睡眠時數與成績的關係，樣本取自兩所大學的大一學生。結果顯示睡眠時數的係數為正，且達顯著。由此可見，充足睡眠有助學習。"),
+        ("native_hard_retest", false, false, "施測結果顯示，受試者在第二次作答的正確率提高了。本研究的假說獲得部分支持。由此可見，練習效果存在。"),
+    ] {
+        let issues = scan_phase2(text);
+        assert_eq!(
+            has_family(&issues, StructuralFamily::StockConclusion),
+            actual,
+            "{name}: the gate no longer answers as pinned (ideal {ideal}): {text}"
+        );
+    }
+}
+
+#[test]
+fn stock_conclusion_fires_on_the_paragraph_final_sentence_only() {
+    let text =
+        "三個節點在第二輪完成同步，其餘兩個花了更久。由此可見，網路分區是主因。\n\n後續再補。";
+    let issues = scan_phase2(text);
+    assert!(has_family(&issues, StructuralFamily::StockConclusion));
+
+    for text in [
+        // Mid-paragraph inference marker.
+        "三個節點在第二輪完成同步。由此可見，網路分區不是主因。我們接著檢查磁碟。",
+        // A one-sentence paragraph has nothing above it to summarise.
+        "由此可見，網路分區是主因。\n\n後續再補。",
+        // Reported speech.
+        "委員說：「兩次壓測結果相同。由此可見，瓶頸在儲存層。」",
+        // An elaborated inference says something the paragraph did not.
+        "線上組平均七十二點四分，面授組平均七十八點一分。由此可見，在未控制先備知識的情況下，授課形式與成績之間存在穩定的負相關。",
+
+        // A short verdict closing a results paragraph that reports its sample
+        // and statistic.
+        "本研究蒐集一百二十位受試者的睡眠日誌。相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。",
+        "正式施測後，間隔複習組在四週後的保留率明顯較高，效果量中等，差異達顯著水準。由此可見，假說獲得支持。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::StockConclusion),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn self_qa_reveal_span_starts_at_the_trimmed_question() {
+    let text = "我們換了三次工具。   到底為什麼會這樣？因為沒人負責。";
+    let issues = scan_phase2(text);
+    let hit = issues
+        .iter()
+        .find(|i| i.structural_family == Some(StructuralFamily::SelfQaReveal))
+        .expect("self Q and A reveal");
+    assert_eq!(hit.found, "到底為什麼會這樣？");
+    assert_eq!(&text[hit.offset..hit.offset + hit.length], hit.found);
+}
+
+#[test]
+fn stock_conclusion_yields_to_paragraph_endings() {
+    let para = "前面的實驗在三個環境得到相同結果，我們因此排除了網路因素。由此可見，瓶頸在儲存層。";
+    let text = std::iter::repeat_n(para, 5)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let idx = BoundaryIndex::build(&text, &[]);
+    let mut issues = Vec::new();
+    scan_ai_structural(&mut Emitter::new(&text, &[], &mut issues), 1.0);
+    scan_ai_structural_phase2(
+        &mut Emitter::new(&text, &[], &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    assert!(
+        has_family(&issues, StructuralFamily::ParagraphEndings),
+        "{issues:?}"
+    );
+    assert!(
+        !has_family(&issues, StructuralFamily::StockConclusion),
+        "the same evidence was reported twice: {issues:?}"
+    );
+}
+
+#[test]
+fn quote_state_clamps_stray_closers_and_resumes_along_a_line() {
+    // A list marker 1） must not leave the depth negative: the later opener
+    // would then net to zero and the quoted phrase would be reported.
+    let text = "1）先備份。他說：「廢話不多說，開始。」";
+    let issues = scan_phase2(text);
+    assert!(!has_family(&issues, StructuralFamily::OpeningAnnouncement));
+
+    let mut q = QuoteState::default();
+    let text = "他說：「好。廢話。」之後。\n新的一行。";
+    let at = |t: &str| text.find(t).unwrap();
+    assert!(!q.open_at(text, at("他說")));
+    assert!(q.open_at(text, at("廢話")));
+    assert!(!q.open_at(text, at("之後")));
+    assert!(!q.open_at(text, at("新的")));
+    // A step backwards restarts from the line start.
+    assert!(q.open_at(text, at("廢話")));
+}
+
+#[test]
+fn a_bracket_inside_a_code_span_does_not_open_a_quotation() {
+    // The code span holds an unmatched 「. Counted from the raw text it would
+    // read as an open quotation and silence the opener later on the line.
+    let text = "先看設定 `「`。廢話不多說，開始部署。";
+    let idx = BoundaryIndex::build(text, &[]);
+    let excluded = [ByteRange {
+        start: text.find('`').unwrap(),
+        end: text.rfind('`').unwrap() + 1,
+    }];
+    let mut issues = Vec::new();
+    scan_ai_structural_phase2(
+        &mut Emitter::new(text, &excluded, &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    assert!(has_family(&issues, StructuralFamily::OpeningAnnouncement));
+}
+
+#[test]
+fn an_open_bracket_does_not_carry_past_a_multiline_exclusion() {
+    // The 「 is never closed, but the line it sits on ends inside the code span
+    // and the sentence starts on a later line. Blanking must keep that line
+    // break, or the quote counter never resets and reads the bracket as still
+    // open.
+    let text = "他說「未閉合 `a\nb` 好。廢話不多說，開始部署。";
+    let idx = BoundaryIndex::build(text, &[]);
+    let excluded = [ByteRange {
+        start: text.find('`').unwrap(),
+        end: text.rfind('`').unwrap() + 1,
+    }];
+    let mut issues = Vec::new();
+    scan_ai_structural_phase2(
+        &mut Emitter::new(text, &excluded, &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    assert!(has_family(&issues, StructuralFamily::OpeningAnnouncement));
+}
+
+#[test]
+fn fake_depth_needs_two_distinct_frames_in_one_paragraph() {
+    let text = "團隊討論了三週。真正的問題是流程。歸根結底，這是組織問題。";
+    let issues = scan_phase2(text);
+    assert!(has_family(&issues, StructuralFamily::FakeDepth));
+
+    for text in [
+        // One frame is ordinary prose.
+        "團隊討論了三週。歸根結底，這是組織問題。",
+        // The same frame twice is one frame.
+        "說到底，沒人負責。我們再看一次，說到底，還是沒人負責。",
+        // Two frames in different paragraphs.
+        "歸根結底，這是組織問題。\n\n說到底，沒人負責。",
+        // Mid-sentence frames are not openers.
+        "他認為歸根結底是預算，也有人覺得說到底是人力。",
+        // Quoted speech.
+        "他說：「歸根結底，這是組織問題。說到底，沒人負責。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::FakeDepth),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn colon_reveal_needs_a_contrast_reveal_after_a_short_frame() {
+    let text = "我們花了三個月重構。關鍵在於：不是技術，是人。";
+    assert!(has_family(
+        &scan_phase2(text),
+        StructuralFamily::ColonReveal
+    ));
+
+    for text in [
+        // Plain answer after the colon.
+        "我們花了三個月重構。關鍵在於：磁碟 IO 的排程。",
+        // Definition and list colons.
+        "名詞定義：不是所有快取都需要失效，是有些才需要。",
+        "需要注意的是：\n- 備份\n- 還原",
+        // Quoted speech.
+        "他說：「關鍵在於：不是技術，是人。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::ColonReveal),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn self_qa_reveal_needs_a_staging_cue_and_no_faq_label() {
+    for text in [
+        "我們換了三次工具。到底為什麼會這樣？因為沒人負責。",
+        "為什麼會這樣？因為問題不是技術，而是分工。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            has_family(&issues, StructuralFamily::SelfQaReveal),
+            "{text}: {issues:?}"
+        );
+    }
+
+    for text in [
+        // 到底 and 究竟 inside a sincere question are intensifiers, not
+        // staging.
+        "為什麼備份到底要放在不同的磁碟？因為同一顆磁碟損壞時，備份也會一起消失。",
+        "遞迴常讓人困惑。為什麼函式呼叫自己，究竟不會無限執行？因為每層都會先檢查終止條件。",
+        // Tutorial questions that merely carry 其實, 真的 or 真正.
+        "為什麼其實不需要加鎖？因為這段程式只由單一執行緒讀取。",
+        "為什麼真的要先建立索引？因為索引能加速查詢。",
+        "為什麼真正執行的是子程序？因為殼層會先分岔。",
+        // The bare pair is how tutorials explain.
+        "為什麼要先建立索引？因為索引能加速查詢。",
+        "那為什麼會變慢？主要是因為鎖競爭。",
+        // FAQ label.
+        "常見問題\n到底為什麼要升級？因為舊版不再維護。",
+        "Q：為什麼會失敗？因為問題不是網路，而是權限。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::SelfQaReveal),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn golden_contrast_is_a_cluster_rule() {
+    let text = "這不是效率問題，而是信任問題。它不是工具，而是習慣。成功不是終點，而是起點。";
+    assert!(has_family(
+        &scan_phase2(text),
+        StructuralFamily::GoldenContrast
+    ));
+    // A later valid contrast is found behind a first 不是 that fails the gates.
+    let text = "他不是因為想念才回來的人。這不是效率問題，而是信任問題。它不是工具，而是習慣。成功不是終點，而是起點。";
+    assert!(has_family(
+        &scan_phase2(text),
+        StructuralFamily::GoldenContrast
+    ));
+
+    for text in [
+        // One contrast.
+        "這不是效率問題，而是信任問題。我們接著看數據。",
+        // Two contrasts are ordinary expository prose.
+        "這並不是效率問題，而是信任問題。它不是工具，而是習慣。",
+        // 是不是 is a question form, not a negation.
+        "是不是工具，而是習慣？我也不確定。是不是設定，而是權限？再看看。是不是版本，而是環境？",
+        // Two in different paragraphs.
+        "這不是效率問題，而是信任問題。\n\n它不是工具，而是習慣。",
+        // Long argumentative sentence.
+        "這次事故不是因為單一工程師在深夜操作時疏忽了檢查清單上的每一個步驟，而是整套交接流程缺乏任何可驗證的機制。它不是工具，而是習慣。",
+        // Quoted speech.
+        "他說：「這不是效率問題，而是信任問題。它不是工具，而是習慣。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::GoldenContrast),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn psych_verdict_is_a_cluster_rule() {
+    let text = "你不是不夠好，你只是還沒被看見。你值得被好好對待。";
+    assert!(has_family(
+        &scan_phase2(text),
+        StructuralFamily::PsychVerdict
+    ));
+
+    for text in [
+        "你不是不夠好，你只是還沒被看見。",
+        "你不是漏了設定，你只是用錯了版本。\n\n你值得換一套工具。",
+        // Support and bug-report copy says 不是你的錯 about a concrete fault.
+        "登入失敗不是你的錯，是伺服器逾時。不是你的錯，我們已經修正。",
+        "她對他說：「你不是不夠好，你只是還沒被看見。你值得被好好對待。」",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::PsychVerdict),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn false_range_two_plain_ranges_cannot_be_separated_from_schedules() {
+    // Evidence for dropping the plain 從X到Y row: the abstract and the concrete
+    // fixture have the same shape, and neither fires the chain detector. Any
+    // rule that flags the first flags the second.
+    for text in [
+        "從技術到文化，從個人到組織，一切都在改變。",
+        "營業時間從週一到週五，從早上九點到晚上六點。",
+    ] {
+        let issues = scan_phase2(text);
+        assert!(
+            !has_family(&issues, StructuralFamily::FalseRanges),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn no_ruleset_suggestion_feeds_the_fake_depth_frames() {
+    // 說白了 once suggested 說到底 and 歸根究底: the fixer would swap one
+    // finding for the cluster this detector reports.
+    let ruleset: crate::rules::ruleset::Ruleset =
+        serde_json::from_str(include_str!("../../../../../assets/ruleset.json"))
+            .expect("embedded ruleset parses");
+    for rule in &ruleset.spelling_rules {
+        for to in rule.to.iter() {
+            assert!(
+                !FAKE_DEPTH_FRAMES.iter().any(|f| to.contains(f)),
+                "rule {:?} suggests the fake-depth frame {to:?}",
+                rule.from
+            );
+        }
+    }
+}
+
+// Staccato burst (短句連發戲劇腔) ---------------------------------------
+
+#[test]
+fn staccato_burst_is_not_covered_by_the_other_detectors() {
+    let text = "門開了。它來了。沒有猶豫。沒有退路。我們只能面對。";
+    let issues = scan_rhythm_only(text);
+    assert!(
+        !rhythm_fires(&issues, PhaseFamily::RhythmLongSentence)
+            && !rhythm_fires(&issues, PhaseFamily::RhythmMonotony),
+        "the older rhythm checks already fire: {issues:?}"
+    );
+    let ai = scan_phase2(text);
+    assert!(ai.is_empty(), "a structural detector already fires: {ai:?}");
+}
+
+#[test]
+fn staccato_burst_flags_three_short_sentences_in_a_row() {
+    let text = "它來了。沒有猶豫。沒有退路。";
+    let issues = scan_rhythm_only(text);
+    let hits: Vec<_> = issues
+        .iter()
+        .filter(|i| i.phase_family == Some((PhaseFamily::RhythmStaccato, PhasePass::Indexed)))
+        .collect();
+    assert_eq!(hits.len(), 1, "{issues:?}");
+    assert_eq!(hits[0].severity, Severity::Info);
+    assert!(hits[0].suggestions.is_empty());
+    assert_eq!(hits[0].found, text);
+    assert_eq!(hits[0].rule_type, IssueType::Translationese);
+    assert!(hits[0].structural_family.is_none());
+}
+
+#[test]
+fn staccato_burst_is_one_finding_per_maximal_run() {
+    let text = "它來了。沒有猶豫。沒有退路。沒有人說話。";
+    let issues = scan_rhythm_only(text);
+    let n = issues
+        .iter()
+        .filter(|i| i.phase_family == Some((PhaseFamily::RhythmStaccato, PhasePass::Indexed)))
+        .count();
+    assert_eq!(n, 1, "{issues:?}");
+}
+
+#[test]
+fn staccato_burst_keeps_equal_length_clipped_beats() {
+    // Equal beats are no verse tell by themselves: four character beats are the
+    // drumbeat the check is after.
+    let issues = scan_rhythm_only("沒有猶豫。沒有退路。沒有希望。");
+    assert!(
+        rhythm_fires(&issues, PhaseFamily::RhythmStaccato),
+        "{issues:?}"
+    );
+}
+
+#[test]
+fn staccato_burst_passes_ordinary_short_prose() {
+    for text in [
+        // Two beats are a pair, not a burst.
+        "它來了。沒有猶豫。",
+        // A long sentence breaks the run.
+        "它來了。沒有猶豫。他把門關上，轉身走回屋裡，開始整理明天要帶的東西。沒有退路。",
+        // Colon list items and numbered steps.
+        "第一步：開機。第二步：登入。第三步：儲存。",
+        "1. 開機。2. 登入。3. 儲存。",
+        // Dialogue in quotes and a question exchange.
+        "「好。」「走。」「去。」",
+        "你是誰？我是他。為什麼？",
+        // A paragraph break separates the beats.
+        "它來了。\n\n沒有猶豫。\n\n沒有退路。",
+        // Five and six character beats are regular verse, with no clipped beat.
+        "白日依山盡。黃河入海流。欲窮千里目。",
+        "床前明月光。疑是地上霜。舉頭望明月。",
+        // Clauses with commas are not bare beats.
+        "天黑了，路遠。風起了，雲低。人散了，燈滅。",
+    ] {
+        let issues = scan_rhythm_only(text);
+        assert!(
+            !rhythm_fires(&issues, PhaseFamily::RhythmStaccato),
+            "{text}: {issues:?}"
+        );
+    }
+}
+
+// Cue search over the visible view -------------------------------------
+//
+// Each test below scans a Markdown document whose cue sits only inside a code
+// span, then the same document with the cue as prose. The first must not change
+// the outcome, the second must.
+
+fn markdown_ranges(doc: &str) -> Vec<ByteRange> {
+    crate::engine::scan::build_exclusions_for_content_type(
+        doc,
+        crate::engine::scan::ContentType::Markdown,
+    )
+}
+
+fn markdown_phase2(doc: &str) -> Vec<Issue> {
+    let ranges = markdown_ranges(doc);
+    let idx = BoundaryIndex::build(doc, &ranges);
+    let mut issues = Vec::new();
+    scan_ai_structural_phase2(
+        &mut Emitter::new(doc, &ranges, &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    issues
+}
+
+#[test]
+fn ai_didactic_noun_inside_a_code_span_is_not_read() {
+    let fires = |doc: &str| {
+        let ranges = markdown_ranges(doc);
+        let mut issues = Vec::new();
+        scan_ai_grammar(&mut Emitter::new(doc, &ranges, &mut issues));
+        has_context_with(&issues, "didactic")
+    };
+    assert!(
+        !fires("這個專案`的歷史`告訴我們一個道理。"),
+        "a 的noun inside a code span is not what the sentence teaches about"
+    );
+    assert!(
+        fires("這個專案的歷史告訴我們一個道理。"),
+        "the same noun as prose must still count"
+    );
+}
+
+#[test]
+fn ai_didactic_lookback_does_not_end_at_a_period_inside_code() {
+    // A period inside a code span is not the author's sentence end, so the
+    // sentence continues past it and the noun still reaches the verb.
+    let mut issues = Vec::new();
+    let doc = "這個專案的故事 `a。b` 告訴我們一個道理。";
+    let ranges = markdown_ranges(doc);
+    scan_ai_grammar(&mut Emitter::new(doc, &ranges, &mut issues));
+    assert!(has_context_with(&issues, "didactic"), "{issues:?}");
+}
+
+#[test]
+fn rhetorical_self_qa_faq_label_inside_a_code_span_does_not_spare() {
+    let fires = |doc: &str| has_context_with(&markdown_phase2(doc), "連續自問自答");
+    let body =
+        "你以為只是網路慢嗎？錯了，每次請求都重新計算。為什麼快取沒生效？因為 TTL 設定到期。";
+    assert!(
+        fires(&format!("請看 `faq` 設定。{body}")),
+        "a label inside a code span must not exempt the paragraph"
+    );
+    assert!(
+        !fires(&format!("請看 faq 設定。{body}")),
+        "a label in prose still exempts it"
+    );
+}
+
+#[test]
+fn a_caller_range_splitting_a_character_keeps_the_code_span_blanked() {
+    // A range that cuts the final character must widen to it, not make the
+    // whole document fall back to unmasked text and read the label in code.
+    let doc = "請看 `faq` 設定。你以為只是網路慢嗎？錯了，每次請求都重新計算。為什麼快取沒生效？因為 TTL 設定到期。";
+    let mut ranges = markdown_ranges(doc);
+    ranges.push(ByteRange {
+        start: doc.len() - 1,
+        end: doc.len(),
+    });
+    ranges.sort_by_key(|r| r.start);
+    let idx = BoundaryIndex::build(doc, &ranges);
+    let mut issues = Vec::new();
+    scan_ai_structural_phase2(
+        &mut Emitter::new(doc, &ranges, &mut issues),
+        &idx,
+        crate::engine::scan::ContentType::Markdown,
+    );
+    assert!(
+        has_context_with(&issues, "連續自問自答"),
+        "the label inside the code span must stay blanked: {issues:?}"
+    );
+}
+
+#[test]
+fn self_qa_reveal_faq_label_inside_a_code_span_does_not_spare() {
+    let fires = |doc: &str| has_family(&markdown_phase2(doc), StructuralFamily::SelfQaReveal);
+    let body = "到底為什麼會這樣？因為沒人負責。";
+    assert!(
+        fires(&format!("請看 `faq` 設定。{body}")),
+        "a label inside a code span must not exempt the paragraph"
+    );
+    assert!(
+        !fires(&format!("請看 faq 設定。{body}")),
+        "a label in prose still exempts it"
+    );
+}
+
+#[test]
+fn copula_tech_context_in_a_code_span_still_counts() {
+    // Deliberately read raw: a code span beside the prose is itself a sign the
+    // topic is technical, so nearby code keeps the context gate open.
+    let doc = "`API` 提供入口，它作為整個流程的起點。";
+    let ranges = markdown_ranges(doc);
+    let mut issues = Vec::new();
+    scan_ai_copula_avoidance(&mut Emitter::new(doc, &ranges, &mut issues));
+    assert!(
+        has_context_with(&issues, "copula avoidance"),
+        "code beside the verb signals a technical context: {issues:?}"
+    );
+}
+
+#[test]
+fn formulaic_ending_inside_a_code_span_is_not_read() {
+    let fires = |doc: &str| has_formulaic(&markdown_phase2(doc));
+    assert!(
+        !fires("效能提升相當顯著，這個函式叫做 `展望未來` 而已。"),
+        "a closing phrase inside a code span is not the author's close"
+    );
+    assert!(
+        fires("效能提升相當顯著，這個函式叫做 展望未來 而已。"),
+        "the same phrase as prose must still count"
+    );
+}
+
+#[test]
+fn paragraph_ending_inside_a_code_span_is_not_read() {
+    let fires = |closer: &str| {
+        let para = format!("這個技術的發展{closer}人工智慧的潛力。");
+        let doc = vec![para; 8].join("\n\n");
+        let ranges = markdown_ranges(&doc);
+        let mut issues = Vec::new();
+        scan_ai_paragraph_endings(&mut Emitter::new(&doc, &ranges, &mut issues));
+        has_context_with(&issues, "公式化宣言")
+    };
+    assert!(!fires("`證明了`"), "a closing phrase inside a code span");
+    assert!(fires("證明了"), "the same phrase as prose must still count");
+}
+
+// A cue word inside a code span is not the author's prose. The sentence index
+// is built with the excluded ranges and never lets a sentence hold code, so the
+// sentence-bounded translationese cue searches are already blind to it. These
+// tests pin that outcome through the real index; they cannot bite a raw search
+// because the index, not the search, provides the guarantee.
+
+fn run_trans_with_code(
+    scan: fn(&mut Emitter<'_>, &BoundaryIndex),
+    text: &str,
+    code: &str,
+) -> Vec<Issue> {
+    let start = text.find(code).unwrap();
+    let excluded = vec![ByteRange {
+        start,
+        end: start + code.len(),
+    }];
+    let idx = BoundaryIndex::build(text, &excluded);
+    let mut issues = Vec::new();
+    scan(&mut Emitter::new(text, &excluded, &mut issues), &idx);
+    issues
+}
+
+fn run_trans_plain(scan: fn(&mut Emitter<'_>, &BoundaryIndex), text: &str) -> Vec<Issue> {
+    let idx = BoundaryIndex::build(text, &[]);
+    let mut issues = Vec::new();
+    scan(&mut Emitter::new(text, &[], &mut issues), &idx);
+    issues
+}
+
+#[test]
+fn abstract_subject_ignores_a_verb_inside_code() {
+    // 導致 is the only verb and sits in a code span.
+    let text = "預算的減少使服務縮減，參見 `導致` 欄位。";
+    let in_code = run_trans_with_code(scan_trans_abstract_subject, text, "`導致`");
+    assert!(
+        in_code.is_empty(),
+        "verb in code built the pattern: {in_code:?}"
+    );
+    // The same verb as prose still reports.
+    let prose = run_trans_plain(scan_trans_abstract_subject, text);
+    assert_eq!(prose.len(), 1, "verb in prose should report: {prose:?}");
+}
+
+#[test]
+fn abstract_subject_ignores_a_noun_inside_code() {
+    // 的減少 sits in the head window only as code; the verb is prose.
+    let text = "預算與成本表 `的減少` 導致服務縮減。";
+    let in_code = run_trans_with_code(scan_trans_abstract_subject, text, "`的減少`");
+    assert!(
+        in_code.is_empty(),
+        "noun in code built the pattern: {in_code:?}"
+    );
+    let prose = run_trans_plain(scan_trans_abstract_subject, text);
+    assert_eq!(prose.len(), 1, "noun in prose should report: {prose:?}");
+}
+
+#[test]
+fn displaced_conditional_ignores_dehua_inside_code() {
+    let text = "我們明天會一起出發去爬山，如果天氣好 `的話`";
+    let calque = |issues: &[Issue]| {
+        issues
+            .iter()
+            .any(|i| i.context.as_ref().is_some_and(|c| c.contains("…如果…的話")))
+    };
+    let in_code = run_trans_with_code(scan_trans_displaced_conditional, text, "`的話`");
+    assert!(
+        in_code.iter().any(|i| i.found == "如果"),
+        "the conditional itself still reports: {in_code:?}"
+    );
+    assert!(
+        !calque(&in_code),
+        "的話 in code raised the calque: {in_code:?}"
+    );
+    // The same 的話 as prose still adds the signal.
+    let prose = run_trans_plain(scan_trans_displaced_conditional, text);
+    assert!(calque(&prose), "的話 in prose should count: {prose:?}");
+}
+
+#[test]
+fn copula_classifier_ignores_a_de_inside_code() {
+    let text = "他是一個好人參見 `的` 設定。";
+    let in_code = run_trans_with_code(scan_trans_copula_classifier, text, "`的`");
+    assert!(
+        in_code.is_empty(),
+        "的 in code opened the clause: {in_code:?}"
+    );
+    let prose = run_trans_plain(scan_trans_copula_classifier, text);
+    assert_eq!(prose.len(), 1, "的 in prose should report: {prose:?}");
+}
+
+#[test]
+fn superlative_yi_zhi_keeps_a_later_opener_after_a_code_zhi() {
+    // Kept raw on purpose: a 之 inside code in the gap disqualifies that
+    // opener, and the walk goes on to the next 最. Reading the blanked view
+    // would treat the first span as valid but excluded and skip past the second
+    // opener, which is a real finding.
+    let text = "最好 `之` 的最佳之一";
+    let start = text.find("`之`").unwrap();
+    let excluded = vec![ByteRange {
+        start,
+        end: start + "`之`".len(),
+    }];
+    let mut issues = Vec::new();
+    scan_zy1a_superlative_yi_zhi(&mut Emitter::new(text, &excluded, &mut issues));
+    assert_eq!(
+        issues.len(),
+        1,
+        "the later opener should report: {issues:?}"
+    );
+    assert_eq!(issues[0].found, "最佳之一");
 }

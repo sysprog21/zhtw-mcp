@@ -369,3 +369,117 @@ fn a_lang_tag_written_inside_a_fence_scopes_nothing() {
     let md = "```html\n<span lang=\"en\">\n```\n\n他說, 對吧。\n";
     assert!(!excluded_covers(md, "他說, 對吧。"));
 }
+
+/// The bytes the scanner would still see: the document minus the merged
+/// exclusion ranges, with each excluded run shown as a single bar.
+fn json_visible(text: &str) -> (String, bool) {
+    let (ranges, malformed) = build_json_excluded_ranges(text);
+    let ranges = merge_ranges_pub(ranges);
+    let mut out = String::new();
+    let mut pos = 0;
+    for r in &ranges {
+        out.push_str(&text[pos..r.start]);
+        out.push('|');
+        pos = r.end;
+    }
+    out.push_str(&text[pos..]);
+    (out, malformed)
+}
+
+#[test]
+fn json_nested_objects_and_arrays_expose_only_values() {
+    let doc = r#"{"a":{"b":"軟件","c":["用戶","網絡"]},"d":"x"}"#;
+    let (vis, malformed) = json_visible(doc);
+    assert!(!malformed);
+    for kept in ["軟件", "用戶", "網絡"] {
+        assert!(vis.contains(kept), "{vis}");
+    }
+    for gone in ["\"a\"", "{", ":", "[", "\"b\""] {
+        assert!(!vis.contains(gone), "{gone:?} visible in {vis}");
+    }
+}
+
+#[test]
+fn json_key_text_is_not_visible() {
+    let (vis, malformed) = json_visible("{ \"軟件\" : \"值\" }");
+    assert!(!malformed);
+    assert!(!vis.contains("軟件"), "{vis}");
+    assert!(vis.contains('值'));
+}
+
+#[test]
+fn json_escaped_quote_does_not_end_the_string() {
+    let (vis, malformed) = json_visible(r#"{"a":"他說\"軟件\"好","b":"用戶"}"#);
+    assert!(!malformed);
+    assert!(vis.contains("軟件") && vis.contains("用戶"), "{vis}");
+    assert!(!vis.contains('\\'), "{vis}");
+}
+
+#[test]
+fn json_surrogate_pair_escape_is_excluded_whole() {
+    let (vis, malformed) = json_visible(r#"{"a":"前\ud842\udfb7後"}"#);
+    assert!(!malformed);
+    assert!(vis.contains('前') && vis.contains('後'));
+    assert!(!vis.contains("ud842") && !vis.contains("udfb7"), "{vis}");
+}
+
+#[test]
+fn json_placeholders_are_excluded() {
+    let (vis, _) = json_visible(
+        r#"{"a":"共{count}個%d件%1$s和{{count}}與{n, plural, one {一個軟件} other {#個}}%%"}"#,
+    );
+    for gone in ["count", "%d", "%1$s", "plural", "%%"] {
+        assert!(!vis.contains(gone), "{gone:?} visible in {vis}");
+    }
+    assert!(
+        vis.contains("一個軟件"),
+        "ICU branch text stays scannable: {vis}"
+    );
+}
+
+#[test]
+fn json_percent_without_a_conversion_stays_visible() {
+    let (vis, _) = json_visible(r#"{"a":"成長50%的軟件"}"#);
+    assert!(vis.contains("50%的軟件"), "{vis}");
+}
+
+#[test]
+fn json_unterminated_string_is_malformed() {
+    let (ranges, malformed) = build_json_excluded_ranges("{\"a\":\"軟件");
+    assert!(malformed);
+    assert!(ranges.is_empty());
+    let (_, malformed) = build_json_excluded_ranges("{\"a\":\"x\\");
+    assert!(malformed);
+}
+
+#[test]
+fn json_double_brace_and_other_template_forms_are_excluded() {
+    for (doc, gone) in [
+        (r#"{"a":"在{{github}}上"}"#, "github"),
+        (r#"{"a":"在${github}上"}"#, "github"),
+        (r#"{"a":"見$t(common.github)上"}"#, "github"),
+        (r#"{"a":"共%(github)s個"}"#, "github"),
+    ] {
+        let (vis, malformed) = json_visible(doc);
+        assert!(!malformed);
+        assert!(!vis.contains(gone), "{gone:?} visible in {vis}");
+    }
+}
+
+#[test]
+fn json_double_brace_with_prose_inside_is_not_a_placeholder() {
+    let (vis, _) = json_visible(r#"{"a":"{{軟件}}"}"#);
+    assert!(vis.contains("軟件"), "{vis}");
+}
+
+#[test]
+fn json_placeholder_scan_is_linear_in_a_value_full_of_openers() {
+    // One large string value of openers with no closer. Searching to the end of
+    // the value for each opener made this quadratic and, at this size,
+    // effectively a hang.
+    let value = "{{ $t( %( ".repeat(100_000);
+    let json = format!("{{\"k\": \"{value}\"}}");
+    let (ranges, malformed) = build_json_excluded_ranges(&json);
+    assert!(!malformed);
+    assert!(!ranges.is_empty());
+}

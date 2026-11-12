@@ -11,7 +11,7 @@
 // and TM suppression operate at different granularity and are explicitly
 // excluded.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -21,7 +21,9 @@ use daachorse::{CharwiseDoubleArrayAhoCorasickBuilder, MatchKind as DaacMatchKin
 use crate::engine::excluded::ByteRange;
 use crate::engine::segment::BoundaryBitmap;
 use crate::engine::zhtype::ChineseType;
-use crate::rules::ruleset::{Issue, IssueType, ProfileConfig, RuleType, Severity, SpellingRule};
+use crate::rules::ruleset::{
+    Issue, IssueType, ProfileConfig, Register, RegisterGate, RuleType, Severity, SpellingRule,
+};
 
 use super::spelling;
 use super::PositionalClue;
@@ -110,6 +112,8 @@ pub struct CompiledRule {
     pub rule_type: RuleType,
     /// Severity after applying the rule-level override, if any.
     pub severity: Severity,
+    /// Register the rule is restricted to, if any.
+    pub register: Option<RegisterGate>,
 }
 
 /// A rule's context-selected suggestion groups, compiled for one pass.
@@ -156,17 +160,21 @@ impl CompiledContextSelector {
 /// all per-rule compiled data. Constructed by
 /// `compile_spelling_rules_filtered()`.
 pub struct CompiledSpellingDb {
-    /// Charwise double-array Aho-Corasick (primary).
-    /// Not Debug because daachorse types don't implement it.
-    pub ac_charwise: Option<daachorse::CharwiseDoubleArrayAhoCorasick<usize>>,
-    /// Bytewise Aho-Corasick (fallback when charwise build fails).
-    pub ac_bytewise: Option<AhoCorasick>,
+    /// Automata over every rule and absorber.
+    pub patterns: PatternSet,
     /// Compiled rules indexed by pattern ID (same order as AC patterns).
     pub rules: Vec<CompiledRule>,
     /// Interned clue strings for windowed AC lookup.
     pub clue_ac: Option<AhoCorasick>,
     /// Absorber strings (exception phrases + superstring `to` forms).
     pub absorber_strings: Vec<String>,
+    /// For each absorber, the index of the rule that contributed it.
+    pub absorber_owner: Vec<usize>,
+    /// Per-register automata, built on first use.
+    pub register_subsets: [OnceLock<PatternSet>; 2],
+    /// Test-only failure injection for the subset build.
+    #[cfg(test)]
+    pub subset_fault: BuildFault,
 
     // -- Per-rule parallel arrays (indexed by rule position) -- These arrays
     // are populated during compile_spelling_rules_filtered() and used by
@@ -191,6 +199,9 @@ pub struct CompiledSpellingDb {
     pub spelling_english: Vec<Option<Arc<str>>>,
     /// Pre-interned context clues per rule.  Arc bump during inflation.
     pub spelling_context_clues: Vec<Option<Arc<[String]>>>,
+    /// True when any compiled rule carries a register restriction, so a scan
+    /// resolves the document register only when something can use it.
+    pub has_register_gates: bool,
     /// Per-rule context-selected suggestion groups, pre-interned.  None for
     /// the overwhelming majority of rules, which pay only an Option check at
     /// inflation time.  A rule that has groups pays one window computation plus
@@ -220,11 +231,130 @@ pub struct CompiledSpellingDb {
     pub rule_classes: Vec<u8>,
 }
 
+/// A matcher over one pattern list: charwise (daachorse) as the primary, a
+/// bytewise one only when the charwise build fails. Pattern values and the
+/// bytewise id map are indices into the full database, so a hit from any set
+/// reads the same way.
+#[derive(Default)]
+pub struct PatternSet {
+    pub charwise: Option<daachorse::CharwiseDoubleArrayAhoCorasick<usize>>,
+    pub bytewise: Option<(AhoCorasick, Vec<usize>)>,
+}
+
+/// Test-only failure injection for PatternSet::build.
+#[derive(Clone, Copy, Default)]
+pub enum BuildFault {
+    #[default]
+    None,
+    #[cfg(test)]
+    Charwise,
+    #[cfg(test)]
+    Both,
+}
+
+impl PatternSet {
+    /// Build both matchers over patterns (text, database index), warning
+    /// and falling back when one fails.
+    pub(crate) fn build(patterns: &[(&str, usize)], fault: BuildFault) -> Self {
+        #[cfg(test)]
+        let (skip_cw, skip_bw) = (
+            !matches!(fault, BuildFault::None),
+            matches!(fault, BuildFault::Both),
+        );
+        #[cfg(not(test))]
+        let (skip_cw, skip_bw) = {
+            let _ = fault;
+            (false, false)
+        };
+        let charwise = if skip_cw {
+            None
+        } else {
+            CharwiseDoubleArrayAhoCorasickBuilder::new()
+                .match_kind(DaacMatchKind::LeftmostLongest)
+                .build_with_values(patterns.iter().copied())
+                .map_err(|e| {
+                    tracing::warn!("charwise AC build failed, using bytewise fallback: {e}")
+                })
+                .ok()
+        };
+        let bytewise = if charwise.is_some() || skip_bw {
+            None
+        } else {
+            AhoCorasickBuilder::new()
+                .match_kind(MatchKind::LeftmostLongest)
+                .build(patterns.iter().map(|p| p.0))
+                .map_err(|e| tracing::warn!("bytewise spelling AC build failed: {e}"))
+                .ok()
+                .map(|ac| (ac, patterns.iter().map(|p| p.1).collect()))
+        };
+        Self { charwise, bytewise }
+    }
+
+    /// False when neither matcher could be built.
+    pub fn is_usable(&self) -> bool {
+        self.charwise.is_some() || self.bytewise.is_some()
+    }
+
+    /// Leftmost-longest hits as (start, end, database index).
+    pub fn hits<'a>(&'a self, text: &'a str) -> impl Iterator<Item = (usize, usize, usize)> + 'a {
+        let cw = self
+            .charwise
+            .iter()
+            .flat_map(move |ac| ac.leftmost_find_iter(text))
+            .map(|m| (m.start(), m.end(), m.value()));
+        let bw = self.bytewise.iter().flat_map(move |(ac, ids)| {
+            ac.find_iter(text)
+                .map(|m| (m.start(), m.end(), ids[m.pattern().as_usize()]))
+        });
+        cw.chain(bw)
+    }
+}
+
+fn register_slot(register: Register) -> usize {
+    match register {
+        Register::Formal => 0,
+        Register::Casual => 1,
+    }
+}
+
+impl CompiledSpellingDb {
+    /// The patterns without the rules the register rejects and their absorbers.
+    pub fn register_subset(&self, register: Register) -> &PatternSet {
+        self.register_subsets[register_slot(register)].get_or_init(|| {
+            let n = self.spelling_rules.len();
+            let dropped = |i: usize| {
+                self.rules[i]
+                    .register
+                    .is_some_and(|gate| !gate.admits(register))
+            };
+            let patterns: Vec<(&str, usize)> = self
+                .spelling_rules
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !dropped(*i))
+                .map(|(i, r)| (r.from.as_str(), i))
+                .chain(
+                    self.absorber_strings
+                        .iter()
+                        .enumerate()
+                        .filter(|(j, _)| !dropped(self.absorber_owner[*j]))
+                        .map(|(j, s)| (s.as_str(), n + j)),
+                )
+                .collect();
+            #[cfg(test)]
+            let fault = self.subset_fault;
+            #[cfg(not(test))]
+            let fault = BuildFault::None;
+            PatternSet::build(&patterns, fault)
+        })
+    }
+}
+
 impl std::fmt::Debug for CompiledSpellingDb {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompiledSpellingDb")
-            .field("ac_charwise", &self.ac_charwise.is_some())
-            .field("ac_bytewise", &self.ac_bytewise.is_some())
+            .field("charwise", &self.patterns.charwise.is_some())
+            .field("bytewise", &self.patterns.bytewise.is_some())
             .field("rules", &self.rules.len())
             .field("clue_ac", &self.clue_ac.is_some())
             .field("absorber_strings", &self.absorber_strings.len())
@@ -1074,20 +1204,17 @@ fn build_clue_index(spelling_rules: &[SpellingRule]) -> ClueIndex {
     (clue_ac, rule_pos_clue_ids, rule_neg_clue_ids)
 }
 
-/// Build the absorber strings and the pattern automata over them.
+/// Absorber strings and the automata over rules plus absorbers.
 ///
 /// Absorbers are exception phrases and superstring `to` forms injected into the
 /// automaton so LeftmostLongest suppresses the shorter `from` match they
 /// contain.  Pattern indices at or beyond `spelling_rules.len()` are those
 /// sentinels rather than real rules.
-///
-/// Charwise (daachorse) is the primary automaton; the bytewise one is built
-/// only as a fallback when the charwise build fails, never both.
-type Automata = (
-    Vec<String>,
-    Option<daachorse::CharwiseDoubleArrayAhoCorasick<usize>>,
-    Option<AhoCorasick>,
-);
+struct Automata {
+    absorber_strings: Vec<String>,
+    absorber_owner: Vec<usize>,
+    patterns: PatternSet,
+}
 
 fn build_automata(spelling_rules: &[SpellingRule]) -> Automata {
     let spelling_patterns: Vec<&str> = spelling_rules.iter().map(|r| r.from.as_str()).collect();
@@ -1095,18 +1222,23 @@ fn build_automata(spelling_rules: &[SpellingRule]) -> Automata {
     // Absorption patterns: exception phrases and superstring to forms injected
     // into the AC so LeftmostLongest suppresses shorter from matches. Indices
     // >= spelling_rules.len() act as sentinels.
-    let absorber_strings: Vec<String> = {
+    let (absorber_strings, absorber_owner): (Vec<String>, Vec<usize>) = {
         let from_set: FxHashSet<&str> = spelling_patterns.iter().copied().collect();
-        let mut candidates: Vec<(String, &str)> = Vec::new();
+        let mut candidates: Vec<(String, &str, usize)> = Vec::new();
+
+        // One owner per absorber string is enough: the shadow filter below
+        // rejects an absorber that contains a different rule's from, and a
+        // phrase two rules share would contain both, so only same-from
+        // duplicates could share one and prepare_rules removes those.
         let mut dedup = FxHashSet::default();
-        for rule in spelling_rules {
+        for (rule_idx, rule) in spelling_rules.iter().enumerate() {
             if let Some(ref exceptions) = rule.exceptions {
                 for exc in exceptions {
                     if exc.contains(&rule.from)
                         && !from_set.contains(exc.as_str())
                         && dedup.insert(exc.clone())
                     {
-                        candidates.push((exc.clone(), rule.from.as_str()));
+                        candidates.push((exc.clone(), rule.from.as_str(), rule_idx));
                     }
                 }
             }
@@ -1116,7 +1248,7 @@ fn build_automata(spelling_rules: &[SpellingRule]) -> Automata {
                     && !from_set.contains(to.as_str())
                     && dedup.insert(to.clone())
                 {
-                    candidates.push((to.clone(), rule.from.as_str()));
+                    candidates.push((to.clone(), rule.from.as_str(), rule_idx));
                 }
             }
         }
@@ -1140,7 +1272,7 @@ fn build_automata(spelling_rules: &[SpellingRule]) -> Automata {
         // Reject absorbers that would shadow a different rule's from.
         candidates
             .into_iter()
-            .filter(|(absorber, orig_from)| {
+            .filter(|(absorber, orig_from, _)| {
                 // An empty from (deduped, so at most one) has no first char and
                 // is thus unbucketed, but it is a substring of every absorber
                 // -- so unless it *is* orig_from, it shadows unconditionally,
@@ -1175,49 +1307,23 @@ fn build_automata(spelling_rules: &[SpellingRule]) -> Automata {
                     })
                 })
             })
-            .map(|(s, _)| s)
-            .collect()
+            .map(|(s, _, owner)| (s, owner))
+            .unzip()
     };
-    let all_patterns: Vec<&str> = spelling_patterns
+    let all_patterns: Vec<(&str, usize)> = spelling_patterns
         .iter()
         .copied()
         .chain(absorber_strings.iter().map(|s| s.as_str()))
+        .enumerate()
+        .map(|(i, p)| (p, i))
         .collect();
+    let patterns = PatternSet::build(&all_patterns, BuildFault::None);
 
-    let ac_charwise = {
-        let patvals: Vec<(&str, usize)> = all_patterns
-            .iter()
-            .enumerate()
-            .map(|(i, &p)| (p, i))
-            .collect();
-        match CharwiseDoubleArrayAhoCorasickBuilder::new()
-            .match_kind(DaacMatchKind::LeftmostLongest)
-            .build_with_values(patvals)
-        {
-            Ok(ac) => Some(ac),
-            Err(e) => {
-                tracing::warn!("charwise AC build failed, using bytewise fallback: {e}");
-                None
-            }
-        }
-    };
-
-    let ac_bytewise = if ac_charwise.is_none() {
-        match AhoCorasickBuilder::new()
-            .match_kind(MatchKind::LeftmostLongest)
-            .build(&all_patterns)
-        {
-            Ok(ac) => Some(ac),
-            Err(e) => {
-                tracing::warn!("bytewise spelling AC build failed: {e}");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    (absorber_strings, ac_charwise, ac_bytewise)
+    Automata {
+        absorber_strings,
+        absorber_owner,
+        patterns,
+    }
 }
 
 /// A group is kept only when it can do what the field promises. Malformed
@@ -1321,6 +1427,8 @@ pub fn compile_spelling_rules_filtered(
         .map(|r| r.context_clues.as_ref().map(|v| Arc::from(v.as_slice())))
         .collect();
 
+    let has_register_gates = spelling_rules.iter().any(|r| r.register.is_some());
+
     let spelling_context_suggestions: Vec<Option<CompiledContextSelector>> = spelling_rules
         .iter()
         .map(compile_context_selector)
@@ -1361,7 +1469,11 @@ pub fn compile_spelling_rules_filtered(
         })
         .collect();
 
-    let (absorber_strings, ac_charwise, ac_bytewise) = build_automata(&spelling_rules);
+    let Automata {
+        absorber_strings,
+        absorber_owner,
+        patterns,
+    } = build_automata(&spelling_rules);
 
     let rule_filter_flags: Vec<u8> = spelling_rules
         .iter()
@@ -1424,21 +1536,26 @@ pub fn compile_spelling_rules_filtered(
                 predicates,
                 rule_type: rule.rule_type,
                 severity: rule.effective_severity(),
+                register: rule.register,
             }
         })
         .collect();
 
     CompiledSpellingDb {
-        ac_charwise,
-        ac_bytewise,
+        patterns,
         rules: compiled_rules,
         clue_ac,
         absorber_strings,
+        absorber_owner,
+        register_subsets: Default::default(),
+        #[cfg(test)]
+        subset_fault: BuildFault::None,
         spelling_rules,
         spelling_suggestions,
         spelling_contexts,
         spelling_english,
         spelling_context_clues,
+        has_register_gates,
         spelling_context_suggestions,
         spelling_editorial_confidence,
         rule_pos_clue_ids,

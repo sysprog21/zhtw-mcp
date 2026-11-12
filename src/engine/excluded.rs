@@ -222,6 +222,40 @@ pub fn merge_ranges_pub(mut ranges: Vec<ByteRange>) -> Vec<ByteRange> {
     merged
 }
 
+/// The text with every excluded byte range replaced by spaces of the same byte
+/// length, so a cue search over it never reads code, URLs or other non-prose,
+/// and every byte offset still means the same thing as in the original. Line
+/// breaks inside a range are kept, so a line-local scan over the result still
+/// resets where the original does.
+///
+/// A range that does not fall on character boundaries (a caller-supplied one
+/// can) is widened outward to the nearest boundaries, so the result stays valid
+/// text and the excluded characters are still blanked.
+pub fn mask_excluded(text: &str, ranges: &[ByteRange]) -> String {
+    let mut bytes = text.as_bytes().to_vec();
+    for r in ranges {
+        if r.start >= r.end {
+            continue;
+        }
+        let mut start = r.start.min(text.len());
+        let mut end = r.end.min(text.len());
+        while !text.is_char_boundary(start) {
+            start -= 1;
+        }
+        while !text.is_char_boundary(end) {
+            end += 1;
+        }
+        if start < end {
+            for b in &mut bytes[start..end] {
+                if *b != b'\n' {
+                    *b = b' ';
+                }
+            }
+        }
+    }
+    String::from_utf8(bytes).expect("blanking whole characters keeps the text valid")
+}
+
 // Tests
 
 #[cfg(test)]

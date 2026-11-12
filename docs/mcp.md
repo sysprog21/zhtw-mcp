@@ -55,7 +55,7 @@ Unified lint / fix / gate for zh-TW text.
 | `spacing` | `"require"` / `"strip"` | Boundary policy for CJK against ASCII letters and ASCII digits; `require` is the default |
 | `off` | array of rule-family names | Disable named families after profile and capability flags resolve |
 | `relaxed` | boolean | Relax colon and other UI-string-level rules |
-| `content_type` | `"plain"` / `"markdown"` / `"markdown-scan-code"` / `"yaml"` | Content type (`markdown-scan-code` also lints inside code blocks) |
+| `content_type` | `"plain"` / `"markdown"` / `"markdown-scan-code"` / `"yaml"` / `"json"` | Content type (`markdown-scan-code` also lints inside code blocks; `json` skips automatic Simplified-to-Traditional conversion) |
 | `political_stance` | `"roc_centric"` / `"neutral"` / `"international"` | Political stance filter |
 | `ignore_terms` | array of strings | Terms to downgrade to Info for this call |
 | `explain` | boolean | Attach cultural/linguistic annotations |
@@ -65,7 +65,7 @@ Unified lint / fix / gate for zh-TW text.
 | `exempt_blockquotes` | boolean | Treat Markdown blockquotes as quoted material rather than content |
 | `detect_ai` | boolean | AI-filler detection; overrides the profile default |
 | `detect_translationese` | boolean | Translationese (翻譯腔 / 歐化) detection; overrides the profile default |
-| `detect_style` | boolean | Composite three-axis scorecard (ai, translationese, regional_density) |
+| `detect_style` | boolean | Composite three-axis scorecard (ai, translationese, regional_density). The three axis scores rank documents against each other; a per-sentence finding, not an axis score, is what justifies an edit, and there is no single composite number |
 | `translationese_domain` | `"general"` / `"technical"` / `"literary"` / `"news"` | Per-domain calibration for translationese thresholds |
 | `document_genre` | `"casual"` / `"technical"` / `"financial"` | How strictly sourcing is expected for unsupported authority attributions. Requires `detect_ai` |
 | `register` | `"auto"` / `"formal"` / `"casual"` | Register the prose is written in. `auto` reads it off the text; `formal` licenses the forms a 公文 mandates. Suppression only |

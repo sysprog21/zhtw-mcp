@@ -504,6 +504,15 @@
       "content_type": "markdown"
     },
     {
+      "id": "native_locale_bundle_json_values_only",
+      "repeat": 1,
+      "input": "{\n  \"title\": \"軟體設定\",\n  \"desc\": \"共{count}個使用者，%d個專案\"\n}\n",
+      "expected_fixed": "{\n  \"title\": \"軟體設定\",\n  \"desc\": \"共{count}個使用者，%d個專案\"\n}\n",
+      "expected_issues": [],
+      "must_be_clean": true,
+      "content_type": "json"
+    },
+    {
       "id": "native_attribution_named_agency",
       "repeat": 1,
       "detect_ai": true,
@@ -723,6 +732,7 @@
     },
     {
       "id": "native_lexical_trap_bushu_gongbu",
+      "detector": "lexical",
       "repeat": 1,
       "input": "行政院公佈署長人選。",
       "expected_fixed": "行政院公佈署長人選。",
@@ -730,6 +740,7 @@
     },
     {
       "id": "native_lexical_trap_bushu_xuanbu",
+      "detector": "lexical",
       "repeat": 1,
       "input": "他宣佈署理主席的任命。",
       "expected_fixed": "他宣佈署理主席的任命。",
@@ -737,6 +748,7 @@
     },
     {
       "id": "native_lexical_trap_siyu",
+      "detector": "lexical",
       "repeat": 1,
       "input": "這屬於個人隱私域流量的討論。",
       "expected_fixed": "這屬於個人隱私域流量的討論。",
@@ -744,6 +756,7 @@
     },
     {
       "id": "native_lexical_trap_latong",
+      "detector": "lexical",
       "repeat": 1,
       "input": "工人正在拉通風管的繩索。",
       "expected_fixed": "工人正在拉通風管的繩索。",
@@ -751,6 +764,7 @@
     },
     {
       "id": "native_lexical_trap_laxin",
+      "detector": "lexical",
       "repeat": 1,
       "input": "他拉新娘的手走上紅毯。",
       "expected_fixed": "他拉新娘的手走上紅毯。",
@@ -758,6 +772,7 @@
     },
     {
       "id": "native_lexical_trap_jianli",
+      "detector": "lexical",
       "repeat": 1,
       "input": "精簡歷史年表可以幫助理解。",
       "expected_fixed": "精簡歷史年表可以幫助理解。",
@@ -765,6 +780,7 @@
     },
     {
       "id": "native_lexical_trap_chengdu",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "誤差控制在一定程度上限之內。",
       "detect_ai": true,
@@ -773,6 +789,7 @@
     },
     {
       "id": "native_lexical_trap_shensi",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "這份報告值得我們深思熟慮後再決定。",
       "detect_ai": true,
@@ -781,6 +798,7 @@
     },
     {
       "id": "native_lexical_trap_maoni",
+      "detector": "lexical",
       "repeat": 1,
       "input": "我家的貓膩在我腿上不肯走。",
       "expected_fixed": "我家的貓膩在我腿上不肯走。",
@@ -788,6 +806,7 @@
     },
     {
       "id": "native_lexical_trap_chuzhong",
+      "detector": "lexical",
       "repeat": 1,
       "input": "當初中央銀行的決議影響深遠。",
       "expected_fixed": "當初中央銀行的決議影響深遠。",
@@ -795,6 +814,7 @@
     },
     {
       "id": "native_lexical_trap_cinai",
+      "detector": "lexical",
       "repeat": 1,
       "input": "此乃天意，非人力所能挽回。",
       "expected_fixed": "此乃天意，非人力所能挽回。",
@@ -802,6 +822,7 @@
     },
     {
       "id": "native_lexical_trap_bubian",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "請提前辦理，以免造成不便。",
       "detect_ai": true,
@@ -810,6 +831,7 @@
     },
     {
       "id": "native_lexical_trap_hehuo",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "本條款適用於甲方和／或乙方。",
       "detect_ai": true,
@@ -850,6 +872,7 @@
     },
     {
       "id": "native_specimen_bad_example_bullet",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "- ❌ 值得注意的是，這個做法更清晰、更精確、更有效率。\n- ✅ 這個做法更精確。\n",
       "detect_ai": true,
@@ -858,6 +881,7 @@
     },
     {
       "id": "native_specimen_blockquote_nested",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "> - ❌ 值得注意的是這件事。\n",
       "detect_ai": true,
@@ -866,6 +890,7 @@
     },
     {
       "id": "native_specimen_ordered_list",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "1. ❌ 值得注意的是這件事。\n",
       "detect_ai": true,
@@ -940,6 +965,7 @@
     },
     {
       "id": "native_antiovercorrection_isolated_ranran",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "然而，這項測試仍需在實際裝置上確認。",
       "detect_ai": true,
@@ -949,6 +975,7 @@
     },
     {
       "id": "native_antiovercorrection_isolated_ciwai",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "此外，部署前應備份目前的設定。",
       "detect_ai": true,
@@ -958,6 +985,7 @@
     },
     {
       "id": "native_antiovercorrection_single_emdash",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "這個差異很小，但對離線使用者很重要——更新前請先匯出資料。",
       "detect_ai": true,
@@ -967,6 +995,7 @@
     },
     {
       "id": "native_antiovercorrection_short_emphasis",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "這很重要。請先完成備份再繼續。",
       "detect_ai": true,
@@ -976,6 +1005,7 @@
     },
     {
       "id": "native_antiovercorrection_faq_question",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "Q：如何重設密碼？A：在登入頁選擇「忘記密碼」，再依指示驗證信箱。",
       "detect_ai": true,
@@ -985,6 +1015,7 @@
     },
     {
       "id": "native_antiovercorrection_list_colon",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "支援三種設定格式：JSON、YAML、TOML。",
       "detect_ai": true,
@@ -994,6 +1025,7 @@
     },
     {
       "id": "native_antiovercorrection_clean_grammar",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "系統完成驗證後才會寫入資料，失敗時會保留原有內容。",
       "detect_ai": true,
@@ -1003,6 +1035,7 @@
     },
     {
       "id": "native_antiovercorrection_formal_vocabulary",
+      "detector": "ai_style",
       "repeat": 1,
       "input": "本規範援引既有測試結果，以釐清相容性要求的構成要件。",
       "detect_ai": true,
@@ -1012,11 +1045,82 @@
     },
     {
       "id": "native_antiovercorrection_metalinguistic_term",
+      "detector": "lexical",
       "repeat": 1,
       "input": "「軟件」是中國用語；臺灣技術文件通常寫作「軟體」。",
       "detect_ai": true,
       "must_be_clean": true,
       "expected_fixed": "「軟件」是中國用語；臺灣技術文件通常寫作「軟體」。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_suoyou_technical",
+      "detector": "lexical",
+      "repeat": 1,
+      "input": "當快取失效時，所有連線將導向備援伺服器。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "當快取失效時，所有連線將導向備援伺服器。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_xiangmu_list_item",
+      "detector": "lexical",
+      "repeat": 1,
+      "input": "待辦項目包含資料庫遷移與權限審查。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "待辦項目包含資料庫遷移與權限審查。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_opinion_command_shape",
+      "detector": "ai_style",
+      "repeat": 1,
+      "input": "我支持保留全部練習題，這對初學者理解架構很有幫助。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "我支持保留全部練習題，這對初學者理解架構很有幫助。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_shuoshihua_midsentence",
+      "detector": "ai_style",
+      "repeat": 1,
+      "input": "說實話，這個決定我想了很久。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "說實話，這個決定我想了很久。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_parenthetical_self_correction",
+      "detector": "ai_style",
+      "repeat": 1,
+      "input": "我們預計下週發布（更正是下下週一），請團隊先做好準備。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "我們預計下週發布（更正是下下週一），請團隊先做好準備。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_tutorial_rhetorical_question",
+      "detector": "ai_style",
+      "repeat": 1,
+      "input": "為什麼這裡要用指標？因為我們需要就地修改記憶體內容。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "為什麼這裡要用指標？因為我們需要就地修改記憶體內容。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_counter_mainstream_with_evidence",
+      "detector": "ai_style",
+      "repeat": 1,
+      "input": "多數人認為快取越大越好，但我們量測發現，把快取從四百 MB 縮到一百 MB 後，命中率只掉兩個百分點，記憶體用量卻少了四分之三。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "多數人認為快取越大越好，但我們量測發現，把快取從四百 MB 縮到一百 MB 後，命中率只掉兩個百分點，記憶體用量卻少了四分之三。",
       "expected_issues": []
     },
     {
@@ -1481,6 +1585,671 @@
       "input": "統計課上，他對數學期望過高。",
       "must_be_clean": true,
       "expected_fixed": "統計課上，他對數學期望過高。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_translationese_cooperation",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "這是非常重要的結果。大家需要合作，也要仔細地看文件。",
+      "expected_fixed": "這是非常重要的結果。大家需要合作，也要仔細地看文件。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_translationese_hudong",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "他一邊開會一邊回訊息，同時還要盯著專案進度。",
+      "expected_fixed": "他一邊開會一邊回訊息，同時還要盯著專案進度。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_translationese_tongshi",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "這個平台整合了多個資料來源，使用者互動也很順暢。",
+      "expected_fixed": "這個平台整合了多個資料來源，使用者互動也很順暢。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_speech",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "他說的話是我聽過的最有趣的。",
+      "expected_fixed": "他說的話是我聽過的最有趣的。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_plan",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "這是我們討論過的最實際的方案。",
+      "expected_fixed": "這是我們討論過的最實際的方案。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_book",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "她寫的書是我讀過的最動人的。",
+      "expected_fixed": "她寫的書是我讀過的最動人的。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_kitchen",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "媽媽煮的菜是我吃過的最好吃的。",
+      "expected_fixed": "媽媽煮的菜是我吃過的最好吃的。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_de_three_trip",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "detect_rhythm": true,
+      "input": "他去過的地方是我最想去的。",
+      "expected_fixed": "他去過的地方是我最想去的。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_public_data_report",
+      "repeat": 1,
+      "input": "基於現有公開資料，本季報告估計國內市場規模約三百億元。",
+      "must_be_clean": true,
+      "expected_fixed": "基於現有公開資料，本季報告估計國內市場規模約三百億元。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_first_person_status_report",
+      "repeat": 1,
+      "input": "基於我目前掌握的資訊，這次延遲是供應商造成的，我會在週五前回報。",
+      "must_be_clean": true,
+      "expected_fixed": "基於我目前掌握的資訊，這次延遲是供應商造成的，我會在週五前回報。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_customer_service_reschedule",
+      "repeat": 1,
+      "input": "客人問能不能改期，我說當然可以，我來幫你換成週三的場次。",
+      "must_be_clean": true,
+      "expected_fixed": "客人問能不能改期，我說當然可以，我來幫你換成週三的場次。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_faq_answer_with_citation",
+      "repeat": 1,
+      "input": "你問能不能補考？當然可以，以下是校規第三條的原文。",
+      "must_be_clean": true,
+      "expected_fixed": "你問能不能補考？當然可以，以下是校規第三條的原文。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_tutorial_opener_deliverable_nouns",
+      "repeat": 1,
+      "input": "你問能不能自己架設？當然可以，以下是整理好的安裝步驟與重點範例。",
+      "must_be_clean": true,
+      "expected_fixed": "你問能不能自己架設？當然可以，以下是整理好的安裝步驟與重點範例。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_interviewee_self_description",
+      "repeat": 1,
+      "input": "他在受訪時說自己為人低調，鮮少公開演講，這次是破例。",
+      "must_be_clean": true,
+      "expected_fixed": "他在受訪時說自己為人低調，鮮少公開演講，這次是破例。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_candor_midsentence",
+      "repeat": 1,
+      "input": "我說實話，這個決定想了很久，也和家人談過。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "我說實話，這個決定想了很久，也和家人談過。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_candor_comma_opener",
+      "repeat": 1,
+      "input": "說實話，這份草稿還需要兩位同事再看一輪才能送出。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "說實話，這份草稿還需要兩位同事再看一輪才能送出。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_candor_quoted_speech",
+      "repeat": 1,
+      "input": "他苦笑著說：「講白了，就是預算不夠。」會議室安靜了一下。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "他苦笑著說：「講白了，就是預算不夠。」會議室安靜了一下。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_candor_quoted_question",
+      "repeat": 1,
+      "input": "記者問他：「說實話？」他搖搖頭，沒有回答。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "記者問他：「說實話？」他搖搖頭，沒有回答。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_announce_midsentence",
+      "repeat": 1,
+      "input": "他常把廢話不多說掛在嘴邊，開會卻總是講最久。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "他常把廢話不多說掛在嘴邊，開會卻總是講最久。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_announce_quoted",
+      "repeat": 1,
+      "input": "老闆在群組裡交代：「廢話不多說，週五前要交。」大家都照辦。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "老闆在群組裡交代：「廢話不多說，週五前要交。」大家都照辦。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_announce_idiom_shao",
+      "repeat": 1,
+      "input": "廢話少說，先把測試跑完再討論下一步。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "廢話少說，先把測試跑完再討論下一步。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_conclusion_midparagraph",
+      "repeat": 1,
+      "input": "兩次壓測的結果相同。由此可見，瓶頸不在網路層。我們接著檢查磁碟的佇列深度。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "兩次壓測的結果相同。由此可見，瓶頸不在網路層。我們接著檢查磁碟的佇列深度。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_conclusion_single_sentence",
+      "repeat": 1,
+      "input": "由此可見，這項設計取捨符合當時的人力限制。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "由此可見，這項設計取捨符合當時的人力限制。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_conclusion_quoted",
+      "repeat": 1,
+      "input": "審查意見寫道：「兩次壓測結果相同。由此可見，瓶頸在儲存層。」",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "審查意見寫道：「兩次壓測結果相同。由此可見，瓶頸在儲存層。」",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_depth_single_frame",
+      "repeat": 1,
+      "input": "團隊討論了三週。歸根結底，這個取捨來自人力限制。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "團隊討論了三週。歸根結底，這個取捨來自人力限制。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_depth_midsentence",
+      "repeat": 1,
+      "input": "他認為歸根結底是預算問題，也有人覺得說到底是人力不足。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "他認為歸根結底是預算問題，也有人覺得說到底是人力不足。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_depth_split_paragraphs",
+      "repeat": 1,
+      "input": "歸根結底，這個取捨來自人力限制。\n\n說到底，每個團隊都要在時程與品質之間選一邊。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "expected_fixed": "歸根結底，這個取捨來自人力限制。\n\n說到底，每個團隊都要在時程與品質之間選一邊。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_teacher_method",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "must_be_clean": true,
+      "input": "老師教的方法是我用過的最有效的",
+      "expected_fixed": "老師教的方法是我用過的最有效的",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_teacher_content",
+      "repeat": 1,
+      "detector": "translationese",
+      "detect_translationese": true,
+      "must_be_clean": true,
+      "input": "老師講的內容是我聽過的最實用的",
+      "expected_fixed": "老師講的內容是我聽過的最實用的",
+      "expected_issues": []
+    },
+    {
+      "id": "native_rhythm_staccato_legit_short_prose",
+      "repeat": 1,
+      "detector": "rhythm",
+      "detect_rhythm": true,
+      "must_be_clean": true,
+      "input": "## 安裝步驟\n\n1. 開機。\n2. 登入。\n3. 儲存。\n\n第一步：開機。第二步：登入。第三步：儲存。\n\n「好。」「走。」「去。」\n\n床前明月光，疑是地上霜。舉頭望明月，低頭思故鄉。\n\n你是誰？我是他。為什麼？\n\n門開了。老人站在門口，手裡提著一袋剛買的橘子。沒有人說話。",
+      "expected_fixed": "## 安裝步驟\n\n1. 開機。\n2. 登入。\n3. 儲存。\n\n第一步：開機。第二步：登入。第三步：儲存。\n\n「好。」「走。」「去。」\n\n床前明月光，疑是地上霜。舉頭望明月，低頭思故鄉。\n\n你是誰？我是他。為什麼？\n\n門開了。老人站在門口，手裡提著一袋剛買的橘子。沒有人說話。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_rhythm_staccato_regular_verse",
+      "repeat": 1,
+      "detector": "rhythm",
+      "detect_rhythm": true,
+      "must_be_clean": true,
+      "input": "白日依山盡。黃河入海流。欲窮千里目。更上一層樓。\n\n床前明月光。疑是地上霜。舉頭望明月。低頭思故鄉。",
+      "expected_fixed": "白日依山盡。黃河入海流。欲窮千里目。更上一層樓。\n\n床前明月光。疑是地上霜。舉頭望明月。低頭思故鄉。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_self_qa_tutorial_modifiers",
+      "repeat": 1,
+      "input": "為什麼其實不需要加鎖？因為這段程式只由單一執行緒讀取。為什麼真的要先建立索引？因為索引能加速查詢。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "為什麼其實不需要加鎖？因為這段程式只由單一執行緒讀取。為什麼真的要先建立索引？因為索引能加速查詢。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_colon_plain_answer",
+      "repeat": 1,
+      "input": "這次重構花了三個月。關鍵在於：磁碟 IO 的排程方式。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這次重構花了三個月。關鍵在於：磁碟 IO 的排程方式。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_colon_definition_list",
+      "repeat": 1,
+      "input": "名詞定義：快取是暫存常用資料的區域。\n\n備份項目：\n- 設定\n- 資料\n- 日誌",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "名詞定義：快取是暫存常用資料的區域。\n\n備份項目：\n- 設定\n- 資料\n- 日誌",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_selfqa_tutorial",
+      "repeat": 1,
+      "input": "為什麼要先建立索引？因為索引能加速查詢。那為什麼寫入會變慢？主要是因為每次寫入都要更新索引。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "為什麼要先建立索引？因為索引能加速查詢。那為什麼寫入會變慢？主要是因為每次寫入都要更新索引。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_selfqa_faq",
+      "repeat": 1,
+      "input": "常見問題\n\n問：到底為什麼要升級？因為舊版不再維護，也不會收到安全修補。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "常見問題\n\n問：到底為什麼要升級？因為舊版不再維護，也不會收到安全修補。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_contrast_single",
+      "repeat": 1,
+      "input": "這次事故不是個人疏忽，而是交接流程缺少檢查點。後續會補上檢查清單。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這次事故不是個人疏忽，而是交接流程缺少檢查點。後續會補上檢查清單。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_contrast_two_paragraphs",
+      "repeat": 1,
+      "input": "這個錯誤不是網路問題，而是憑證過期。\n\n那個警告不是設定錯誤，而是版本差異。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這個錯誤不是網路問題，而是憑證過期。\n\n那個警告不是設定錯誤，而是版本差異。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_verdict_support_single",
+      "repeat": 1,
+      "input": "你不是漏了設定，你只是用錯了版本。請把版本改成 2.1 再重新執行。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "你不是漏了設定，你只是用錯了版本。請把版本改成 2.1 再重新執行。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_verdict_dialogue",
+      "repeat": 1,
+      "input": "她對他說：「你不是不夠好，你只是還沒被看見。你值得被好好對待。」",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "她對他說：「你不是不夠好，你只是還沒被看見。你值得被好好對待。」",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_dangran_keyi_second_person",
+      "repeat": 1,
+      "input": "你當然可以選擇自己架設，只是要先備份。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "你當然可以選擇自己架設，只是要先備份。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_dangran_keyi_third_person",
+      "repeat": 1,
+      "input": "他當然可以拒絕這份合約，沒有人能強迫他簽字。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "他當然可以拒絕這份合約，沒有人能強迫他簽字。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_attention_list_colon",
+      "repeat": 1,
+      "input": "升級前需要注意的是：以下三點，請依序確認。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "升級前需要注意的是：以下三點，請依序確認。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_attention_copular_noun",
+      "repeat": 1,
+      "input": "這個函式需要注意的是參數順序，不是回傳值。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這個函式需要注意的是參數順序，不是回傳值。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_antiovercorrection_attention_bare_clause",
+      "repeat": 1,
+      "input": "需要注意的是版本相容性，舊版的外掛不會被載入。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "需要注意的是版本相容性，舊版的外掛不會被載入。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_gongwen_officialese_formal",
+      "repeat": 1,
+      "input": "敬啟者：\n鑑於貴公司來函所述事項，茲將處理結果說明如下，特此通知。\n此致\n某某股份有限公司\n謹啟",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "敬啟者：\n鑑於貴公司來函所述事項，茲將處理結果說明如下，特此通知。\n此致\n某某股份有限公司\n謹啟",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_inference_final_numeric",
+      "repeat": 1,
+      "input": "本研究以三所大學的修課紀錄為樣本，比較線上與面授課程的期末成績。結果顯示，線上組平均七十二點四分，面授組平均七十八點一分，差距達到統計顯著。由此可見，在未控制先備知識的情況下，授課形式與成績之間存在穩定的負相關。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "本研究以三所大學的修課紀錄為樣本，比較線上與面授課程的期末成績。結果顯示，線上組平均七十二點四分，面授組平均七十八點一分，差距達到統計顯著。由此可見，在未控制先備知識的情況下，授課形式與成績之間存在穩定的負相關。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_inference_final_hedged",
+      "repeat": 1,
+      "input": "早期的方言調查多半集中在城市，鄉村的語料相對稀少。這使得後來的研究者難以判斷某些詞彙是否真的只在特定地區流通。由此可見，取樣偏差會左右語言分布的判讀，後續工作必須補足鄉村語料。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "早期的方言調查多半集中在城市，鄉村的語料相對稀少。這使得後來的研究者難以判斷某些詞彙是否真的只在特定地區流通。由此可見，取樣偏差會左右語言分布的判讀，後續工作必須補足鄉村語料。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_inference_mid_paragraph",
+      "repeat": 1,
+      "input": "實驗組在第三週後出現明顯進步，由此可見訓練時間的長短確實影響表現。不過對照組同期也有小幅提升，因此我們仍需要更長的追蹤期才能下結論。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "實驗組在第三週後出現明顯進步，由此可見訓練時間的長短確實影響表現。不過對照組同期也有小幅提升，因此我們仍需要更長的追蹤期才能下結論。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_literature_review",
+      "repeat": 1,
+      "input": "過去二十年，關於社群媒體與青少年睡眠的研究數量快速增加。多數研究採用自填問卷，少數使用穿戴裝置記錄。兩種方法得到的效果量並不一致，問卷研究的估計值大約是裝置研究的兩倍。由此可見，測量方式本身就是造成文獻分歧的重要來源。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "過去二十年，關於社群媒體與青少年睡眠的研究數量快速增加。多數研究採用自填問卷，少數使用穿戴裝置記錄。兩種方法得到的效果量並不一致，問卷研究的估計值大約是裝置研究的兩倍。由此可見，測量方式本身就是造成文獻分歧的重要來源。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_tutorial_why_exactly",
+      "repeat": 1,
+      "input": "遞迴常讓人困惑。為什麼函式呼叫自己，到底不會無限執行下去？因為每一層呼叫都會先檢查終止條件，成立就直接回傳。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "遞迴常讓人困惑。為什麼函式呼叫自己，到底不會無限執行下去？因為每一層呼叫都會先檢查終止條件，成立就直接回傳。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_tutorial_why_actually",
+      "repeat": 1,
+      "input": "這個設定看起來很奇怪。為什麼這裡究竟要關掉快取？因為這份資料每秒都在更新，快取只會讓使用者看到舊內容。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這個設定看起來很奇怪。為什麼這裡究竟要關掉快取？因為這份資料每秒都在更新，快取只會讓使用者看到舊內容。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_tutorial_faq_answer",
+      "repeat": 1,
+      "input": "常見問題：為什麼備份到底要放在不同的磁碟？因為同一顆磁碟損壞時，備份也會一起消失，放在不同磁碟才能真正降低風險。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "常見問題：為什麼備份到底要放在不同的磁碟？因為同一顆磁碟損壞時，備份也會一起消失，放在不同磁碟才能真正降低風險。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_tutorial_why_exactly_embedded",
+      "repeat": 1,
+      "input": "部署前先確認版本編號。為什麼復原到底需要保留舊映像檔？因為新版本一旦出錯，只有舊映像檔能在一分鐘內恢復服務。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "部署前先確認版本編號。為什麼復原到底需要保留舊映像檔？因為新版本一旦出錯，只有舊映像檔能在一分鐘內恢復服務。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_bio_low_profile_1",
+      "repeat": 1,
+      "input": "林教授是臺南人，為人低調，鮮少公開談論私事，連得獎的消息都是學生在系網站上看到才知道。他在實驗室待了三十年，晚年仍每天到系上看論文。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "林教授是臺南人，為人低調，鮮少公開談論私事，連得獎的消息都是學生在系網站上看到才知道。他在實驗室待了三十年，晚年仍每天到系上看論文。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_bio_low_profile_2",
+      "repeat": 1,
+      "input": "這位建築師為人低調，鮮少公開露面，作品卻遍布全臺。他的事務所至今沒有網站，案子全靠舊客戶口耳相傳。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "這位建築師為人低調，鮮少公開露面，作品卻遍布全臺。他的事務所至今沒有網站，案子全靠舊客戶口耳相傳。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_bio_obituary_1",
+      "repeat": 1,
+      "input": "王老先生一生教書，桃李滿天下。學生回憶他為人低調，鮮少提起自己的事，只在畢業典禮上說過一句話：書要讀下去。告別式訂於下週三上午十時舉行。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "王老先生一生教書，桃李滿天下。學生回憶他為人低調，鮮少提起自己的事，只在畢業典禮上說過一句話：書要讀下去。告別式訂於下週三上午十時舉行。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_bio_profile_1",
+      "repeat": 1,
+      "input": "她出身雲林的農家，大學念的是農業經濟。畢業後回鄉接手家裡的稻田，這幾年改種有機米，也開始在網路上賣米。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "她出身雲林的農家，大學念的是農業經濟。畢業後回鄉接手家裡的稻田，這幾年改種有機米，也開始在網路上賣米。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_kanyu_1",
+      "repeat": 1,
+      "input": "鑑於近日連續降雨，水利署昨天宣布，曾文水庫提前進行調節性放水，下游沿岸居民請留意警戒訊息。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "鑑於近日連續降雨，水利署昨天宣布，曾文水庫提前進行調節性放水，下游沿岸居民請留意警戒訊息。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_kanyu_2",
+      "repeat": 1,
+      "input": "市府表示，鑑於部分路段施工延宕，原訂本月底通車的時程將順延至下月中旬，施工期間的改道措施不變。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "市府表示，鑑於部分路段施工延宕，原訂本月底通車的時程將順延至下月中旬，施工期間的改道措施不變。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zi_1",
+      "repeat": 1,
+      "input": "校方今天發出公告，茲定於十一月十八日舉行校慶運動會，當天校門口將實施交通管制，請家長提早出門。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "校方今天發出公告，茲定於十一月十八日舉行校慶運動會，當天校門口將實施交通管制，請家長提早出門。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zi_2",
+      "repeat": 1,
+      "input": "鑑於今年入學人數下降，教育部將調整兩所國中的招生班級數，相關名單已公布在網站上。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "鑑於今年入學人數下降，教育部將調整兩所國中的招生班級數，相關名單已公布在網站上。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_short_closer_corr",
+      "repeat": 1,
+      "input": "本研究蒐集一百二十位受試者的睡眠日誌，並與隔日的注意力測驗成績對照。睡眠時數與錯誤率的相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "本研究蒐集一百二十位受試者的睡眠日誌，並與隔日的注意力測驗成績對照。睡眠時數與錯誤率的相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_short_closer_support",
+      "repeat": 1,
+      "input": "預試階段的結果顯示，間隔複習組在四週後的保留率明顯較高。正式施測也得到相同的趨勢，且效果量中等，差異達顯著水準。由此可見，假說獲得支持。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "預試階段的結果顯示，間隔複習組在四週後的保留率明顯較高。正式施測也得到相同的趨勢，且效果量中等，差異達顯著水準。由此可見，假說獲得支持。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_short_closer_sample",
+      "repeat": 1,
+      "input": "將樣本數由三百減為一百五十後，迴歸係數的方向與顯著性均未改變。排除離群值之後，結果亦同。由此可見，問題不在樣本數。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "將樣本數由三百減為一百五十後，迴歸係數的方向與顯著性均未改變。排除離群值之後，結果亦同。由此可見，問題不在樣本數。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_acad_short_closer_limit",
+      "repeat": 1,
+      "input": "本研究僅取樣自北部兩所高中，無法代表全國的狀況。受試者也都是自願參加，可能有自我選擇的偏誤。由此可見，推論範圍有限。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "本研究僅取樣自北部兩所高中，無法代表全國的狀況。受試者也都是自願參加，可能有自我選擇的偏誤。由此可見，推論範圍有限。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zijiang_1",
+      "repeat": 1,
+      "input": "區公所昨天發布公告，茲將下週三的垃圾清運時間調整為下午四點，請居民配合，逾時不收。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "區公所昨天發布公告，茲將下週三的垃圾清運時間調整為下午四點，請居民配合，逾時不收。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zijiang_2",
+      "repeat": 1,
+      "input": "市府今天在官網公告，茲將市立停車場的月租費率自下月一日起調整，前三十分鐘仍維持免費，相關辦法已公布。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "市府今天在官網公告，茲將市立停車場的月租費率自下月一日起調整，前三十分鐘仍維持免費，相關辦法已公布。",
+      "expected_issues": []
+    },
+    {
+      "id": "native_news_zijiang_3",
+      "repeat": 1,
+      "input": "據校方公告內容，茲將期末考試時間改為十二月二十日，考場與座位表另行通知，學生請自行上網查詢。",
+      "detect_ai": true,
+      "must_be_clean": true,
+      "detector": "ai_style",
+      "expected_fixed": "據校方公告內容，茲將期末考試時間改為十二月二十日，考場與座位表另行通知，學生請自行上網查詢。",
       "expected_issues": []
     }
   ]

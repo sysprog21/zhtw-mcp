@@ -236,6 +236,175 @@ pub fn build_yaml_excluded_ranges(text: &str) -> Vec<ByteRange> {
     ranges
 }
 
+/// Longest span between braces or parentheses still taken for a placeholder.
+const JSON_MAX_HEAD: usize = 64;
+
+/// Build excluded byte ranges for a JSON document, leaving only the text of
+/// string values scannable.
+///
+/// Keys, punctuation, quote marks, every escape sequence, and format
+/// placeholders ({name}, {{count}}, ICU heads such as "{n, plural, one {",
+/// printf specifiers such as %s and %1$d) are excluded over the raw bytes, so
+/// findings keep native offsets and no decoded copy exists. A term spelled
+/// through an escape (a backslash-u sequence) is therefore not seen.
+///
+/// A string is a key when the next non-blank byte after it is a colon, which
+/// needs no nesting state: array elements and values are never followed by one.
+///
+/// The flag is true when a string never closes. The ranges are then empty, so
+/// the caller scans the whole file as plain text.
+pub fn build_json_excluded_ranges(text: &str) -> (Vec<ByteRange>, bool) {
+    fn push(ranges: &mut Vec<ByteRange>, start: usize, end: usize) {
+        if start < end {
+            ranges.push(ByteRange { start, end });
+        }
+    }
+
+    let bytes = text.as_bytes();
+    let mut ranges = Vec::new();
+    let mut gap = 0usize;
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        if bytes[i] != b'"' {
+            i += 1;
+            continue;
+        }
+        let start = i + 1;
+        let mut end = start;
+        while end < bytes.len() && bytes[end] != b'"' {
+            end += if bytes[end] == b'\\' { 2 } else { 1 };
+        }
+        if end >= bytes.len() {
+            return (Vec::new(), true);
+        }
+
+        let after = text[end + 1..].trim_start_matches([' ', '\t', '\r', '\n']);
+        if after.starts_with(':') {
+            push(&mut ranges, gap, end + 1);
+            gap = end + 1;
+        } else {
+            push(&mut ranges, gap, start);
+            json_value_placeholder_ranges(text, start, end, &mut ranges);
+            gap = end;
+        }
+        i = end + 1;
+    }
+    push(&mut ranges, gap, bytes.len());
+    (ranges, false)
+}
+
+/// Exclude escapes and placeholders inside one JSON string value, given as the
+/// byte span between its quotes.
+fn json_value_placeholder_ranges(text: &str, start: usize, end: usize, out: &mut Vec<ByteRange>) {
+    let bytes = text.as_bytes();
+    let mut p = start;
+    while p < end {
+        let dbl_closer = if bytes[p] == b'{' && bytes.get(p + 1) == Some(&b'{') {
+            closer_len(&text[p..end], "}}")
+        } else {
+            0
+        };
+        let len = match bytes[p] {
+            b'\\' => match text[p + 1..end].chars().next() {
+                Some('u') => {
+                    let hex = bytes[p + 2..end.min(p + 6)]
+                        .iter()
+                        .take_while(|b| b.is_ascii_hexdigit())
+                        .count();
+                    2 + hex
+                }
+                Some(c) => 1 + c.len_utf8(),
+                None => 1,
+            },
+
+            // "{{name}}" is closed by "}}". Otherwise a head that stops at "}"
+            // is a whole placeholder, and one that stops at "{" is an ICU head
+            // whose branch text is prose and stays scannable. Anything
+            // non-ASCII or long is not a placeholder, so only the brace itself
+            // goes.
+            b'{' if dbl_closer > 0 => dbl_closer,
+            // "${name}": the dollar sign goes, then the brace rule below.
+            b'$' if bytes.get(p + 1) == Some(&b'{') => 1,
+            // i18next nesting, "$t(key)".
+            b'$' if text[p..end].starts_with("$t(") => closer_len(&text[p..end], ")"),
+            b'{' => {
+                let mut q = p + 1;
+                while q < end && bytes[q] != b'{' && bytes[q] != b'}' {
+                    q += 1;
+                }
+                if q < end && q - p <= JSON_MAX_HEAD && text[p..q].is_ascii() {
+                    q + 1 - p
+                } else {
+                    1
+                }
+            }
+            b'}' => 1,
+            b'%' => printf_spec_len(&bytes[p..end]),
+            _ => 0,
+        };
+        if len == 0 {
+            p += 1;
+            continue;
+        }
+        out.push(ByteRange {
+            start: p,
+            end: p + len,
+        });
+        p += len;
+    }
+}
+
+/// Length of the leading span through the first closer, or 0 when there is no
+/// closer, the span is long, or it holds non-ASCII text (then it is prose
+/// between braces rather than a placeholder).
+fn closer_len(s: &str, closer: &str) -> usize {
+    // Look no further than the longest placeholder, or a long value full of
+    // openers with no closer would be searched to its end once per opener.
+    let closer = closer.as_bytes();
+    let found = s
+        .as_bytes()
+        .windows(closer.len())
+        .take(JSON_MAX_HEAD - closer.len() + 1)
+        .position(|w| w == closer);
+    match found {
+        Some(i) if s[..i].is_ascii() => i + closer.len(),
+        _ => 0,
+    }
+}
+
+/// Length of a printf-style specifier at the start of the slice (which begins
+/// with a percent sign), or 0 when it is not one.
+fn printf_spec_len(s: &[u8]) -> usize {
+    let mut i = 1;
+    if s.get(i) == Some(&b'%') {
+        return 2;
+    }
+    // Named form, "%(name)s".
+    if s.get(i) == Some(&b'(') {
+        match s.iter().take(JSON_MAX_HEAD + 1).position(|&b| b == b')') {
+            Some(close) if close <= JSON_MAX_HEAD && s[i..close].is_ascii() => i = close + 1,
+            _ => return 0,
+        }
+    }
+    let digits = s[i..].iter().take_while(|b| b.is_ascii_digit()).count();
+    if digits > 0 && s.get(i + digits) == Some(&b'$') {
+        i += digits + 1;
+    }
+    while matches!(s.get(i), Some(b'-' | b'+' | b'0' | b'#')) {
+        i += 1;
+    }
+    while matches!(s.get(i), Some(b) if b.is_ascii_digit() || *b == b'.') {
+        i += 1;
+    }
+    match s.get(i) {
+        Some(b'a'..=b'g' | b'i' | b'o' | b'p' | b's' | b'u' | b'x' | b'@' | b'A'..=b'G' | b'X') => {
+            i + 1
+        }
+        _ => 0,
+    }
+}
+
 /// Find the byte offset of the YAML key-separator colon in a line, if present.
 ///
 /// Per the YAML spec, a block-mapping key separator is a : followed by a

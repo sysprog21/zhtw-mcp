@@ -30,6 +30,7 @@ The scanner detects Traditional vs. Simplified Chinese by counting exclusive cha
 - Built-in SC→TC converter (`s2t.rs` + `s2t_data.rs`) eliminates the OpenCC runtime dependency for the `convert` subcommand.
 - The rhythm (氣口) axis is a capability flag on `ProfileConfig`, not a profile: `--rhythm` composes with `base` or `strict` instead of replacing one. Its findings carry `IssueType::Translationese` with a rhythm `PhaseFamily`, which is what keeps them out of the translationese score's issue-density signal and out of every fix tier. An opt-in taste flag must not move a calibrated number or rewrite a document.
 - Register (`register.rs`) is resolved once per document and decides which detectors stay quiet, never what to rewrite. `RegisterMode` on `ProfileConfig` is the policy a caller sets and a batch-wide config can carry; `Register` is the answer for one text, because a config that served a whole batch could not hold it. Detection errs toward casual on purpose: a missed 公文 leaves the linter where it was, while a false formal reading silently drops real findings. Anchors such as 謹啟 and 此致 need a phrase boundary in front of them, or 台端 matches inside 平台端 and turns a technical document formal.
+- 公文 officialese: the linter keeps licensing what a 公文 mandates (予以 through `BUREAUCRATIC_PREFIXES`). 茲將, 茲因, 特此通知, 特此說明, and 特此公告 are `ai_filler` rules carrying the `register: casual` field, so they are reported in ordinary prose and stay silent when the document resolves to the formal register, whether detected or forced with `--register formal`. A rewriter may still remove them for readability; this linter must not flag what a 公文 requires. 鑑於 is shipped disabled, because it is ordinary written prose in news and policy text and the gate cannot tell the two apart. The gate runs in the spelling pass (`Scanner::scan_spelling`, `GateMode`) before overlap resolution and resolves the register only when a gated rule matched.
 - Anchor calibration (`translate.rs`) annotates ambiguous issues with `anchor_match: Option<bool>` (confirmed/unconfirmed/no-signal) via synonym table and LCP stem matching. Fails open on API error (severity preserved).
 
 ## Corpus evaluation
@@ -50,7 +51,7 @@ Metric definitions:
 
 - `precision`: true-positive issue matches / all reported issues on corpora with gold positives.
 - `recall`: true-positive issue matches / all gold issues on corpora with gold positives.
-- `false_positive_rate`: fraction of native zh-TW documents that produced one or more issues.
+- `false_positive_rate`: over the checked-in native zh-TW cases only; `make corpus` prints the counts. `fp_rate(cases)` is the share of cases that produced any issue; `fp_rate(weighted)` is the same share weighted by each case's `repeat`. Both are gated at 5%.
 - `safe_fix_success_rate`: fraction of documents whose `lexical_safe` output exactly matches the expected fixed text.
 
 Gate thresholds: precision >= 90%, false-positive rate <= 5% on native zh-TW, safe-fix success >= 85% on AI-generated corpus.

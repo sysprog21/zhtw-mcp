@@ -67,3 +67,19 @@ fn get_editorial_review_default_iterations() {
 fn get_unknown_returns_none() {
     assert!(get_prompt("unknown", &empty_args()).is_none());
 }
+
+#[test]
+fn prompts_state_no_rewrite_goal() {
+    let mut args = empty_args();
+    args.insert("instruction".into(), "fix it".into());
+    args.insert("text".into(), "文字".into());
+    for prompt in list_prompts() {
+        let result = get_prompt(&prompt.name, &args).unwrap();
+        let hits = crate::mcp::rewrite_goal::rewrite_goal_hits(message_text(&result));
+        assert!(
+            hits.is_empty(),
+            "{} states a rewrite goal: {hits:?}",
+            prompt.name
+        );
+    }
+}

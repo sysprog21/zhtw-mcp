@@ -2219,7 +2219,7 @@ fn cli_fix_never_deletes_a_load_bearing_span() {
         "這一點毫無疑問。",
         "這是一個好問題。",
         "他提出非常棒的觀點。",
-        "你當然可以這樣做。",
+        "當然可以！以下是為你整理的步驟。",
         "這一切都是為了實現這一目標。",
         "讓我來為你介紹。",
         "希望這對你有幫助。",
@@ -2253,6 +2253,9 @@ fn cli_fix_never_deletes_a_load_bearing_span() {
         "我理解了你的意思。",
         "隨著時間過去，傷口慢慢癒合。",
         "在當今的制度下，這條路走不通。",
+        "你當然可以這樣做。",
+        "您當然可以隨時取消訂閱。",
+        "他當然可以拒絕。",
     ];
     for input in silent {
         let json = run_lint_stdin(&["--format", "json"], input);
@@ -2648,8 +2651,8 @@ fn cli_lint_rhythm_is_opt_in_advisory_and_never_fixed() {
     // Off by default: the flag is the only thing that can add a finding. Byte
     // identity against the pre-change binary was measured out of band over 214
     // runs (every corpus and fixture file crossed with the profiles, renderers,
-    // fix tiers and convert) and recorded in DONE.md; what a test can hold is
-    // that nothing rhythm-shaped reaches the default path.
+    // fix tiers and convert); what a test can hold is that nothing
+    // rhythm-shaped reaches the default path.
     let plain = issues(&["--format", "json"], bad);
     let rhythm = issues(&["--rhythm", "--format", "json"], bad);
     for issue in &plain {
@@ -2671,8 +2674,10 @@ fn cli_lint_rhythm_is_opt_in_advisory_and_never_fixed() {
     let added: Vec<&String> = rhythm.iter().filter(|i| !plain.contains(i)).collect();
     assert_eq!(
         added.len(),
-        2,
-        "expected the long-sentence and the monotony finding: {added:?}"
+        3,
+        // The three 了 sentences are also three bare short sentences, so the
+        // staccato check reports the same run the monotony check does.
+        "expected the long-sentence, monotony and staccato findings: {added:?}"
     );
     for issue in &added {
         assert!(
@@ -2709,4 +2714,280 @@ fn cli_lint_rhythm_is_opt_in_advisory_and_never_fixed() {
         let after = std::fs::read_to_string(&path).expect("read back");
         assert_eq!(after, bad, "--fix rewrote a rhythm finding with {args:?}");
     }
+}
+
+fn lint_json_fixture(name: &str, body: &str, args: &[&str]) -> (tempfile::TempDir, Output) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(name);
+    std::fs::write(&path, body).unwrap();
+    let mut all = vec![path.to_str().unwrap()];
+    all.extend_from_slice(args);
+    let output = run_lint_args(&all);
+    (dir, output)
+}
+
+/// The `found` text of every issue, in report order, from `--format json`.
+fn json_file_findings(name: &str, body: &str) -> Vec<String> {
+    let (_dir, output) = lint_json_fixture(name, body, &["--format", "json"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON output");
+    parsed["issues"]
+        .as_array()
+        .expect("issues array")
+        .iter()
+        .map(|i| i["found"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn cli_lint_json_file_reports_values_only() {
+    // Under plain text the quotes, colons and commas around these values are
+    // findings of their own, so the exact set is what tells the two paths
+    // apart.
+    let body = "{\"title\":\"軟件設置\",\"desc\":\"用戶權限請聯繫管理員\"}\n";
+    assert_eq!(json_file_findings("a.json", body), ["軟件", "用戶"]);
+    let (_dir, output) = lint_json_fixture("a.json", body, &[]);
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("not valid JSON"),
+        "valid JSON must not warn"
+    );
+}
+
+#[test]
+fn cli_lint_json_file_keys_are_not_linted() {
+    assert_eq!(
+        json_file_findings("a.json", "{\"軟件\":\"設定\",\"用戶\":[\"網絡\"]}\n"),
+        ["網絡"]
+    );
+}
+
+#[test]
+fn cli_lint_json_file_fix_keeps_valid_json() {
+    let body = "{\"title\":\"軟件設置\",\"desc\":\"用戶權限請聯繫管理員\"}\n";
+    let (dir, output) = lint_json_fixture("a.json", body, &["--fix"]);
+    let _ = output;
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&fixed).expect("still valid JSON");
+    assert!(
+        parsed["title"].as_str().unwrap().contains("軟體"),
+        "{fixed}"
+    );
+    assert!(
+        parsed["desc"].as_str().unwrap().contains("使用者"),
+        "{fixed}"
+    );
+}
+
+#[test]
+fn cli_lint_json_file_placeholders_are_not_findings() {
+    // Each placeholder produced a finding under plain text: a case finding for
+    // the variable name, a spacing finding next to %d.
+    let body = "{\"a\":\"在{{github}}和${github}上共%d個軟件，%(n)s個用戶\"}\n";
+    assert_eq!(json_file_findings("a.json", body), ["軟件", "用戶"]);
+}
+
+#[test]
+fn cli_lint_json_file_fix_leaves_placeholders_alone() {
+    let body = "{\"a\":\"在{{github}}上的軟件\"}\n";
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, "{\"a\":\"在{{github}}上的軟體\"}\n");
+}
+
+#[test]
+fn cli_lint_json_file_unicode_escape_is_not_seen() {
+    // A term spelled through an escape is invisible by design; the raw one
+    // beside it is still reported and fixed, and the escape survives.
+    let body = "{\"a\":\"\\u8edf\\u4ef6 軟件\"}\n";
+    assert_eq!(json_file_findings("a.json", body), ["軟件"]);
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, "{\"a\":\"\\u8edf\\u4ef6 軟體\"}\n");
+}
+
+#[test]
+fn cli_lint_json_file_fix_next_to_escapes() {
+    let body = "{\"a\":\"軟件\\u0041軟件\\n用戶\\\"\"}\n";
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, "{\"a\":\"軟體\\u0041軟體\\n使用者\\\"\"}\n");
+    serde_json::from_str::<serde_json::Value>(&fixed).expect("still valid JSON");
+}
+
+#[test]
+fn cli_lint_json_file_nfd_text_keeps_offsets() {
+    // A decomposed letter before the term: offsets are mapped back through NFC
+    // normalization, so the fix must still land on the term.
+    let body = "{\"a\":\"cafe\u{301} 軟件\"}\n";
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, "{\"a\":\"cafe\u{301} 軟體\"}\n");
+}
+
+#[test]
+fn cli_lint_json_file_fix_does_not_convert_simplified_keys() {
+    // Whole-text S2T would rewrite the key; JSON skips it.
+    let body = "{\"设置\":\"这个软件的网络服务器设置\"}\n";
+    let (dir, _) = lint_json_fixture("a.json", body, &["--fix"]);
+    let fixed = std::fs::read_to_string(dir.path().join("a.json")).unwrap();
+    assert_eq!(fixed, body);
+}
+
+#[test]
+fn cli_lint_json_file_malformed_falls_back_to_plain_with_notice() {
+    let (_dir, output) = lint_json_fixture("bad.json", "{\"a\":\"軟件", &["--format", "json"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("not valid JSON, linted as plain text"),
+        "{stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON output");
+    assert!(
+        parsed["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["found"] == "軟件"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn cli_lint_json_file_plain_opt_out_restores_prose_lint() {
+    let body = "{\"title\":\"軟件設置\",\"desc\":\"用戶權限請聯繫管理員\"}\n";
+    let (_dir, output) = lint_json_fixture(
+        "a.json",
+        body,
+        &["--content-type", "plain", "--format", "compact"],
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("punctuation:\"→「"),
+        "straight quotes should be linted under plain: {stdout}"
+    );
+}
+
+#[test]
+fn cli_lint_bing_misuse_flags_bing_for_bing() {
+    for (text, finding) in [
+        ("程式會讀檔，併且回報結果。", "typo:併且→並且"),
+        ("先分群，併把結果合併。", "typo:併把→並把"),
+    ] {
+        let output = run_lint_stdin(&["--format", "compact"], text);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains(finding), "{text}: {stdout}");
+    }
+}
+
+#[test]
+fn cli_lint_bing_misuse_keeps_merge_senses() {
+    for text in [
+        "兩個檔案可以合併，也可以併入主幹。",
+        "併發症的風險很低。",
+        "大公司兼併了小公司，也有併購案。",
+        "兩所學校將併校，兩張桌子併桌用餐。",
+        "資料合併且去重，請合併把兩邊結果放進來。",
+        "公司吞併且整合了對手，請合併不同的欄位。",
+        "學校整併且縮減班級，也有裁併把兩校合一。",
+        "請一併把附件寄出，不要漏掉任何一份。",
+    ] {
+        let output = run_lint_stdin(&["--format", "compact"], text);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.trim().is_empty(), "{text}: {stdout}");
+    }
+}
+
+#[test]
+fn cli_lint_bing_exceptions_cover_every_listed_compound() {
+    // Each merge compound the 併把 and 併且 rules list must keep both quiet, so
+    // deleting one exception fails here and not in a corner nobody tests.
+    for prefix in ["合", "兼", "吞", "歸", "整", "裁", "縮"] {
+        for tail in ["且", "把"] {
+            let text = format!("這裡是{prefix}併{tail}之後的內容。");
+            let output = run_lint_stdin(&["--format", "compact"], &text);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(!stdout.contains("typo:併"), "{text}: {stdout}");
+        }
+    }
+}
+
+#[test]
+fn cli_lint_rules_starting_with_bing_still_fire_after_a_merge_word() {
+    // 整合併發執行 is 整合 plus 併發執行. A segmenter word 合併 would span the
+    // start of the match and hide this finding, so the merge compounds are
+    // exceptions on the two misuse rules and not dictionary words.
+    let output = run_lint_stdin(&["--format", "compact"], "整合併發執行的結果。");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("併發執行→並行執行"), "{stdout}");
+}
+
+#[test]
+fn cli_lint_bing_misuse_is_not_a_safe_fix() {
+    // The rule carries low editorial confidence, so the safe fixer must leave
+    // the text alone.
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("bing.md");
+    let bad = "程式會讀檔，併且回報結果。";
+    std::fs::write(&file, bad).unwrap();
+    run_lint_args(&[file.to_str().unwrap(), "--fix"]);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), bad);
+}
+
+#[test]
+fn zijiang_exception_spares_only_a_notice_comma_directly_before_it() {
+    // 公告，茲將 reports a notice; anywhere else 茲將 is the author's own
+    // voice.
+    let found = |text: &str| {
+        let out = run_lint_stdin(&["--detect-ai", "--format", "compact"], text);
+        String::from_utf8_lossy(&out.stdout).contains("茲將")
+    };
+    assert!(!found(
+        "區公所昨天發布公告，茲將下週三的垃圾清運時間調整為下午四點。"
+    ));
+    assert!(!found("據校方公告內容，茲將期末考試時間改為十二月二十日。"));
+
+    // An earlier 公告 elsewhere in the sentence, or after the match, is no
+    // frame.
+    assert!(found(
+        "在這篇文章中，我先說明背景，再談公告，我認為茲將重點整理如下。"
+    ));
+    assert!(found("茲將重點整理如下，以便讀者理解本文的公告，請參考。"));
+    // The second of two occurrences is judged on its own neighbours.
+    assert!(found(
+        "昨天發布公告，茲將時間調整。今天的會議很重要。茲將重點整理如下。"
+    ));
+    // A different separator is not the frame.
+    assert!(found("公告：茲將重點整理如下，供大家參考。"));
+}
+
+#[test]
+fn study_cues_inside_a_code_span_do_not_spare_a_closer() {
+    // Cues in an excluded span are not the author's prose. The same words in
+    // the paragraph itself still mark a reported study and spare the closer.
+    let found = |text: &str| {
+        let out = run_lint_stdin(
+            &[
+                "--detect-ai",
+                "--content-type",
+                "markdown",
+                "--format",
+                "compact",
+            ],
+            text,
+        );
+        String::from_utf8_lossy(&out.stdout).contains("由此可見")
+    };
+    assert!(found(
+        "`受試者 本研究 樣本 顯著 施測` 這是一段與研究無關的產品介紹。外觀精美，續航也不錯。由此可見，它很值得購買。\n"
+    ));
+    assert!(!found(
+        "本研究蒐集一百二十位受試者的睡眠日誌，並與隔日的注意力測驗成績對照。睡眠時數與錯誤率的相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。\n"
+    ));
+
+    // A cue that occurs in a code span and again in the prose still counts, in
+    // a paragraph that does not start at the beginning of the text.
+    assert!(!found(
+        "前言。\n\n欄位 `受試者` 記錄編號。本研究蒐集一百二十位受試者的睡眠日誌，相關係數為負零點四一，達到顯著水準。由此可見，兩者呈負相關。\n"
+    ));
 }

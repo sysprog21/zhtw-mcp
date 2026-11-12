@@ -197,3 +197,35 @@ fn every_blank_line_form_agrees_across_paragraphs_and_sentences() {
         }
     }
 }
+
+#[test]
+fn dot_before_extension_b_char_starts_sentence() {
+    // 𠮷 (U+20BB7) is Ext B: the old BMP-only predicate missed it.
+    let text = "Done. 𠮷野家";
+    assert_eq!(bounds(text).sentences.len(), 2);
+}
+
+#[test]
+fn dot_before_cjk_opener_starts_sentence() {
+    let text = "Done. 「你好」";
+    assert_eq!(bounds(text).sentences.len(), 2);
+}
+
+#[test]
+fn dot_before_fullwidth_bang_does_not_start_sentence() {
+    // is_cjk_context would admit this; the sentence predicate must not.
+    // (Fullwidth Ａ is uppercase and splits either way, so it pins nothing.)
+    assert_eq!(bounds("Done. ！").sentences.len(), 1);
+}
+
+#[test]
+fn extension_b_char_before_abbreviation_is_not_a_sentence_end() {
+    let text = "𠮷Mr. Smith 處理過。";
+    assert_eq!(bounds(text).sentences.len(), 1);
+}
+
+#[test]
+fn ideographic_comma_before_abbreviation_is_not_a_sentence_end() {
+    let text = "甲、Mr. Smith 處理過。";
+    assert_eq!(bounds(text).sentences.len(), 1);
+}

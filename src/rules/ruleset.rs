@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 // the serializer and the deserializer cannot drift. Re-exported here so every
 // existing crate::rules::ruleset::* path keeps resolving.
 pub use super::schema::{
-    CaseRule, ContextSuggestion, EditorialConfidence, RuleType, Ruleset, Severity, SpellingRule,
-    KNOWN_STRUCTURAL_GUARDS,
+    CaseRule, ContextSuggestion, EditorialConfidence, RegisterGate, RuleType, Ruleset, Severity,
+    SpellingRule, KNOWN_STRUCTURAL_GUARDS,
 };
 
 /// Linting profile controlling zh-TW norm enforcement strictness.
@@ -153,6 +153,17 @@ impl AttributionGenre {
 pub enum Register {
     Formal,
     Casual,
+}
+
+impl RegisterGate {
+    /// True when a document resolved to the given register meets this
+    /// restriction.
+    pub fn admits(self, register: Register) -> bool {
+        matches!(
+            (self, register),
+            (RegisterGate::Formal, Register::Formal) | (RegisterGate::Casual, Register::Casual)
+        )
+    }
 }
 
 /// What the caller asked for, which is what a batch-wide config can carry.
@@ -815,6 +826,7 @@ impl SpellingRule {
             tags: None,
             editorial_confidence: None,
             structural_guard: None,
+            register: None,
         }
     }
 }
@@ -851,6 +863,22 @@ pub enum StructuralFamily {
     FalseRanges,
     MixedReaderAddress,
     StackedPoliteness,
+    /// 假坦率開場: a sentence that opens on a candour marker.
+    FakeCandor,
+    /// 開場宣告: a sentence that announces it will skip the preamble.
+    OpeningAnnouncement,
+    /// 結語套話: a paragraph whose last sentence opens on 由此可見.
+    StockConclusion,
+    /// 假深刻權威語: a cluster of 歸根結底 style frames in one paragraph.
+    FakeDepth,
+    /// 冒號揭曉: a short frame, a colon and a 不是X，是Y reveal.
+    ColonReveal,
+    /// 自問自答: one why-question and its answer, with a staging cue.
+    SelfQaReveal,
+    /// 金句公式: a cluster of 不是X，而是Z sentences in one paragraph.
+    GoldenContrast,
+    /// 心理判斷腔: a cluster of second-person emotional verdicts.
+    PsychVerdict,
 }
 
 impl StructuralFamily {
@@ -906,6 +934,8 @@ pub enum PhaseFamily {
     RhythmLongSentence,
     /// Rhythm (氣口): consecutive sentences closing on the same particle.
     RhythmMonotony,
+    /// Rhythm (氣口): a burst of very short sentences in a row.
+    RhythmStaccato,
 }
 
 impl PhaseFamily {
@@ -919,7 +949,10 @@ impl PhaseFamily {
     pub fn is_advisory(self) -> bool {
         matches!(
             self,
-            Self::RhythmLongSentence | Self::RhythmMonotony | Self::RhythmLongPremodifier
+            Self::RhythmLongSentence
+                | Self::RhythmMonotony
+                | Self::RhythmStaccato
+                | Self::RhythmLongPremodifier
         )
     }
 }

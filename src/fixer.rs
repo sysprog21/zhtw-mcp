@@ -98,8 +98,30 @@ pub struct FixResult {
 const MIN_CLUE_MATCHES_CONFUSABLE: usize = 2;
 const MIN_CLUE_MATCHES_DEFAULT: usize = 1;
 
-/// Apply fixes to text based on the given issues.
-///
+/// [apply_fixes_with_context] after dropping the fixes the content type cannot
+/// take verbatim (see
+/// [ContentType::admits_fix](crate::engine::scan::ContentType::admits_fix)).
+/// Every front end goes through this, so none can forget the filter. A dropped
+/// issue is filtered before the fixer runs, so no FixResult counter sees it.
+pub fn apply_fixes_for_content_type(
+    text: &str,
+    issues: &[Issue],
+    mode: FixMode,
+    excluded: &[ByteRange],
+    segmenter: Option<&Segmenter>,
+    content_type: crate::engine::scan::ContentType,
+) -> FixResult {
+    if issues.iter().all(|i| content_type.admits_fix(i)) {
+        return apply_fixes_with_context(text, issues, mode, excluded, segmenter);
+    }
+    let kept: Vec<Issue> = issues
+        .iter()
+        .filter(|i| content_type.admits_fix(i))
+        .cloned()
+        .collect();
+    apply_fixes_with_context(text, &kept, mode, excluded, segmenter)
+}
+
 /// Convenience wrapper that calls [apply_fixes_with_context] without a
 /// segmenter.  Context-clue-dependent rules are treated as ambiguous.
 pub fn apply_fixes(

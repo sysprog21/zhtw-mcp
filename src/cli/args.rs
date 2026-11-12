@@ -190,9 +190,9 @@ fn validated_content_type(value: Option<&String>) -> Result<String> {
         // that used to work, and so lint gains them too.
         "md" => Ok("markdown".to_owned()),
         "yml" => Ok("yaml".to_owned()),
-        "plain" | "markdown" | "markdown-scan-code" | "yaml" => Ok(ct.clone()),
+        "plain" | "markdown" | "markdown-scan-code" | "yaml" | "json" => Ok(ct.clone()),
         _ => anyhow::bail!(
-            "unknown content-type: {ct} (expected 'plain', 'markdown', 'markdown-scan-code', or 'yaml')"
+            "unknown content-type: {ct} (expected 'plain', 'markdown', 'markdown-scan-code', 'yaml', or 'json')"
         ),
     }
 }

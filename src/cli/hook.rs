@@ -136,10 +136,16 @@ fn callback_inner(payload_json: &str, cache_path: &Path) -> Option<String> {
 
     // Convert Simplified input before scanning, as every other entry point
     // does: the rules match traditional forms, and an agent writing Simplified
-    // Chinese is exactly the case this hook exists to catch.
+    // Chinese is exactly the case this hook exists to catch. JSON is the
+    // exception, as in lint: converting the whole text would rewrite keys.
+    let content_type = crate::cli::lint::content_type_for(
+        project_cfg.as_ref().and_then(|c| c.content_type.as_deref()),
+        &payload.file_path,
+    );
     let mut scan_text = content;
-    if zhtw_mcp::engine::zhtype::detect_chinese_type(&scan_text)
-        == zhtw_mcp::engine::zhtype::ChineseType::Simplified
+    if content_type.converts_s2t()
+        && zhtw_mcp::engine::zhtype::detect_chinese_type(&scan_text)
+            == zhtw_mcp::engine::zhtype::ChineseType::Simplified
     {
         scan_text = zhtw_mcp::engine::s2t::S2TConverter::new().convert(&scan_text);
     }

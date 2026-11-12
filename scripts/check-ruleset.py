@@ -88,6 +88,7 @@ _FACTS = _load_schema_facts()
 VALID_RULE_TYPES = set(_FACTS["rule_types"])
 VALID_EDITORIAL_CONFIDENCE = set(_FACTS["editorial_confidence"])
 VALID_SEVERITIES = set(_FACTS["severities"])
+VALID_REGISTER_GATES = set(_FACTS["register_gates"])
 # Guard names the engine implements. Generated from KNOWN_STRUCTURAL_GUARDS, so
 # a rule naming a guard this build lacks fails the lint instead of going inert.
 VALID_STRUCTURAL_GUARDS = set(_FACTS["structural_guards"])
@@ -169,6 +170,7 @@ SPELLING_FIELD_ORDER = [
     "tags",
     "editorial_confidence",
     "structural_guard",
+    "register",
 ]
 
 CASE_FIELD_ORDER = ["term", "alternatives", "disabled"]
@@ -1079,6 +1081,11 @@ def detect_conflicts(
                     f"\"{rule['type']}\", which the fixer treats as orthographic "
                     "and applies at every tier; the annotation has no effect"
                 )
+        # register restricts the rule to one register. An unknown value would
+        # fail to deserialize, so catch it here with the rule named.
+        reg = rule.get("register")
+        if reg is not None:
+            check_enum_field(warnings, frm, "register", reg, VALID_REGISTER_GATES)
         # A structural_guard hands the phrase to a procedural detector and
         # takes it out of the lexical automaton. An unknown name would remove
         # it from both, so the rule would exist and do nothing.

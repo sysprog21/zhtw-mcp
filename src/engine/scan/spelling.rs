@@ -8,12 +8,12 @@ use crate::engine::excluded::{is_excluded, ByteRange};
 use crate::engine::segment::BoundaryBitmap;
 use crate::engine::sentence::is_sentence_terminator;
 use crate::engine::zhtype::ChineseType;
-use crate::rules::ruleset::{Issue, IssueType, ProfileConfig};
+use crate::rules::ruleset::{Issue, IssueType, ProfileConfig, Register};
 
 use super::rule_ir::{self, MatchContext};
 use super::{
-    clamp_at_excluded, is_cjk_ideograph, PositionalClue, Scanner, CONTEXT_WINDOW_CHARS,
-    POSITIONAL_WINDOW_CHARS,
+    clamp_at_excluded, is_cjk_ideograph, resolve_register, PositionalClue, Scanner,
+    CONTEXT_WINDOW_CHARS, POSITIONAL_WINDOW_CHARS,
 };
 
 // Per-rule bitflags gating optional filter stages in process_spelling_match.
@@ -34,11 +34,39 @@ pub(crate) const CLASS_CLUED: u8 = 1; // context clues only (pos/neg)
 pub(crate) const CLASS_FULL: u8 = 2; // has positional clues (± context)
 pub(crate) const CLASS_TRULY_SIMPLE: u8 = 3; // filter_flags == 0 (no superstrings, no exceptions, etc.)
 
+/// What a spelling pass does with a hit of a register-gated rule.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GateMode {
+    /// Stop at the first hit the document's register rejects.
+    Stop,
+    /// Skip every such hit.
+    Skip,
+    /// Gates are not consulted: the automaton holds no rejected rule.
+    Off,
+}
+
+/// State a spelling pass carries beside the emitter.
+struct PassState<'a> {
+    register: &'a std::cell::OnceCell<Register>,
+    zh_type: ChineseType,
+    cfg: &'a ProfileConfig,
+    clue_buf: &'a mut Vec<(usize, u16)>,
+    clue_index_built: bool,
+    boundary_bitmap: &'a BoundaryBitmap,
+}
+
 impl Scanner {
     /// Single-pass spelling scan with BoundaryBitmap fast-path.
     ///
     /// Uses the IR-based evaluation path: each AC hit is evaluated against
     /// its precompiled predicate chain via `eval_predicates()`.
+    ///
+    /// A register-gated rule the document's register rejects must not take
+    /// part in longest-match resolution, or it would hide a shorter rule
+    /// inside it. The first pass runs the full automaton and stops at the
+    /// first such hit; the scan then discards its issues and makes one pass
+    /// over the automaton without the rejected rules. If that automaton could
+    /// not be built, the pass runs over the full one and skips rejected hits.
     pub(crate) fn scan_spelling(
         &self,
         em: &mut Emitter<'_>,
@@ -46,13 +74,61 @@ impl Scanner {
         cfg: &ProfileConfig,
         clue_buf: &mut Vec<(usize, u16)>,
         boundary_bitmap: &BoundaryBitmap,
+        register: &std::cell::OnceCell<Register>,
     ) {
-        let text = em.text;
-        let excluded = em.excluded;
-        let issues = &mut *em.issues;
+        let db = &self.spelling_db;
+        let base_len = em.issues.len();
 
-        let mut excl_cursor: usize = 0;
+        // Lazy clue index.
+        clue_buf.clear();
+        let mut st = PassState {
+            register,
+            zh_type,
+            cfg,
+            clue_buf,
+            clue_index_built: false,
+            boundary_bitmap,
+        };
+
+        let first_mode = if db.has_register_gates {
+            GateMode::Stop
+        } else {
+            GateMode::Off
+        };
+        let Some(reg) = self.spelling_pass(em, &mut st, db.patterns.hits(em.text), first_mode)
+        else {
+            return;
+        };
+
+        em.issues.truncate(base_len);
+        let subset = db.register_subset(reg);
+        if subset.is_usable() {
+            self.spelling_pass(em, &mut st, subset.hits(em.text), GateMode::Off);
+        } else {
+            self.spelling_pass(em, &mut st, db.patterns.hits(em.text), GateMode::Skip);
+        }
+    }
+
+    /// One pass over the hits. Returns the register that stopped it, in
+    /// GateMode::Stop only.
+    fn spelling_pass(
+        &self,
+        em: &mut Emitter<'_>,
+        st: &mut PassState<'_>,
+        hits: impl Iterator<Item = (usize, usize, usize)>,
+        gate_mode: GateMode,
+    ) -> Option<Register> {
+        let Emitter {
+            text,
+            excluded,
+            issues,
+            ..
+        } = em;
+        let register = st.register;
+        let (text, excluded) = (*text, *excluded);
+        let (cfg, zh_type, boundary_bitmap) = (st.cfg, st.zh_type, st.boundary_bitmap);
         let n_rules = self.spelling_db.spelling_rules.len();
+        let mut excl_cursor: usize = 0;
 
         // Pre-compute profile gates. Variant, ai filler and translationese are
         // public families of their own, so the remaining rule types are what
@@ -62,146 +138,121 @@ impl Scanner {
         let skip_ai = !cfg.ai_filler_detection;
         let skip_translationese = !cfg.translationese_detection;
 
-        // Lazy clue index.
-        clue_buf.clear();
-        let mut clue_index_built = false;
+        for (start, end, idx) in hits {
+            if idx >= n_rules {
+                continue;
+            }
+            let compiled = &self.spelling_db.rules[idx];
 
-        macro_rules! eval_hit {
-            ($start:expr, $end:expr, $idx:expr) => {
-                let idx = $idx;
-                if idx >= n_rules {
-                    continue;
-                }
-                let compiled = &self.spelling_db.rules[idx];
-
-                // Fast-reject profile-gated rules.
-                {
-                    use crate::rules::ruleset::RuleType;
-                    match compiled.rule_type {
-                        RuleType::Variant if skip_variant => continue,
-                        RuleType::AiFiller if skip_ai => continue,
-                        RuleType::Translationese if skip_translationese => continue,
-                        other if skip_spelling && other.in_spelling_family() => continue,
-                        RuleType::PoliticalColoring
-                            if !cfg
-                                .political_stance
-                                .allows_rule(&self.spelling_db.spelling_rules[idx].from) =>
-                        {
-                            continue
+            if gate_mode != GateMode::Off {
+                if let Some(gate) = compiled.register {
+                    let reg =
+                        *register.get_or_init(|| resolve_register(text, excluded, cfg.register));
+                    if !gate.admits(reg) {
+                        if gate_mode == GateMode::Stop {
+                            return Some(reg);
                         }
-                        _ => {}
-                    }
-                }
-
-                let class = self.spelling_db.rule_classes[idx];
-                if !clue_index_built && (class == CLASS_CLUED || class == CLASS_FULL) {
-                    rule_ir::build_clue_index_into(
-                        self.spelling_db.clue_ac.as_ref(),
-                        text,
-                        clue_buf,
-                    );
-                    clue_index_built = true;
-                }
-
-                // Document-level fast path: if the clue index is empty and this
-                // rule requires positive clue matches, it will always be
-                // rejected. Skip MatchContext construction entirely.
-                if clue_index_built
-                    && clue_buf.is_empty()
-                    && self.spelling_db.rule_pos_clue_ids[idx].is_some()
-                {
-                    continue;
-                }
-
-                if class == CLASS_TRULY_SIMPLE {
-                    // Inline fast path: no MatchContext, no function call.
-                    let start = $start;
-                    let end = $end;
-
-                    // Exclusion cursor (amortized O(1)).
-                    while excl_cursor < excluded.len() && excluded[excl_cursor].end <= start {
-                        excl_cursor += 1;
-                    }
-                    let is_excluded = excl_cursor < excluded.len()
-                        && excluded[excl_cursor].start < end
-                        && start < excluded[excl_cursor].end;
-                    if is_excluded {
                         continue;
                     }
-
-                    let straddle = if boundary_bitmap.is_empty() {
-                        self.segmenter
-                            .match_straddles_word_boundary(text, start, end)
-                    } else {
-                        boundary_bitmap.start_straddles(start)
-                            || boundary_bitmap.end_straddles(end, start)
-                    };
-                    if !straddle {
-                        issues.push(Issue::deferred_spelling(
-                            start,
-                            end - start,
-                            IssueType::from(compiled.rule_type),
-                            compiled.severity,
-                            compiled.rule_idx,
-                        ));
-                    }
-                } else if class == CLASS_SIMPLE {
-                    // CLASS_SIMPLE: has superstring/exception/deletion but no
-                    // clue checks. Avoids clue_index build and passes empty
-                    // clue slice to skip clue-related branches.
-                    let mut ctx = MatchContext {
-                        text,
-                        excluded,
-                        excl_cursor: &mut excl_cursor,
-                        cfg,
-                        zh_type,
-                        start: $start,
-                        end: $end,
-                        clue_index: &[],
-                        boundary_bitmap,
-                    };
-                    if let Some(issue) = rule_ir::eval_predicates(
-                        &self.spelling_db,
-                        compiled,
-                        &mut ctx,
-                        &self.segmenter,
-                    ) {
-                        issues.push(issue);
-                    }
-                } else {
-                    // CLASS_CLUED / CLASS_FULL: needs document-wide clue index.
-                    let mut ctx = MatchContext {
-                        text,
-                        excluded,
-                        excl_cursor: &mut excl_cursor,
-                        cfg,
-                        zh_type,
-                        start: $start,
-                        end: $end,
-                        clue_index: clue_buf.as_slice(),
-                        boundary_bitmap,
-                    };
-                    if let Some(issue) = rule_ir::eval_predicates(
-                        &self.spelling_db,
-                        compiled,
-                        &mut ctx,
-                        &self.segmenter,
-                    ) {
-                        issues.push(issue);
-                    }
                 }
-            };
-        }
+            }
 
-        if let Some(ref cw_ac) = self.spelling_db.ac_charwise {
-            for mat in cw_ac.leftmost_find_iter(text) {
-                eval_hit!(mat.start(), mat.end(), mat.value());
+            // Fast-reject profile-gated rules.
+            {
+                use crate::rules::ruleset::RuleType;
+                match compiled.rule_type {
+                    RuleType::Variant if skip_variant => continue,
+                    RuleType::AiFiller if skip_ai => continue,
+                    RuleType::Translationese if skip_translationese => continue,
+                    other if skip_spelling && other.in_spelling_family() => continue,
+                    RuleType::PoliticalColoring
+                        if !cfg
+                            .political_stance
+                            .allows_rule(&self.spelling_db.spelling_rules[idx].from) =>
+                    {
+                        continue
+                    }
+                    _ => {}
+                }
             }
-        } else if let Some(ref bw_ac) = self.spelling_db.ac_bytewise {
-            for mat in bw_ac.find_iter(text) {
-                eval_hit!(mat.start(), mat.end(), mat.pattern().as_usize());
+
+            let class = self.spelling_db.rule_classes[idx];
+            if !st.clue_index_built && (class == CLASS_CLUED || class == CLASS_FULL) {
+                rule_ir::build_clue_index_into(
+                    self.spelling_db.clue_ac.as_ref(),
+                    text,
+                    st.clue_buf,
+                );
+                st.clue_index_built = true;
+            }
+
+            // Document-level fast path: if the clue index is empty and this
+            // rule requires positive clue matches, it will always be rejected.
+            // Skip MatchContext construction entirely.
+            if st.clue_index_built
+                && st.clue_buf.is_empty()
+                && self.spelling_db.rule_pos_clue_ids[idx].is_some()
+            {
+                continue;
+            }
+
+            if class == CLASS_TRULY_SIMPLE {
+                // Inline fast path: no MatchContext, no function call.
+                // Exclusion cursor (amortized O(1)).
+                while excl_cursor < excluded.len() && excluded[excl_cursor].end <= start {
+                    excl_cursor += 1;
+                }
+                let is_excluded = excl_cursor < excluded.len()
+                    && excluded[excl_cursor].start < end
+                    && start < excluded[excl_cursor].end;
+                if is_excluded {
+                    continue;
+                }
+
+                let straddle = if boundary_bitmap.is_empty() {
+                    self.segmenter
+                        .match_straddles_word_boundary(text, start, end)
+                } else {
+                    boundary_bitmap.start_straddles(start)
+                        || boundary_bitmap.end_straddles(end, start)
+                };
+                if !straddle {
+                    issues.push(Issue::deferred_spelling(
+                        start,
+                        end - start,
+                        IssueType::from(compiled.rule_type),
+                        compiled.severity,
+                        compiled.rule_idx,
+                    ));
+                }
+            } else {
+                // CLASS_SIMPLE has superstring/exception/deletion but no clue
+                // checks, so it passes an empty clue slice. CLASS_CLUED and
+                // CLASS_FULL need the document-wide clue index.
+                let clue_index: &[(usize, u16)] = if class == CLASS_SIMPLE {
+                    &[]
+                } else {
+                    st.clue_buf.as_slice()
+                };
+                let mut ctx = MatchContext {
+                    text,
+                    excluded,
+                    excl_cursor: &mut excl_cursor,
+                    cfg,
+                    zh_type,
+                    start,
+                    end,
+                    clue_index,
+                    boundary_bitmap,
+                };
+                if let Some(issue) =
+                    rule_ir::eval_predicates(&self.spelling_db, compiled, &mut ctx, &self.segmenter)
+                {
+                    issues.push(issue);
+                }
             }
         }
+        None
     }
 }
 

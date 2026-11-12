@@ -245,7 +245,7 @@ The zhtw-mcp MCP server provides automated zh-TW linting and fixing.
 ## MCP Tool: zhtw
 - `zhtw({ "text": "...", "fix_mode": "lexical_safe", "max_errors": 0 })`
 - Profiles: base, strict. Flags: relaxed (UI), detect_ai (AI writing review)
-- Content types: plain, markdown
+- Content types: plain, markdown, markdown-scan-code, yaml, json
 
 ## Taiwan-Standard Terms
 軟體 (not 軟件), 資訊 (not 信息), 預設 (not 默認), 程式 (not 程序),
@@ -311,7 +311,7 @@ The single unified tool for linting, fixing, and gating zh-TW text.
 | max_errors | integer | (none) | Gate: reject if errors exceed this |
 | profile | string | "base" | "base" or "strict" (full MoE with character variants) |
 | relaxed | boolean | false | UI strings mode: disables colon/dunhao/grammar, en-dash ranges |
-| content_type | string | "plain" | "plain" or "markdown" |
+| content_type | string | "plain" | "plain", "markdown", "markdown-scan-code", "yaml" or "json" |
 | political_stance | string | "roc_centric" | "roc_centric", "international", "neutral" |
 | ignore_terms | array | [] | Terms to downgrade to Info severity |
 | explain | boolean | false | Attach cultural explanations to issues |
@@ -501,10 +501,10 @@ fn translation_guide_text() -> String {
 - ❌ ……是非常重要的（空泛強調）
 
 ### 結構限制
-- 避免過度使用列表：列表段落不應超過全文 40%
+- 列表只用於本來就是並列的項目；敘述性內容寫成段落，不要為了版面把句子拆成條列
 - 避免公式化段落結尾：「這……證明了」「正是這……讓」
 - 避免二元對比堆疊：同一段落不要連續使用「雖然……但」「不僅……更」
-- 段落內破折號（——）不超過 2 個
+- 破折號（——）本身不是問題，單獨一個不必改；只有同一段反覆堆疊時才需要檢視
 - 避免公式化標題：「挑戰與未來展望」「結論與展望」「核心優勢」
 
 ## 標點符號

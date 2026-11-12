@@ -932,6 +932,26 @@
       "tags": ["src:dewesternise"]
     },
     {
+      "from": "併且",
+      "to": ["並且"],
+      "type": "typo",
+      "context": "「併」作「並」用的錯字，常見於簡轉繁後的「并」誤轉。只列有實例的誤用詞（併把、併且）；合併、兼併、吞併、歸併、整併、裁併、縮併等合併義複詞後接「且」時屬合併義，列為例外。未列的合併義複詞仍可能誤報，所以標為低信心，不進安全修正，須補入 exceptions",
+      "english": "and also (typo)",
+      "source": "tests/fixtures/opencc_residuals.tsv",
+      "exceptions": ["合併且", "兼併且", "吞併且", "歸併且", "整併且", "裁併且", "縮併且"],
+      "editorial_confidence": "low"
+    },
+    {
+      "from": "併把",
+      "to": ["並把"],
+      "type": "typo",
+      "context": "「併」作「並」用的錯字，常見於簡轉繁後的「并」誤轉。只列有實例的誤用詞（併把、併且）；合併、兼併、吞併、歸併、整併、裁併、縮併等合併義複詞後接「把」時屬合併義，列為例外。未列的合併義複詞仍可能誤報，所以標為低信心，不進安全修正，須補入 exceptions",
+      "english": "and also (typo)",
+      "source": "tests/fixtures/opencc_residuals.tsv",
+      "exceptions": ["合併把", "兼併把", "吞併把", "歸併把", "整併把", "裁併把", "縮併把", "一併把"],
+      "editorial_confidence": "low"
+    },
+    {
       "from": "併發",
       "to": ["並行"],
       "type": "cross_strait",
@@ -3784,6 +3804,16 @@
       "type": "cross_strait",
       "context": "@domain 程式設計",
       "english": "object based"
+    },
+    {
+      "from": "基於我目前掌握的資訊",
+      "to": [],
+      "type": "ai_filler",
+      "context": "AI knowledge-cutoff disclaimer in the first person; gated on a hedge that shows the cutoff sense, since a human reporting status says the bare phrase too. State the source and date concretely instead",
+      "source": "ai_knowledge_cutoff_first_person",
+      "context_clues": ["無法確認", "無法保證", "無法驗證", "可能已", "最新消息", "最新資訊", "以官方為準", "請查證"],
+      "negative_context_clues": ["://", "「", "他說", "她說", "表示"],
+      "tags": ["src:humanizer"]
     },
     {
       "from": "基於消息的",
@@ -8409,8 +8439,9 @@
       "from": "消息",
       "to": ["訊息"],
       "type": "cross_strait",
-      "context": "@domain IT。`好消息`/`壞消息`/`消息來源` 為合法 zh-TW 用法",
+      "context": "@domain IT。`好消息`/`壞消息`/`消息來源` 為合法 zh-TW 用法；新聞義的消息（得獎的消息、傳出消息）同為合法，僅在資訊系統語境才建議訊息",
       "english": "message",
+      "context_clues": ["傳送", "發送", "接收", "佇列", "通訊", "中介軟體", "推送", "聊天", "回覆", "封包", "伺服器", "用戶端", "客戶端", "程式", "系統", "通知", "錯誤", "日誌", "協定", "訂閱", "發布"],
       "positional_clues": ["not_after:好", "not_after:壞", "not_before:來源"]
     },
     {
@@ -8739,6 +8770,16 @@
       "tags": ["src:humanizer"]
     },
     {
+      "from": "為人低調，鮮少公開",
+      "to": [],
+      "type": "ai_filler",
+      "disabled": true,
+      "context": "disabled: speculative biographical filler without evidence; comma form of the rule below, which spelling matching cannot reach across punctuation. It fired on plain native biography, and the tell is not lexical",
+      "source": "native_bio_low_profile_1",
+      "negative_context_clues": ["://", "doi", "參見", "註", "受訪", "本人", "自稱", "「"],
+      "tags": ["src:humanizer"]
+    },
+    {
       "from": "烏茲別克斯坦",
       "to": ["烏茲別克"],
       "type": "cross_strait",
@@ -9017,6 +9058,36 @@
       "context": "@domain 程式設計。限 C++ 模板語境",
       "english": "specialization",
       "context_clues": ["模板", "範本", "C++", "泛型"]
+    },
+    {
+      "from": "特此公告",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
+      "from": "特此說明",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
+      "from": "特此通知",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
     },
     {
       "from": "特立尼達和多巴哥",
@@ -9332,8 +9403,28 @@
       "from": "當然可以",
       "to": [],
       "type": "ai_filler",
-      "context": "sycophantic chatbot opener; the answer shows the agreement",
-      "negative_context_clues": ["當然可以，", "當然可以。"],
+      "context": "sycophantic chatbot opener; the answer shows the agreement; a subject pronoun right before it (你當然可以這樣做) is ordinary speech, so only the sentence-initial 當然可以！ and 當然可以這樣做 openers stay flagged",
+      "negative_context_clues": ["當然可以，", "當然可以。", "你當然可以", "您當然可以", "他當然可以", "她當然可以", "我們當然可以", "他們當然可以", "這當然可以", "那當然可以"],
+      "tags": ["src:humanizer"]
+    },
+    {
+      "from": "當然可以，以下是",
+      "to": [],
+      "type": "ai_filler",
+      "context": "sycophantic chatbot opener paired with a list lead-in; bare 當然可以， stays unflagged as ordinary speech, so this needs an addressee nearby; deliverable nouns such as 整理 or 步驟 open genuine tutorials too",
+      "source": "ai_collab_opener_list",
+      "context_clues": ["為你", "為您", "幫你", "幫您"],
+      "negative_context_clues": ["「", "『", "他說", "她說", "回答", "回覆"],
+      "tags": ["src:humanizer"]
+    },
+    {
+      "from": "當然可以，我來幫你",
+      "to": [],
+      "type": "ai_filler",
+      "context": "sycophantic chatbot opener paired with an offer to help; bare 當然可以， stays unflagged as ordinary speech, so this needs a task verb nearby",
+      "source": "ai_collab_opener_help",
+      "context_clues": ["說明", "整理", "解釋", "分析", "介紹", "解答", "撰寫", "改寫", "翻譯"],
+      "negative_context_clues": ["「", "『", "他說", "她說", "回答", "回覆"],
       "tags": ["src:humanizer"]
     },
     {
@@ -9760,8 +9851,10 @@
       "from": "社區",
       "to": ["社群"],
       "type": "cross_strait",
-      "context": "@domain 社群。「社區」指實體住宅區，online/tech community 語意不同",
-      "english": "community"
+      "context": "@domain 社群。「社區」指實體住宅區，online/tech community 語意不同；以線上/技術社群語境詞為條件，並排除住宅區語境",
+      "english": "community",
+      "context_clues": ["開源", "開發者", "軟體", "程式", "技術", "論壇", "線上", "網路", "貢獻", "社交", "演算法", "社群發現", "GitHub", "專案", "維護者", "使用者", "平台", "生態", "原始碼"],
+      "negative_context_clues": ["住戶", "居民", "管理委員會", "大樓", "里長", "鄰里", "住宅", "房價", "巷弄", "守望相助", "社區大學", "社區發展"]
     },
     {
       "from": "祕",
@@ -11350,6 +11443,27 @@
       "english": "Commonwealth of Nations"
     },
     {
+      "from": "茲因",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
+      "from": "茲將",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "context": "officialese that reads as stiff outside a 公文; the rule applies only when the document is not in the formal register, where these forms are mandated",
+      "source": "ai_officialese_casual",
+      "exceptions": ["公告，茲將", "公告內容，茲將"],
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
       "from": "草泥馬",
       "to": ["羊駝"],
       "type": "cross_strait",
@@ -12232,9 +12346,9 @@
     },
     {
       "from": "說白了",
-      "to": ["說到底", "歸根究底"],
+      "to": ["簡單來說", "簡單地說"],
       "type": "translationese",
-      "context": "PRC colloquial discourse marker (basically); zh-TW formal/informal both use 說到底 or 歸根究底",
+      "context": "PRC colloquial discourse marker (basically); zh-TW says 簡單來說. Not 說到底 or 歸根結底, which are fake-depth frames the structural scan reports",
       "english": "basically (colloquial)",
       "tags": ["src:cuimao", "topic:false_friends"]
     },
@@ -13551,6 +13665,17 @@
       "english": "close buddy"
     },
     {
+      "from": "鑑於",
+      "to": [],
+      "type": "ai_filler",
+      "severity": "info",
+      "disabled": true,
+      "context": "disabled: 鑑於 is ordinary written Taiwanese in news and policy prose, not only in a 公文, so the casual register gate cannot tell it from native use",
+      "source": "ai_officialese_casual",
+      "tags": ["src:humanizer"],
+      "register": "casual"
+    },
+    {
       "from": "鑰匙扣",
       "to": ["鑰匙圈"],
       "type": "cross_strait",
@@ -13668,15 +13793,6 @@
       "context": "Scientific calque",
       "negative_context_clues": ["論文", "研究", "分析", "評估"],
       "tags": ["src:dewesternise"]
-    },
-    {
-      "from": "關鍵在於：",
-      "to": [],
-      "type": "ai_filler",
-      "disabled": true,
-      "context": "Watchlist only: a colon after 關鍵在於 ordinarily introduces the answer in technical zh-TW. Needs a second signal, or native-corpus counterexamples.",
-      "source": "tests/fixtures/writing_humanizer/pattern35_bad.txt",
-      "tags": ["src:humanizer"]
     },
     {
       "from": "阿司匹林",
@@ -14021,7 +14137,8 @@
       "from": "需要注意的是",
       "to": [""],
       "type": "ai_filler",
-      "context": "AI filler phrase with zero information content; delete"
+      "context": "AI filler phrase with zero information content; delete. Only the comma form is filler: 需要注意的是版本相容性 and 需要注意的是：以下三點 are copular or list lead-ins that native tutorials write, and deleting the phrase from them leaves a fragment",
+      "context_clues": ["需要注意的是，", "需要注意的是,"]
     },
     {
       "from": "靈活性",

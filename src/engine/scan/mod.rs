@@ -36,7 +36,8 @@ use self::emit::Emitter;
 use super::excluded::{build_excluded_ranges, merge_ranges_pub, ByteRange};
 use super::lineindex::{ColumnEncoding, LineIndex};
 use super::markdown::{
-    build_markdown_excluded_ranges_with_options, build_yaml_excluded_ranges, MdScanOptions,
+    build_json_excluded_ranges, build_markdown_excluded_ranges_with_options,
+    build_yaml_excluded_ranges, MdScanOptions,
 };
 use super::normalize::{map_offset, map_range_forward, normalize_nfc, Normalized};
 use super::segment::{BoundaryBitmap, Segmenter};
@@ -171,6 +172,9 @@ pub enum ContentType {
     /// be linted.
     MarkdownScanCode,
     Yaml,
+    /// String values only: keys, structure, escapes and placeholders are
+    /// excluded. Malformed input is scanned as plain text.
+    Json,
 }
 
 impl ContentType {
@@ -181,6 +185,7 @@ impl ContentType {
             ContentType::Markdown => "markdown",
             ContentType::MarkdownScanCode => "markdown-scan-code",
             ContentType::Yaml => "yaml",
+            ContentType::Json => "json",
         }
     }
 
@@ -194,6 +199,7 @@ impl ContentType {
             "markdown" => Some(ContentType::Markdown),
             "markdown-scan-code" => Some(ContentType::MarkdownScanCode),
             "yaml" => Some(ContentType::Yaml),
+            "json" => Some(ContentType::Json),
             _ => None,
         }
     }
@@ -208,6 +214,8 @@ impl ContentType {
             ContentType::Markdown
         } else if lower.ends_with(".yml") || lower.ends_with(".yaml") {
             ContentType::Yaml
+        } else if lower.ends_with(".json") {
+            ContentType::Json
         } else {
             ContentType::Plain
         }
@@ -222,10 +230,36 @@ impl ContentType {
     /// suppression pass reads raw lines, so `<!-- zhtw:ignore -->` works
     /// anywhere in the file, fenced code included.
     ///
+    /// Also false for JSON, which has no comments at all.
+    ///
     /// True for the code-bearing types: YAML, and the plain text that
     /// TOML, Python, shell, and locale files resolve to.
     pub fn hash_comments(self) -> bool {
-        !matches!(self, ContentType::Markdown | ContentType::MarkdownScanCode)
+        !matches!(
+            self,
+            ContentType::Markdown | ContentType::MarkdownScanCode | ContentType::Json
+        )
+    }
+
+    /// Whether automatic Simplified-to-Traditional conversion may run over the
+    /// whole text. JSON is excluded: the conversion would rewrite keys, and a
+    /// locale bundle is already in the language its file name says.
+    pub fn converts_s2t(self) -> bool {
+        self != ContentType::Json
+    }
+
+    /// Whether a fix for this issue can be written back verbatim.
+    ///
+    /// Every escape in a JSON string is excluded from scanning, so a fix never
+    /// has to re-encode, but quotes, backslashes and control characters in a
+    /// replacement would still break the string. Other types accept every
+    /// replacement.
+    pub fn admits_fix(self, issue: &Issue) -> bool {
+        self != ContentType::Json
+            || !issue
+                .suggestions
+                .iter()
+                .any(|s| s.chars().any(|c| c == '"' || c == '\\' || c <= '\u{1f}'))
     }
 }
 
@@ -640,8 +674,10 @@ pub(crate) fn char_bounded_end(text: &str, start_byte: usize, n_chars: usize) ->
         .unwrap_or(text.len())
 }
 
-/// Returns true if ch is a CJK ideograph (unified, extensions A-I,
-/// compatibility, or bopomofo).  Excludes CJK Symbols/Punctuation
+/// Returns true if ch is a CJK ideograph (unified, extensions A-J,
+/// compatibility and its supplement, or bopomofo).  This is the one
+/// definition of a Han character in the engine; do not add local copies.
+/// Excludes CJK Symbols/Punctuation
 /// (U+3000..U+303F) to avoid false positives when full-width marks sit
 /// next to half-width punctuation.
 pub(crate) fn is_cjk_ideograph(ch: char) -> bool {
@@ -656,8 +692,10 @@ pub(crate) fn is_cjk_ideograph(ch: char) -> bool {
         '\u{2B820}'..='\u{2CEAF}' | // CJK Extension E
         '\u{2CEB0}'..='\u{2EBEF}' | // CJK Extension F
         '\u{2EBF0}'..='\u{2EE5F}' | // CJK Extension I
+        '\u{2F800}'..='\u{2FA1F}' | // CJK Compatibility Ideographs Supplement
         '\u{30000}'..='\u{3134F}' | // CJK Extension G
-        '\u{31350}'..='\u{323AF}'   // CJK Extension H
+        '\u{31350}'..='\u{323AF}' | // CJK Extension H
+        '\u{323B0}'..='\u{3347F}'   // CJK Extension J
     )
 }
 
@@ -791,6 +829,7 @@ pub fn build_exclusions_for_content_type_with_options(
             excluded.extend(build_markdown_excluded_ranges_with_options(text, opts));
         }
         ContentType::Yaml => excluded.extend(build_yaml_excluded_ranges(text)),
+        ContentType::Json => excluded.extend(build_json_excluded_ranges(text).0),
         ContentType::Plain => {}
     }
     excluded.extend(build_suppression_ranges(text, content_type.hash_comments()));
@@ -898,7 +937,7 @@ impl Scanner {
     /// independently of eval/overlap/line-col).  Returns `None` when the
     /// scanner fell back to bytewise AC (daachorse build failure).
     pub fn ac_charwise(&self) -> Option<&daachorse::CharwiseDoubleArrayAhoCorasick<usize>> {
-        self.spelling_db.ac_charwise.as_ref()
+        self.spelling_db.patterns.charwise.as_ref()
     }
 
     /// Build boundary bitmap for the given text (for benchmarking).
@@ -925,7 +964,8 @@ impl Scanner {
         let mut issues = Vec::new();
         let mut clue_buf = Vec::new();
         let mut em = Emitter::new(text, excluded, &mut issues);
-        self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap);
+        let register = std::cell::OnceCell::new();
+        self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap, &register);
         issues.len()
     }
 
@@ -948,7 +988,8 @@ impl Scanner {
         let mut clue_buf = Vec::new();
         let mut em = Emitter::new(text, excluded, &mut issues);
         if cfg.lexical_pass_enabled() {
-            self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap);
+            let register = std::cell::OnceCell::new();
+            self.scan_spelling(&mut em, zh_type, cfg, &mut clue_buf, &bitmap, &register);
         }
         if cfg.casing {
             self.scan_case(&mut em);
@@ -1061,26 +1102,29 @@ impl Scanner {
         &self.segmenter
     }
 
-    /// Force the scanner to use the bytewise AC fallback path for testing.
-    /// Disables charwise and builds bytewise if not already present.
+    /// Force the scanner onto the bytewise AC fallback path for testing, in
+    /// the full automaton and in the register subsets.
     #[cfg(test)]
     fn force_bytewise(&mut self) {
-        if self.spelling_db.ac_bytewise.is_none() {
-            let patterns: Vec<&str> = self
-                .spelling_db
-                .spelling_rules
-                .iter()
-                .map(|r| r.from.as_str())
-                .chain(self.spelling_db.absorber_strings.iter().map(|s| s.as_str()))
-                .collect();
-            self.spelling_db.ac_bytewise = Some(
-                AhoCorasickBuilder::new()
-                    .match_kind(MatchKind::LeftmostLongest)
-                    .build(&patterns)
-                    .expect("build bytewise AC for test"),
-            );
-        }
-        self.spelling_db.ac_charwise = None;
+        let db = &mut self.spelling_db;
+        let patterns: Vec<(&str, usize)> = db
+            .spelling_rules
+            .iter()
+            .map(|r| r.from.as_str())
+            .chain(db.absorber_strings.iter().map(|s| s.as_str()))
+            .enumerate()
+            .map(|(i, p)| (p, i))
+            .collect();
+        db.patterns = rule_ir::PatternSet::build(&patterns, rule_ir::BuildFault::Charwise);
+        self.force_subset_fault(rule_ir::BuildFault::Charwise);
+    }
+
+    /// Drop the register subsets so they are rebuilt under the fault, leaving
+    /// the full automaton as it is.
+    #[cfg(test)]
+    fn force_subset_fault(&mut self, fault: rule_ir::BuildFault) {
+        self.spelling_db.subset_fault = fault;
+        self.spelling_db.register_subsets = Default::default();
     }
 
     /// Scan text with Profile::Base and return all issues found.
@@ -1390,9 +1434,10 @@ impl Scanner {
         cfg: &ProfileConfig,
         clue_index: &mut Vec<(usize, u16)>,
         boundary_bitmap: &BoundaryBitmap,
+        register: &std::cell::OnceCell<Register>,
     ) {
         if cfg.lexical_pass_enabled() {
-            self.scan_spelling(em, zh_type, cfg, clue_index, boundary_bitmap);
+            self.scan_spelling(em, zh_type, cfg, clue_index, boundary_bitmap, register);
         }
         if cfg.casing {
             self.scan_case(em);
@@ -1537,8 +1582,18 @@ impl Scanner {
             ref mut overlap_accepted,
         } = *scratch;
 
+        // Resolved lazily: by the spelling scan when it meets a gated pattern,
+        // by the structural passes otherwise.
+        let register = std::cell::OnceCell::new();
         let mut em = Emitter::new(text, excluded, issues);
-        self.run_lexical_passes(&mut em, zh_type, &cfg, clue_index, &boundary_bitmap);
+        self.run_lexical_passes(
+            &mut em,
+            zh_type,
+            &cfg,
+            clue_index,
+            &boundary_bitmap,
+            &register,
+        );
 
         // All scanners (AC, punctuation, spacing, ellipsis, quotes) emit issues
         // in offset order. Skip the O(n log n) sort when already sorted (common
@@ -1582,8 +1637,15 @@ impl Scanner {
             rule_ir::inflate_spelling_issues(&self.spelling_db, text, excluded, issues);
         }
 
-        let mentions =
-            run_structural_passes(text, excluded, issues, &cfg, content_type, &self.guards);
+        let mentions = run_structural_passes(
+            text,
+            excluded,
+            issues,
+            &cfg,
+            &register,
+            content_type,
+            &self.guards,
+        );
 
         // Fix CN quotation mark pairing with depth-based nesting: well-formed
         // quotes use character-based depth tracking; misordered or
@@ -1676,6 +1738,7 @@ fn run_structural_passes(
     excluded: &[ByteRange],
     issues: &mut Vec<Issue>,
     cfg: &ProfileConfig,
+    register: &std::cell::OnceCell<Register>,
     content_type: ContentType,
     guards: &rule_ir::GuardRules,
 ) -> Vec<ByteRange> {
@@ -1684,7 +1747,7 @@ fn run_structural_passes(
     // costs a pass per anchor, so skip that when no consumer is enabled, the
     // same reason the boundary index below is built on demand.
     let register = if cfg.grammar_checks || cfg.translationese_detection {
-        resolve_register(text, excluded, cfg.register)
+        *register.get_or_init(|| resolve_register(text, excluded, cfg.register))
     } else {
         Register::Casual
     };
@@ -2072,7 +2135,7 @@ const ORAL_MARKERS: &[&str] = &[
 fn compute_oral_density(text: &str) -> Option<f32> {
     let mut cjk_count = 0u32;
     for ch in text.chars() {
-        if ('\u{4e00}'..='\u{9fff}').contains(&ch) {
+        if is_cjk_ideograph(ch) {
             cjk_count += 1;
         }
     }
@@ -2096,7 +2159,7 @@ fn compute_oral_density(text: &str) -> Option<f32> {
         let s = s.max(cur_end); // clip to avoid double-count
         if s < e {
             for ch in text[s..e].chars() {
-                if ('\u{4e00}'..='\u{9fff}').contains(&ch) {
+                if is_cjk_ideograph(ch) {
                     marker_chars += 1;
                 }
             }

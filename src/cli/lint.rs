@@ -102,14 +102,18 @@ struct LintSetup {
 /// Convert `text` when it reads as Simplified, building the converter on the
 /// first such file.  Returns whether a conversion happened, which the caller
 /// reports as the `+s2t` label.
+///
+/// Never for JSON: the conversion runs over the whole text, so it would rewrite
+/// keys, and a locale bundle is already in the language its file name says.
 fn s2t_convert_if_simplified(
     s2t: &std::sync::OnceLock<zhtw_mcp::engine::s2t::S2TConverter>,
     text: &mut String,
+    content_type: zhtw_mcp::engine::scan::ContentType,
 ) -> bool {
     use zhtw_mcp::engine::s2t::S2TConverter;
     use zhtw_mcp::engine::zhtype::{detect_chinese_type, ChineseType};
 
-    if detect_chinese_type(text) != ChineseType::Simplified {
+    if !content_type.converts_s2t() || detect_chinese_type(text) != ChineseType::Simplified {
         return false;
     }
     *text = s2t.get_or_init(S2TConverter::new).convert(text);
@@ -549,8 +553,9 @@ impl ScanCtx<'_> {
             .read_to_string(&mut text)
             .with_context(|| format!("read file: {file_arg}"))?;
 
-        let input_was_sc = s2t_convert_if_simplified(&self.setup.s2t, &mut text);
+        let input_was_sc = s2t_convert_if_simplified(&self.setup.s2t, &mut text, content_type);
         let text_char_count = text.chars().count();
+        warn_if_malformed_json(content_type, &text, file_arg);
 
         // Slow-path cache: check content hash (mtime missed but content may be
         // unchanged, e.g. after touch).
@@ -608,8 +613,9 @@ impl ScanCtx<'_> {
             "stdin input exceeds {MAX_CLI_FILE_BYTES} byte limit"
         );
 
-        let input_was_sc = s2t_convert_if_simplified(&self.setup.s2t, &mut text);
+        let input_was_sc = s2t_convert_if_simplified(&self.setup.s2t, &mut text, content_type);
         let text_char_count = text.chars().count();
+        warn_if_malformed_json(content_type, &text, "<stdin>");
         let output = self.setup.scanner.scan_for_content_type_with_config(
             &text,
             content_type,
@@ -617,6 +623,21 @@ impl ScanCtx<'_> {
         );
 
         Ok((text, input_was_sc, text_char_count, output, content_type))
+    }
+}
+
+/// The engine scans JSON with a string that never closes as plain text. Say so
+/// once, on stderr, so the quote warnings that follow are not a mystery. A
+/// cache hit that skips the read skips this too, which is fine for a notice.
+fn warn_if_malformed_json(
+    content_type: zhtw_mcp::engine::scan::ContentType,
+    text: &str,
+    name: &str,
+) {
+    if content_type == zhtw_mcp::engine::scan::ContentType::Json
+        && zhtw_mcp::engine::markdown::build_json_excluded_ranges(text).1
+    {
+        eprintln!("warning: {name}: not valid JSON, linted as plain text");
     }
 }
 
@@ -855,12 +876,13 @@ fn apply_fixes_for_file(
             &cfg,
         )
     };
-    Some(zhtw_mcp::fixer::apply_fixes_with_context(
+    Some(zhtw_mcp::fixer::apply_fixes_for_content_type(
         text,
         &fix_issues,
         params.fix_mode,
         &excluded,
         Some(ctx.setup.scanner.segmenter()),
+        content_type,
     ))
 }
 

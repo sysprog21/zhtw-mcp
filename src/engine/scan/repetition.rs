@@ -8,6 +8,7 @@
 
 use super::super::excluded::is_excluded;
 use super::emit::Emitter;
+use super::is_cjk_ideograph;
 use crate::rules::ruleset::{Issue, IssueType, Severity};
 
 /// Lexicalized reduplications common enough that an Info line is not worth
@@ -163,10 +164,6 @@ fn deduplication_suggestion(unit: &str) -> Vec<String> {
     }
 }
 
-fn is_cjk(ch: char) -> bool {
-    ('\u{4e00}'..='\u{9fff}').contains(&ch)
-}
-
 /// Consume a separator between duplicate Latin words.
 ///
 /// Accepts horizontal spacing, or a single logical line break (`\n` or `\r\n`)
@@ -227,7 +224,7 @@ fn scan_cjk_duplicates(em: &mut Emitter<'_>) {
     let mut i = 0;
 
     while i < n {
-        if !is_cjk(chars[i].1) {
+        if !is_cjk_ideograph(chars[i].1) {
             i += 1;
             continue;
         }
@@ -239,7 +236,7 @@ fn scan_cjk_duplicates(em: &mut Emitter<'_>) {
                 continue;
             }
             // Check that all chars in the unit are CJK.
-            let all_cjk = (0..unit_len).all(|k| is_cjk(chars[i + k].1));
+            let all_cjk = (0..unit_len).all(|k| is_cjk_ideograph(chars[i + k].1));
             if !all_cjk {
                 continue;
             }
@@ -260,8 +257,8 @@ fn scan_cjk_duplicates(em: &mut Emitter<'_>) {
             // Single-char reduplication inside a longer uninterrupted CJK
             // compound is often legitimate morphology, e.g. 財政政策.
             if unit_len == 1 {
-                let has_cjk_before = i > 0 && is_cjk(chars[i - 1].1);
-                let has_cjk_after = end_idx < n && is_cjk(chars[end_idx].1);
+                let has_cjk_before = i > 0 && is_cjk_ideograph(chars[i - 1].1);
+                let has_cjk_after = end_idx < n && is_cjk_ideograph(chars[end_idx].1);
                 if has_cjk_before && has_cjk_after {
                     continue;
                 }

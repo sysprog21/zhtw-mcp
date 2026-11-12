@@ -52,7 +52,7 @@ const YIWEIZHE_EXPLANATION_CLUES: &[&str] =
 // which skips issues with >1 suggestion for non-orthographic types). When
 // disambiguation confidence is low, emits advisory-only (no suggestions).
 pub(super) fn scan_ai_semantic_safety(em: &mut Emitter<'_>) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
 
     let target = "意味著";
     let target_len = target.len();
@@ -106,17 +106,11 @@ pub(super) fn scan_ai_semantic_safety(em: &mut Emitter<'_>) {
         // arrive in order, so remembering the last answer is enough.
         if cached.map(|(n, _)| n) != Some(nth) {
             let window_abs = sentence_starts[nth];
-            let context_window = &text[window_abs..sentence_ends[nth].max(end)];
 
             // A clue in a code span or a YAML key is not the author choosing a
-            // sense, so the match has to sit in prose to count.
-            let has_clue = |clues: &[&str]| {
-                clues.iter().any(|c| {
-                    context_window.match_indices(c).any(|(at, m)| {
-                        !is_excluded(window_abs + at, window_abs + at + m.len(), excluded)
-                    })
-                })
-            };
+            // sense, so the search reads the blanked view.
+            let context_window = &visible[window_abs..sentence_ends[nth].max(end)];
+            let has_clue = |clues: &[&str]| clues.iter().any(|c| context_window.contains(c));
             // Try disambiguation: definition > consequence > explanation.
             let suggestion = if has_clue(YIWEIZHE_DEFINITION_CLUES) {
                 "表示"
@@ -231,6 +225,10 @@ pub(super) fn scan_ai_copula_avoidance(em: &mut Emitter<'_>) {
             let window =
                 &text[text.floor_char_boundary(window_start)..text.ceil_char_boundary(window_end)];
 
+            // Read from the raw text on purpose, unlike the other cue searches:
+            // this window gauges the topic, not the author's wording, and a
+            // code span or an API name beside the verb is exactly what marks
+            // the prose as technical.
             let in_tech_context = COPULA_TECH_CONTEXT.iter().any(|c| window.contains(c));
             if !in_tech_context {
                 continue;
@@ -292,7 +290,7 @@ pub(super) fn scan_ai_passive(em: &mut Emitter<'_>) {
 // nearly 100% AI-generated in technical articles.
 // Pattern: 的(故事|案例|經驗|教訓|歷史)(告訴|提醒|啟示)(我們|後人|世人)
 pub(super) fn scan_ai_didactic(em: &mut Emitter<'_>) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
 
     // Use a simple multi-step search: find each 告訴我們/提醒我們/啟示我們
     // then look backward for 的(故事|案例|經驗|教訓|歷史)
@@ -322,7 +320,8 @@ pub(super) fn scan_ai_didactic(em: &mut Emitter<'_>) {
                 // not what this one is teaching about.
                 let lookback_start = abs_pos.saturating_sub(30);
                 let lookback_start = text.floor_char_boundary(lookback_start);
-                let (lookback, trimmed) = since_sentence_start(&text[lookback_start..abs_pos]);
+                // The blanked view, so a 的noun inside a code span is not read.
+                let (lookback, trimmed) = since_sentence_start(&visible[lookback_start..abs_pos]);
                 let lookback_start = lookback_start + trimmed;
 
                 let has_didactic_noun = NOUNS.iter().any(|noun| {
@@ -635,7 +634,7 @@ pub(super) fn scan_ai_binary_contrast(em: &mut Emitter<'_>, threshold_multiplier
 //   正是這...讓...
 // Flag when 3+ paragraphs end with such patterns.
 pub(super) fn scan_ai_paragraph_endings(em: &mut Emitter<'_>) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
 
     let paragraphs = prose_paragraphs(text, excluded);
     if paragraphs.len() < 5 {
@@ -673,16 +672,12 @@ pub(super) fn scan_ai_paragraph_endings(em: &mut Emitter<'_>) {
 
         // Per match, with its offset: the paragraph gate above only skips a
         // paragraph that is wholly excluded, so a closing phrase inside a code
-        // span sharing the paragraph still counted as prose.
+        // span sharing the paragraph still counted as prose. The blanked view
+        // hides an excluded occurrence, so one earlier in the tail cannot mask
+        // a real one after it.
         let tail_abs = tail.as_ptr() as usize - text.as_ptr() as usize;
-        let hits = |pats: &[&str]| {
-            pats.iter().any(|pat| {
-                // Every occurrence, not the first: an excluded one earlier in
-                // the tail would otherwise mask a real one after it.
-                tail.match_indices(pat)
-                    .any(|(at, m)| !is_excluded(tail_abs + at, tail_abs + at + m.len(), excluded))
-            })
-        };
+        let tail_visible = &visible[tail_abs..tail_abs + tail.len()];
+        let hits = |pats: &[&str]| pats.iter().any(|pat| tail_visible.contains(pat));
         let matched = hits(ending_patterns) || hits(prefix_patterns);
         if matched {
             match_count += 1;
@@ -710,7 +705,7 @@ pub(super) fn scan_ai_paragraph_endings(em: &mut Emitter<'_>) {
 // Dash overuse: flag when many paragraphs contain ≥3 em-dashes. AI writing
 // overuses parenthetical dashes for elaboration.
 pub(super) fn scan_ai_dash_overuse(em: &mut Emitter<'_>) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
 
     let paragraphs = prose_paragraphs(text, excluded);
     if paragraphs.len() < 3 {
@@ -722,7 +717,9 @@ pub(super) fn scan_ai_dash_overuse(em: &mut Emitter<'_>) {
 
     for para in &paragraphs {
         let para_start = para.as_ptr() as usize - text.as_ptr() as usize;
-        let dash_count = count_non_excluded_matches(para, para_start, "—", excluded).0;
+        let dash_count = visible[para_start..para_start + para.len()]
+            .matches("—")
+            .count();
         if dash_count >= 3 {
             heavy_dash_count += 1;
             if first_offset.is_none() {
@@ -763,7 +760,7 @@ const FORMULAIC_HEADINGS: &[&str] = &[
 ];
 
 pub(super) fn scan_ai_formulaic_headings(em: &mut Emitter<'_>) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, excluded, visible, issues) = em.parts();
 
     let mut match_count = 0;
     let mut first_offset: Option<usize> = None;
@@ -784,9 +781,7 @@ pub(super) fn scan_ai_formulaic_headings(em: &mut Emitter<'_>) {
         for &pattern in FORMULAIC_HEADINGS {
             // The line gate above rejects only a wholly excluded line, so a
             // phrase inside inline code on that line still counted.
-            let in_prose = heading_text.match_indices(pattern).any(|(at, m)| {
-                !is_excluded(heading_abs + at, heading_abs + at + m.len(), excluded)
-            });
+            let in_prose = visible[heading_abs..heading_abs + heading_text.len()].contains(pattern);
             if in_prose {
                 match_count += 1;
                 if first_offset.is_none() {
@@ -1340,7 +1335,7 @@ fn flag_closing_phrases(
     tail_index: &CloserTailIndex,
     markdown_blocks: Option<&[usize]>,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (text, issues) = (em.text, &mut *em.issues);
 
     // A sentence followed by a heading is a close even when body text follows
     // that heading inside the same paragraph, so the walk runs forwards over
@@ -1364,17 +1359,17 @@ fn flag_closing_phrases(
         if !closes {
             continue;
         }
+
+        // A sentence slice holds no excluded bytes (see SentenceBound), so no
+        // per-match exclusion test is needed.
         let s = &text[sent.byte_start..sent.byte_end];
         for &phrase in FORMULAIC_ENDINGS {
-            // First occurrence that is neither on a heading line nor excluded;
-            // later ones in the same sentence add nothing.
+            // First occurrence not on a heading line; later ones in the same
+            // sentence add nothing.
             let hit = s
                 .match_indices(phrase)
                 .map(|(pos, _)| sent.byte_start + pos)
-                .find(|&abs| {
-                    !is_in_markdown_heading_line(text, abs)
-                        && !is_excluded(abs, abs + phrase.len(), excluded)
-                });
+                .find(|&abs| !is_in_markdown_heading_line(text, abs));
             let Some(abs) = hit else {
                 continue;
             };
@@ -1677,7 +1672,7 @@ pub(super) fn scan_ai_abstract_line_metaphor(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (_, _, visible, issues) = em.parts();
 
     const ABSTRACT_TERMS: &[&str] = &["一條線", "路線", "軸線", "脈絡", "橋"];
     const GROWTH_VERBS: &[&str] = &["走出來", "長出來", "鋪出來", "延伸", "串起來", "拓寬"];
@@ -1685,20 +1680,16 @@ pub(super) fn scan_ai_abstract_line_metaphor(
     // Scope per-paragraph so an abstract term in one section can't correlate
     // with anaphora in an unrelated one.
     for para in &idx.paragraphs {
-        let p = &text[para.byte_start..para.byte_end];
-        let Some((first_term, matched_term)) =
-            first_non_excluded_any(p, para.byte_start, ABSTRACT_TERMS, excluded)
-        else {
+        let p = &visible[para.byte_start..para.byte_end];
+        let Some((first_term, matched_term)) = first_any(p, para.byte_start, ABSTRACT_TERMS) else {
             continue;
         };
         // "這條路線" contains "這條路" as a prefix; count it once, not twice.
-        let line = count_non_excluded_matches(p, para.byte_start, "這條線", excluded).0;
-        let road_line = count_non_excluded_matches(p, para.byte_start, "這條路線", excluded).0;
-        let road = count_non_excluded_matches(p, para.byte_start, "這條路", excluded).0;
+        let line = p.matches("這條線").count();
+        let road_line = p.matches("這條路線").count();
+        let road = p.matches("這條路").count();
         let anaphora_count = line + road_line + road.saturating_sub(road_line);
-        if anaphora_count < 2
-            || first_non_excluded_any(p, para.byte_start, GROWTH_VERBS, excluded).is_none()
-        {
+        if anaphora_count < 2 || first_any(p, para.byte_start, GROWTH_VERBS).is_none() {
             continue;
         }
 
@@ -1791,6 +1782,18 @@ const QA_LEAD_INS: &[&str] = &[
     "說白了",
 ];
 
+/// Labels that mark a paragraph as FAQ or Q and A. Compared against a
+/// lowercased paragraph, so a "faq:" heading suppresses too.
+const FAQ_LABELS: &[&str] = &["faq", "常見問題", "q：", "q:", "問：", "問:"];
+
+/// Whether the paragraph carries an FAQ label. Reads the blanked view: a label
+/// inside a code span does not label the paragraph, and would otherwise spare a
+/// real hit. It allocates a cased copy, so callers check it last.
+fn is_faq_paragraph(visible: &str, para: &crate::engine::sentence::ParagraphBound) -> bool {
+    let paragraph = visible[para.byte_start..para.byte_end].to_lowercase();
+    FAQ_LABELS.iter().any(|label| paragraph.contains(label))
+}
+
 /// Strip any run of leading discourse markers and the punctuation after them.
 fn strip_qa_lead_in(sentence: &str) -> &str {
     let mut rest = sentence.trim();
@@ -1813,10 +1816,7 @@ pub(super) fn scan_ai_rhetorical_self_qa(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
-
-    // Lowercased before comparison, so a "faq:" heading suppresses too.
-    const FAQ_LABELS: &[&str] = &["faq", "常見問題", "q：", "q:", "問：", "問:"];
+    let (text, excluded, visible, issues) = em.parts();
 
     for para in &idx.paragraphs {
         let sentences = idx.sentence_slice(para);
@@ -1859,8 +1859,7 @@ pub(super) fn scan_ai_rhetorical_self_qa(
 
         // Checked last: it allocates a cased copy of the paragraph, and only a
         // paragraph that already looks like a hit is worth that.
-        let paragraph = text[para.byte_start..para.byte_end].to_lowercase();
-        if FAQ_LABELS.iter().any(|label| paragraph.contains(label)) {
+        if is_faq_paragraph(&visible, para) {
             continue;
         }
 
@@ -1882,6 +1881,8 @@ pub(super) fn scan_ai_rhetorical_self_qa(
     }
 }
 
+// Reads its sentence raw. The only caller skips any sentence that overlaps an
+// excluded range, so there is no code or URL text in it to blank.
 fn looks_like_parallel_slogan(sentence: &str) -> bool {
     let s = sentence
         .trim_end_matches(['。', '！', '？', '!', '?'])
@@ -1909,43 +1910,17 @@ fn looks_like_parallel_slogan(sentence: &str) -> bool {
     left_len >= 3 && right_len >= 3 && left_len.abs_diff(right_len) <= 8
 }
 
-fn first_non_excluded_any<'a>(
+/// The earliest hit of any needle in text, as (absolute offset, needle). The
+/// caller passes the blanked view, so a hit inside code or a URL is not seen.
+fn first_any<'a>(
     text: &str,
     base_offset: usize,
     needles: &'a [&'a str],
-    excluded: &[ByteRange],
 ) -> Option<(usize, &'a str)> {
     needles
         .iter()
-        .filter_map(|&needle| {
-            count_non_excluded_matches(text, base_offset, needle, excluded)
-                .1
-                .map(|offset| (offset, needle))
-        })
+        .filter_map(|&needle| text.find(needle).map(|at| (base_offset + at, needle)))
         .min_by_key(|(offset, _)| *offset)
-}
-
-fn count_non_excluded_matches(
-    text: &str,
-    base_offset: usize,
-    needle: &str,
-    excluded: &[ByteRange],
-) -> (usize, Option<usize>) {
-    let mut count = 0;
-    let mut first_offset = None;
-    let mut search_from = 0;
-
-    while let Some(pos) = text[search_from..].find(needle) {
-        let rel = search_from + pos;
-        let abs = base_offset + rel;
-        if !is_excluded(abs, abs + needle.len(), excluded) {
-            count += 1;
-            first_offset.get_or_insert(abs);
-        }
-        search_from = rel + needle.len();
-    }
-
-    (count, first_offset)
 }
 
 // Em-dash overuse: two or more '——' in one paragraph. A single one is ordinary
@@ -1954,15 +1929,16 @@ pub(super) fn scan_ai_emdash_overuse(
     em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
-    let (text, excluded, issues) = (em.text, em.excluded, &mut *em.issues);
+    let (_, _, visible, issues) = em.parts();
 
     for para in &idx.paragraphs {
-        let p = &text[para.byte_start..para.byte_end];
-        let (count, first_offset) = count_non_excluded_matches(p, para.byte_start, "——", excluded);
+        let p = &visible[para.byte_start..para.byte_end];
+        let count = p.matches("——").count();
         if count < 2 {
             continue;
         }
-        if let Some(abs) = first_offset {
+        if let Some(at) = p.find("——") {
+            let abs = para.byte_start + at;
             issues.push(
                 Issue::new(
                     abs,
@@ -2007,7 +1983,8 @@ pub(super) fn scan_ai_formulaic_despite(
             continue;
         }
 
-        // The pattern needs a forward-looking verb after the challenge.
+        // The pattern needs a forward-looking verb after the challenge. Read
+        // raw: the tail is part of a sentence slice, which is already clean.
         let rest = &s[challenge + "挑戰".len()..];
         if !FORWARD_VERBS.iter().any(|verb| rest.contains(verb)) {
             continue;
@@ -2076,26 +2053,42 @@ pub(super) fn scan_ai_false_ranges(
     }
 }
 
+/// Characters of text[start..end] that are not inside an excluded range.
+fn prose_char_count(text: &str, excluded: &[ByteRange], start: usize, end: usize) -> usize {
+    let total = text[start..end].chars().count();
+    if excluded.is_empty() {
+        return total;
+    }
+    let excluded_chars: usize = excluded
+        .iter()
+        .filter_map(|r| text.get(r.start.max(start)..r.end.min(end)))
+        .map(|t| t.chars().count())
+        .sum();
+    total.saturating_sub(excluded_chars)
+}
+
 // Hedging density: promote Info to Warning at three or more hedging hits per
 // 200 chars.
 pub(super) fn scan_ai_hedging_density(
-    text: &str,
-    excluded: &[ByteRange],
-    issues: &mut [Issue],
+    em: &mut Emitter<'_>,
     idx: &crate::engine::sentence::BoundaryIndex,
 ) {
     const HEDGING_PHRASES: &[&str] = &["在某種程度上", "從某個角度來看", "可以說是", "相對而言"];
+    let (text, excluded, visible, issues) = em.parts();
 
     for para in &idx.paragraphs {
-        let p = &text[para.byte_start..para.byte_end];
-        let char_count = p.chars().count();
+        // The length is the author's prose: excluded text (code, URLs) is left
+        // out, so a long code span neither lifts a short paragraph over the
+        // minimum nor raises the density threshold of a real one.
+        let char_count = prose_char_count(text, excluded, para.byte_start, para.byte_end);
         if char_count < 50 {
             continue;
         }
-        let mut count = 0;
-        for phrase in HEDGING_PHRASES {
-            count += count_non_excluded_matches(p, para.byte_start, phrase, excluded).0;
-        }
+        let p = &visible[para.byte_start..para.byte_end];
+        let count: usize = HEDGING_PHRASES
+            .iter()
+            .map(|phrase| p.matches(phrase).count())
+            .sum();
         // Threshold: ≥3 per 200 chars.
         let threshold = ((char_count as f32 / 200.0) * 3.0).ceil() as usize;
         if count >= 3 && count >= threshold {
@@ -2126,4 +2119,625 @@ pub(super) fn scan_ai_hedging_density(
             }
         }
     }
+}
+
+// Rhetorical tells: staged reveals and slogan contrasts. Like the positional
+// tells they are Info, carry no suggestion, and share ai_structural_patterns.
+// Each is cluster-gated or needs a second signal, because the single form is
+// ordinary argument.
+
+/// Trailing frames of a clause that promise a reveal after the colon.
+const REVEAL_FRAMES: &[&str] = &["在於", "的是", "答案是", "就是", "只有一個"];
+
+/// 冒號揭曉: 關鍵在於：不是技術，是人.
+///
+/// A short frame clause, a full-width colon and a reveal of the shape
+/// 不是X，是Y
+/// (or 而是) that ends the sentence. A colon before a list, a definition or a
+/// plain answer is how technical prose is written and stays silent: the
+/// contrast reveal is what stages it.
+pub(super) fn scan_ai_colon_reveal(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, visible, issues) = em.parts();
+    let mut quotes = QuoteState::default();
+
+    for sent in &idx.sentences {
+        let Some((start, body)) = positional_sentence(text, &visible, excluded, &mut quotes, sent)
+        else {
+            continue;
+        };
+        let Some(colon) = body.find('：') else {
+            continue;
+        };
+        let frame_start = body[..colon]
+            .rfind(['，', ',', '。', '；', '！', '？'])
+            .map_or(0, |i| {
+                i + body[i..].chars().next().map_or(1, char::len_utf8)
+            });
+        let frame = &body[frame_start..colon];
+        if frame.chars().count() > 12 || !REVEAL_FRAMES.iter().any(|f| frame.ends_with(f)) {
+            continue;
+        }
+        let reveal = body[colon + '：'.len_utf8()..]
+            .trim_end_matches(['。', '！', '!', '.'])
+            .trim();
+        if reveal.chars().count() > 24 || reveal.contains(['：', '。', '\n']) {
+            continue;
+        }
+        let Some(rest) = reveal.strip_prefix("不是") else {
+            continue;
+        };
+        if !(rest.contains("，是") || rest.contains("，而是")) {
+            continue;
+        }
+        let abs = start + frame_start;
+        let end =
+            start + colon + '：'.len_utf8() + body[colon + '：'.len_utf8()..].trim_end().len();
+        if is_excluded(abs, end, excluded) {
+            continue;
+        }
+        issues.push(
+            ai_style_issue(
+                abs,
+                &text[abs..end],
+                "",
+                "AI structural: 冒號揭曉；先鋪陳再揭曉，直接寫出結論",
+                Severity::Info,
+            )
+            .with_structural_family(StructuralFamily::ColonReveal),
+        );
+    }
+}
+
+/// Cues that stage a question rather than ask it, when they lead it.
+///
+/// 其實, 真的 and 真正 are left out: tutorials ask 為什麼其實不需要加鎖？ and
+/// 為什麼真正執行的是子程序？ in plain earnest, and the modifiers carry no
+/// staging on their own. 到底 and 究竟 stage only in front of the interrogative
+/// (到底為什麼會這樣？). Inside it they are only an intensifier, as in the
+/// sincere question 為什麼備份到底要放在不同的磁碟？, so a cue after 為什麼 is
+/// ignored. Every cue here must also be in QA_LEAD_INS, because the check reads
+/// the text that strip_qa_lead_in removed from the front of the question.
+const QA_STAGING_CUES: &[&str] = &["到底", "究竟"];
+
+/// 自問自答: one 為什麼…？因為… pair whose question or answer stages it.
+///
+/// scan_ai_rhetorical_self_qa needs two pairs and a 你以為…嗎？錯了 opening.
+/// A single pair is how tutorials and FAQs explain, so the bare pair stays
+/// silent. This reports one pair only with a staging cue: 到底 or 究竟 leading
+/// the question, or a 不是…是 reframe in the answer. A paragraph that carries
+/// an FAQ or Q and A label is exempt.
+pub(super) fn scan_ai_self_qa_reveal(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, visible, issues) = em.parts();
+    let mut quotes = QuoteState::default();
+
+    for para in &idx.paragraphs {
+        let sentences = idx.sentence_slice(para);
+        let mut hit = None;
+        for pair in sentences.windows(2) {
+            if is_excluded(pair[0].byte_start, pair[0].byte_end, excluded)
+                || is_excluded(pair[1].byte_start, pair[1].byte_end, excluded)
+            {
+                continue;
+            }
+            let Some((q_start, raw_q)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, &pair[0])
+            else {
+                continue;
+            };
+            let question = strip_qa_lead_in(raw_q);
+            let answer = strip_qa_lead_in(idx.sentence_text(text, &pair[1]));
+            if !(question.starts_with("為什麼") && question.ends_with(['？', '?'])) {
+                continue;
+            }
+            if !(answer.starts_with("因為") || answer.starts_with("是因為")) {
+                continue;
+            }
+            let reframe = answer.contains("不是") && answer.contains("而是");
+
+            // question is a suffix of the trimmed sentence, so what precedes it
+            // is exactly the lead-in that strip_qa_lead_in removed.
+            let raw_q = raw_q.trim_end();
+            let lead_in = raw_q.strip_suffix(question).unwrap_or_default();
+
+            // Raw text is safe here: both sentences of the pair passed the
+            // exclusion check above, so neither holds code or URL text.
+            if reframe || QA_STAGING_CUES.iter().any(|c| lead_in.contains(c)) {
+                hit = Some((q_start, q_start + raw_q.len()));
+                break;
+            }
+        }
+        let Some((q_start, q_end)) = hit else {
+            continue;
+        };
+        if is_faq_paragraph(&visible, para) {
+            continue;
+        }
+        issues.push(
+            ai_style_issue(
+                q_start,
+                &text[q_start..q_end],
+                "",
+                "AI structural: 自問自答；設問後立刻揭曉，刪去設問直接陳述原因",
+                Severity::Info,
+            )
+            .with_structural_family(StructuralFamily::SelfQaReveal),
+        );
+    }
+}
+
+/// Span of a short 不是X，而是Z contrast in a sentence, if it has one.
+///
+/// Every 不是 is tried, not only the first, so a later valid contrast is not
+/// hidden behind an earlier one that fails the length gates. 是不是 is a
+/// question form whose 不是 is not a negation and is skipped.
+fn short_contrast_span(sentence: &str) -> Option<(usize, usize)> {
+    if sentence.chars().count() > 40 {
+        return None;
+    }
+    sentence
+        .match_indices("不是")
+        .filter(|&(from, _)| !sentence[..from].ends_with('是'))
+        .find_map(|(from, _)| {
+            let after = from + "不是".len();
+            let (rel, sep) = ["，而是", ",而是"]
+                .iter()
+                .filter_map(|s| sentence[after..].find(s).map(|i| (i, *s)))
+                .min_by_key(|&(i, _)| i)?;
+            let x = &sentence[after..after + rel];
+            if x.chars().count() > 14 || x.contains(['。', '！', '？', '；']) {
+                return None;
+            }
+            let z_start = after + rel + sep.len();
+            let z_end = sentence[z_start..]
+                .find(['，', ',', '。', '！', '？', '；'])
+                .map_or(sentence.len(), |i| z_start + i);
+            if sentence[z_start..z_end].chars().count() > 14 {
+                return None;
+            }
+            Some((from, z_end))
+        })
+}
+
+/// Sentences of short contrasts a paragraph needs before it is reported.
+const GOLDEN_CONTRAST_MIN: usize = 3;
+
+/// 金句公式: three or more short 不是X，而是Z sentences in one paragraph.
+///
+/// One contrast is normal argument, and so are two: 這並不是X，而是Z twice in
+/// an expository paragraph is ordinary. The 雖然…但 and 不只是…而是 families
+/// have their own detectors. A paragraph that reaches for the slogan shape
+/// three times is the tell. Reported once per paragraph, at the first contrast.
+pub(super) fn scan_ai_golden_contrast(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, visible, issues) = em.parts();
+    let mut quotes = QuoteState::default();
+
+    for para in &idx.paragraphs {
+        let mut hits: Vec<(usize, usize)> = Vec::new();
+        for sent in idx.sentence_slice(para) {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
+                continue;
+            };
+            if let Some((a, b)) = short_contrast_span(body) {
+                hits.push((start + a, start + b));
+            }
+        }
+        if hits.len() < GOLDEN_CONTRAST_MIN {
+            continue;
+        }
+        let (a, b) = hits[0];
+        issues.push(
+            ai_style_issue(
+                a,
+                &text[a..b],
+                "",
+                &format!(
+                    "AI structural: 金句公式 ×{}；同一段重複「不是…，而是…」，保留一處或直接陳述",
+                    hits.len()
+                ),
+                Severity::Info,
+            )
+            .with_structural_family(StructuralFamily::GoldenContrast),
+        );
+    }
+}
+
+/// Second-person verdicts that console instead of inform.
+const PSYCH_VERDICTS: &[&str] = &[
+    "你值得",
+    "你已經足夠",
+    "你已經很好",
+    "你並不孤單",
+    "你不需要證明",
+    "你從來都不是",
+];
+
+/// Span of a 你不是X，你只是Y verdict in a sentence, if it has one.
+fn psych_contrast_span(sentence: &str) -> Option<(usize, usize)> {
+    let from = sentence.find("你不是")?;
+    let after = from + "你不是".len();
+    let (rel, sep) = ["，你只是", ",你只是", "，你其實", ",你其實"]
+        .iter()
+        .filter_map(|s| sentence[after..].find(s).map(|i| (i, *s)))
+        .min_by_key(|&(i, _)| i)?;
+    if sentence[after..after + rel].chars().count() > 12 {
+        return None;
+    }
+    let y_start = after + rel + sep.len();
+    let y_end = sentence[y_start..]
+        .find(['。', '！', '？', '；'])
+        .map_or(sentence.len(), |i| y_start + i);
+    Some((from, y_end))
+}
+
+/// 心理判斷腔: two or more second-person emotional verdicts in one paragraph.
+///
+/// 你不是不夠好，你只是還沒被看見 judges the reader's inner state without
+/// knowing it. Support and troubleshooting prose uses the same grammar about
+/// a concrete fault (你不是漏了設定，你只是用錯了版本), so one verdict stays
+/// silent; a paragraph of them is the tell.
+pub(super) fn scan_ai_psych_verdict(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, visible, issues) = em.parts();
+    let mut quotes = QuoteState::default();
+
+    for para in &idx.paragraphs {
+        let mut hits: Vec<(usize, usize)> = Vec::new();
+        for sent in idx.sentence_slice(para) {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
+                continue;
+            };
+            let span = psych_contrast_span(body).or_else(|| {
+                PSYCH_VERDICTS
+                    .iter()
+                    .find_map(|v| body.find(v).map(|i| (i, i + v.len())))
+            });
+            if let Some((a, b)) = span {
+                hits.push((start + a, start + b));
+            }
+        }
+        if hits.len() < 2 {
+            continue;
+        }
+        let (a, b) = hits[0];
+        issues.push(
+            ai_style_issue(
+                a,
+                &text[a..b],
+                "",
+                &format!(
+                    "AI structural: 心理判斷腔 ×{}；對讀者內心下判斷，改寫成具體、可驗證的陳述",
+                    hits.len()
+                ),
+                Severity::Info,
+            )
+            .with_structural_family(StructuralFamily::PsychVerdict),
+        );
+    }
+}
+
+// Positional tells: a stock phrase that is ordinary speech anywhere else and a
+// tell only in one slot of the sentence or paragraph. Each row is its own
+// function so a gate can be tightened without touching the others. They share
+// the switch of the other phase 2 detectors, ai_structural_patterns.
+
+/// Open-quotation state of one line, carried across the sentences of a scan.
+///
+/// Quotes are counted from the start of the line, not the sentence: a quoted
+/// passage spans several sentences, and only the first follows the opener.
+/// Detectors visit sentences in order, so the state resumes from the last
+/// offset while the line is the same and restarts only on a new line or a
+/// step backwards, which keeps a long single-line paragraph linear.
+#[derive(Default)]
+pub(super) struct QuoteState {
+    pos: usize,
+    depth: i32,
+    straight: bool,
+    primed: bool,
+}
+
+impl QuoteState {
+    /// Whether the byte offset start sits inside an unclosed quotation or
+    /// bracket.
+    pub(super) fn open_at(&mut self, text: &str, start: usize) -> bool {
+        if !self.primed || start < self.pos || text[self.pos..start].contains('\n') {
+            self.pos = text[..start].rfind('\n').map_or(0, |i| i + 1);
+            self.depth = 0;
+            self.straight = false;
+            self.primed = true;
+        }
+        for c in text[self.pos..start].chars() {
+            match c {
+                '「' | '『' | '“' | '（' | '(' => self.depth += 1,
+
+                // A stray closer or a list marker such as 1） must not leave
+                // the depth negative and hide a later real opener.
+                '」' | '』' | '”' | '）' | ')' => self.depth = (self.depth - 1).max(0),
+                '"' => self.straight = !self.straight,
+                _ => {}
+            }
+        }
+        self.pos = start;
+        self.depth > 0 || self.straight
+    }
+}
+
+/// Start of a sentence with leading whitespace trimmed, as (absolute offset,
+/// text). None for an excluded sentence, and for one inside an open quotation
+/// or bracket on its line, where the phrase is somebody's reported speech.
+fn positional_sentence<'a>(
+    text: &'a str,
+    visible: &str,
+    excluded: &[ByteRange],
+    quotes: &mut QuoteState,
+    sent: &crate::engine::sentence::SentenceBound,
+) -> Option<(usize, &'a str)> {
+    if is_excluded(sent.byte_start, sent.byte_end, excluded) {
+        return None;
+    }
+    let raw = &text[sent.byte_start..sent.byte_end];
+    let body = raw.trim_start();
+    let start = sent.byte_start + (raw.len() - body.len());
+
+    // Counted on the blanked view, which has the same byte layout as the text:
+    // a bracket or quote inside a code span is not an open quotation.
+    if quotes.open_at(visible, start) {
+        return None;
+    }
+    Some((start, body))
+}
+
+/// 假坦率開場: 說實話？ as the opening of a sentence.
+///
+/// 說實話 inside a sentence, and 說實話， as an opener, are ordinary speech and
+/// stay silent. So does 講白了，, which is plain speech gated only by position
+/// and was dropped. Only the question form, which stages a confession the
+/// text never makes, is reported.
+pub(super) fn scan_ai_fake_candor(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, visible, issues) = em.parts();
+    let mut quotes = QuoteState::default();
+    const OPENERS: &[&str] = &["說實話？", "說實話?"];
+
+    for para in &idx.paragraphs {
+        for sent in idx.sentence_slice(para) {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
+                continue;
+            };
+            let Some(opener) = OPENERS.iter().find(|o| body.starts_with(**o)) else {
+                continue;
+            };
+            let found = opener.trim_end_matches(['，', ',', '？', '?']);
+            issues.push(
+                ai_style_issue(
+                    start,
+                    found,
+                    "",
+                    "AI structural: 假坦率開場；先聲明坦白不增加資訊，直接說出判斷",
+                    Severity::Info,
+                )
+                .with_structural_family(StructuralFamily::FakeCandor),
+            );
+        }
+    }
+}
+
+/// 開場宣告: 廢話不多說 opening a sentence.
+///
+/// Announcing that the preamble is skipped is itself the preamble. Only the
+/// sentence-initial form is reported. 廢話少說 is a different, ordinary idiom
+/// and is not in the list.
+pub(super) fn scan_ai_opening_announcement(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, visible, issues) = em.parts();
+    let mut quotes = QuoteState::default();
+    const PHRASE: &str = "廢話不多說";
+
+    for para in &idx.paragraphs {
+        for sent in idx.sentence_slice(para) {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
+                continue;
+            };
+            if !body.starts_with(PHRASE) {
+                continue;
+            }
+            issues.push(
+                ai_style_issue(
+                    start,
+                    PHRASE,
+                    "",
+                    "AI structural: 開場宣告；宣告跳過鋪陳本身就是鋪陳，直接進入內容",
+                    Severity::Info,
+                )
+                .with_structural_family(StructuralFamily::OpeningAnnouncement),
+            );
+        }
+    }
+}
+
+/// Longest closing sentence, in characters, still reported. It counts the
+/// phrase and the final mark, and it is the one precision lever the evidence
+/// supports.
+pub(super) const STOCK_CONCLUSION_MAX_CHARS: usize = 20;
+
+/// Cues that only a reported study names: its subjects, instrument or
+/// statistic. A paragraph needs at least one of these.
+const STUDY_HARD_CUES: &[&str] = &[
+    "受試者",
+    "施測",
+    "迴歸分析",
+    "迴歸係數",
+    "相關係數",
+    "效果量",
+];
+
+/// Cues that also appear in ordinary prose (樣本機, 顯著提升), counted only
+/// beside a hard cue.
+const STUDY_WEAK_CUES: &[&str] = &["本研究", "樣本", "取樣", "顯著", "假說"];
+
+/// Distinct cues, hard and weak together, a paragraph needs before its short
+/// closer is spared.
+const STUDY_MIN_CUES: usize = 3;
+
+/// 結語套話: 由此可見 opening the last sentence of a paragraph.
+///
+/// scan_ai_paragraph_endings already counts 由此可見 among its closers, but
+/// only once three of five or more paragraphs end that way. This reports the
+/// single paragraph-final use, and stays silent once that detector has fired.
+/// Mid-paragraph 由此可見 is an ordinary inference marker, and a one-sentence
+/// paragraph has no argument above the closer to be summarised, so both stay
+/// silent.
+///
+/// Any short closer is reported, whether it is a bare verdict or a qualified
+/// inference: measured on human and model text, vocabulary and overlap do not
+/// separate the two, so the length cap is the only
+/// precision lever. A closer longer than STOCK_CONCLUSION_MAX_CHARS stays
+/// silent. The text above the closer in its paragraph, when it reads as a
+/// reported study (see STUDY_HARD_CUES), keeps the closer silent too.
+pub(super) fn scan_ai_stock_conclusion(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, visible, issues) = em.parts();
+    let mut quotes = QuoteState::default();
+    const PHRASE: &str = "由此可見";
+
+    // scan_ai_paragraph_endings runs earlier and has already counted every
+    // paragraph-final 由此可見 into its own finding. Reporting each again would
+    // count the same evidence twice in the AI score.
+    if issues
+        .iter()
+        .any(|i| i.structural_family == Some(StructuralFamily::ParagraphEndings))
+    {
+        return;
+    }
+
+    for para in &idx.paragraphs {
+        let sentences = idx.sentence_slice(para);
+        if sentences.len() < 2 {
+            continue;
+        }
+        let Some((start, body)) = sentences
+            .last()
+            .and_then(|s| positional_sentence(text, &visible, excluded, &mut quotes, s))
+        else {
+            continue;
+        };
+        if !body.starts_with(PHRASE) || body.chars().count() > STOCK_CONCLUSION_MAX_CHARS {
+            continue;
+        }
+        // Search the blanked view, so a cue inside code or a URL is not read.
+        let above = &visible[para.byte_start..start];
+        let hits = |cues: &[&str]| cues.iter().filter(|c| above.contains(**c)).count();
+        let hard = hits(STUDY_HARD_CUES);
+        if hard >= 1 && hard + hits(STUDY_WEAK_CUES) >= STUDY_MIN_CUES {
+            continue;
+        }
+        issues.push(
+            ai_style_issue(
+                start,
+                PHRASE,
+                "",
+                "AI structural: 結語套話；段末「由此可見」只是複述上文，刪去或改寫成新的判斷",
+                Severity::Info,
+            )
+            .with_structural_family(StructuralFamily::StockConclusion),
+        );
+    }
+}
+
+/// Frames that claim the next clause is the root of the matter. No ruleset
+/// rule may suggest one of these: the fixer would rewrite a flagged phrase into
+/// a phrase this detector then reports.
+pub(super) const FAKE_DEPTH_FRAMES: &[&str] = &["歸根結底", "歸根究底", "說到底", "真正的問題是"];
+
+/// Words that may precede a frame without changing what it does.
+const FAKE_DEPTH_LEAD_INS: &[&str] = &["但是", "但", "然而", "可是", "而", "所以", "那麼", "其實"];
+
+/// 假深刻權威語: two distinct depth frames opening sentences of one paragraph.
+///
+/// Each frame alone is common in competent prose, so a single use is silent.
+/// A paragraph that reaches for two different ones to announce its own
+/// conclusion is the tell. Reported once per paragraph, at the first frame.
+pub(super) fn scan_ai_fake_depth(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    let (text, excluded, visible, issues) = em.parts();
+    let mut quotes = QuoteState::default();
+
+    for para in &idx.paragraphs {
+        // (offset, frame) of each sentence-initial frame, in order.
+        let mut hits: Vec<(usize, &'static str)> = Vec::new();
+        for sent in idx.sentence_slice(para) {
+            let Some((start, body)) =
+                positional_sentence(text, &visible, excluded, &mut quotes, sent)
+            else {
+                continue;
+            };
+            let mut rest = body;
+            if let Some(lead) = FAKE_DEPTH_LEAD_INS.iter().find(|l| rest.starts_with(**l)) {
+                rest = rest[lead.len()..].trim_start_matches(['，', ',']);
+            }
+            if let Some(frame) = FAKE_DEPTH_FRAMES.iter().find(|f| rest.starts_with(**f)) {
+                hits.push((start + (body.len() - rest.len()), frame));
+            }
+        }
+        let distinct: std::collections::BTreeSet<&str> = hits.iter().map(|&(_, f)| f).collect();
+        if distinct.len() < 2 {
+            continue;
+        }
+        let (offset, frame) = hits[0];
+        issues.push(
+            ai_style_issue(
+                offset,
+                frame,
+                "",
+                &format!(
+                    "AI structural: 假深刻權威語 ×{}；同一段用多個「歸根結底」式句型宣告結論，\
+                     直接寫出結論",
+                    hits.len()
+                ),
+                Severity::Info,
+            )
+            .with_structural_family(StructuralFamily::FakeDepth),
+        );
+    }
+}
+
+/// Entry point for the positional rows and the rhetorical reveal rows.
+pub(super) fn scan_ai_positional_tells(
+    em: &mut Emitter<'_>,
+    idx: &crate::engine::sentence::BoundaryIndex,
+) {
+    scan_ai_colon_reveal(em, idx);
+    scan_ai_self_qa_reveal(em, idx);
+    scan_ai_golden_contrast(em, idx);
+    scan_ai_psych_verdict(em, idx);
+    scan_ai_fake_candor(em, idx);
+    scan_ai_opening_announcement(em, idx);
+    scan_ai_stock_conclusion(em, idx);
+    scan_ai_fake_depth(em, idx);
 }

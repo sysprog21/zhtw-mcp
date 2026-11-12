@@ -59,7 +59,7 @@ Options:
                             casing, punctuation, quotes, spacing, colon,
                             dunhao, range, variant, ellipsis, grammar, ai,
                             translationese, rhythm
-  --content-type <ct>       plain, markdown, markdown-scan-code, or yaml
+  --content-type <ct>       plain, markdown, markdown-scan-code, yaml, or json
   --exclude <pattern>       Skip matching paths (repeatable)
   --max-errors <n>          Fail when errors exceed n
   --max-warnings <n>        Fail when warnings exceed n
@@ -116,6 +116,40 @@ zhtw-mcp lint docs/ --exclude "vendor/**"
 zhtw-mcp lint -- --content-type markdown < input.md
 zhtw-mcp lint -- --content-type markdown-scan-code < input.md  # also lint inside code blocks
 ```
+
+### JSON files
+
+A file named `*.json`, or any input under `--content-type json`, is linted as
+locale-bundle prose: only the text of string values is scanned. Keys, structure,
+quote marks, every escape sequence, and placeholders (`{name}`, `{{count}}`, `${name}`,
+`$t(key)`, ICU `{n, plural, ...}` heads, `%s`, `%d`, `%1$s`, `%(name)s`) are excluded, so a term spelled
+through an escape such as a backslash-u sequence is not seen. Findings carry
+byte offsets into the file as written.
+
+```bash
+zhtw-mcp lint zh-TW.json
+zhtw-mcp lint --content-type plain config.json   # opt out for a non-locale file
+```
+
+`--fix` never lands inside an escape, and a fix whose replacement would contain a
+double quote, a backslash or a control character is dropped, so a fixed file stays valid JSON. If a
+string never closes, the whole file is linted as plain text and one line,
+`warning: <file>: not valid JSON, linted as plain text`, goes to stderr; the exit
+code is unchanged and the `--format json` findings are not affected.
+
+`lint` never runs Simplified-to-Traditional conversion over a JSON file, because it
+works on the whole text and would rewrite keys. A locale bundle is expected to be in
+the language its name says, so a Simplified value is not converted or fixed here.
+`zhtw-mcp convert` does convert one, in string values only.
+
+JSONC and JSON5 are not supported: `.jsonc` and `.json5` are not mapped, comments
+are treated as structure, and `--content-type json` on such a file may fall back to
+plain text when a comment holds an unbalanced quote. Android `strings.xml` and
+Fluent are not covered either.
+
+JSON is only reached by naming a file or passing `--content-type json`; directory
+walks and the git hook skip `.json`, so `package.json` and lockfiles are not
+linted.
 
 ### Auto-fix
 
@@ -177,8 +211,9 @@ zhtw-mcp lint file.md --rhythm
 
 `--rhythm` turns on the 氣口 checks: a sentence that runs past 30 CJK
 characters without a pause, three or more consecutive sentences closing on the
-same particle (的 / 了 / 呢), and a relaxed 定語堆疊 gate that no longer asks a
-long unbroken span to contain several 的 before reporting it.
+same particle (的 / 了 / 呢), three or more consecutive bare short sentences of
+two to six CJK characters each (短句連發, 它來了。沒有猶豫。沒有退路。), and a
+relaxed 定語堆疊 gate that no longer asks a long unbroken span to contain several 的 before reporting it.
 
 Everything it reports is advisory. Rhythm findings carry `Info` severity, offer
 no suggestion, and are left alone by every `--fix` tier including
@@ -423,7 +458,7 @@ Usage:
   zhtw-mcp convert [--] < input.txt        Convert stdin (the default)
 
 Options:
-  --content-type <ct>   plain, markdown, markdown-scan-code, or yaml
+  --content-type <ct>   plain, markdown, markdown-scan-code, yaml, or json
   --verify              Confirm ambiguous substitutions via online
                         translation (sends text to the network,
                         requires the translate feature)
@@ -445,6 +480,8 @@ zhtw-mcp convert file.md --content-type markdown
 # Rule packs apply here too, same as they do to lint
 zhtw-mcp --pack medical convert file.md
 ```
+
+For a JSON file (`.json` or `--content-type json`) the conversion runs over string values only: keys, structure and escapes are left byte-for-byte, so the output has the same keys as the input. A file that is not valid JSON is converted as plain text.
 
 This is a two-stage pipeline: first a built-in character/phrase converter (SC→TC), then iterative vocabulary normalization via the standard scanner.
 
@@ -492,7 +529,7 @@ Add to your `.pre-commit-config.yaml`:
     - id: zhtw-mcp
 ```
 
-The hook runs `zhtw-mcp lint` on staged Markdown, YAML, and text files.
+The hook runs `zhtw-mcp lint` on staged Markdown, YAML, and text files. JSON is not in that list, and directory walks skip it for the same reason: `package.json` and lockfiles are not prose. A `.json` file is linted only when named as a file argument or selected with `--content-type json`.
 
 ## Rule packs
 

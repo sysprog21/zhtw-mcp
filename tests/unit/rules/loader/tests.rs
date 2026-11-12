@@ -100,6 +100,7 @@ fn embedded_ruleset_matches_json() {
             tags,
             editorial_confidence,
             structural_guard,
+            register,
         } = j;
         assert_eq!(*from, p.from, "spelling rule {i}: from mismatch");
         assert_eq!(*to, p.to, "spelling rule {i}: to mismatch");
@@ -121,6 +122,10 @@ fn embedded_ruleset_matches_json() {
         assert_eq!(
             *structural_guard, p.structural_guard,
             "spelling rule {i}: structural_guard mismatch"
+        );
+        assert_eq!(
+            *register, p.register,
+            "spelling rule {i}: register mismatch"
         );
         assert_eq!(
             *exceptions, p.exceptions,

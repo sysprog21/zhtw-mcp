@@ -92,7 +92,8 @@ pub(super) fn scan_trans_abstract_subject(
         let s = &text[sent.byte_start..sent.byte_end];
 
         // The abstract noun has to lead the sentence; the verb may sit anywhere
-        // after it. One issue per sentence either way.
+        // after it. One issue per sentence either way. A sentence slice holds
+        // no excluded bytes (see SentenceBound), so the raw search is right.
         let head = &s[..char_bounded_end(s, 0, 20)];
         if !ABSTRACT_NOUNS.iter().any(|noun| head.contains(noun)) {
             continue;
@@ -143,7 +144,7 @@ pub(super) fn scan_trans_displaced_conditional(
                 let abs = sent.byte_start + midpoint + pos;
                 if !is_excluded(abs, abs + cond.len(), excluded) {
                     // Check for 的話 after the conditional (extra calque
-                    // signal).
+                    // signal). Raw: a sentence slice is already clean.
                     let after = &s[midpoint + pos + cond.len()..];
                     let has_dehua = after.contains("的話");
                     let ctx = if has_dehua {
@@ -245,7 +246,9 @@ pub(super) fn scan_trans_copula_classifier(
             let Some(pos) = s.find(pattern) else {
                 continue;
             };
+
             // The pattern only reads as the calque when a 的 clause follows.
+            // Raw: a sentence slice is already clean.
             if !s[pos + pattern.len()..].contains("的") {
                 continue;
             }
@@ -489,6 +492,13 @@ pub(super) fn scan_zy1a_superlative_yi_zhi(em: &mut Emitter<'_>) {
                 search_from = after_open;
                 continue;
             };
+
+            // Raw on purpose. The text here is not sentence-bounded, but a 之
+            // inside code in the gap lies within the span the exclusion test
+            // below checks, so it could only change which opener is tried next.
+            // The blanked view would pass this opener, reject it as excluded
+            // and skip every later opener inside its span, losing a real
+            // finding that the raw disqualification keeps.
             let gap = &window[..cpos];
             if gap.is_empty() || gap.contains('之') {
                 search_from = after_open;
@@ -763,6 +773,10 @@ fn find_zy3a_shape(
         if gap.is_empty() {
             return Some((first_pos, second_end, 2));
         }
+
+        // Raw on purpose: code in the gap puts the whole span in an excluded
+        // range, so reading it as blanked could only swap which pair the clause
+        // reports for a pair that is then suppressed.
         if contains_zy3a_coordination(gap) {
             continue;
         }
@@ -1428,14 +1442,18 @@ pub(super) const MARKER_WORDS: &[&str] = &[
     "便當", "便宜", "便條", "便捷", "便民", "便箋",
     // 卻.  Absent on purpose: 除卻 and 省卻 are verbs.
     "忘卻", "退卻", "冷卻", "推卻", "了卻", "拋卻", "卻步", // 也
-    "也許",
+    "也許", // 是. A copula between two 的 closes the first noun phrase, as in
+    // 老師教的方法是我用過的最有效的. Absent on purpose: 是否 is a predicate.
+    "是非", "國是",
 ];
 
-/// Adverbs and auxiliaries that open a predicate.  See `first_predicate_close`.
-/// 要 and 能 are excluded because they would match inside 需要 and 才能, which
+/// Adverbs, auxiliaries and the copula 是 that open a predicate.  See
+/// `first_predicate_close`. 是 splits a chain into subject and predicate
+/// (X的N是Y的), the 是…的 frame. 要 and 能 are excluded because they would
+/// match inside 需要 and 才能, which
 /// appear in genuine pre-modifier chains.
 const PREDICATE_MARKERS: &[&str] = &[
-    "也", "就", "才", "卻", "便", "可以", "應該", "必須", "已經", "正在",
+    "也", "就", "才", "卻", "便", "是", "可以", "應該", "必須", "已經", "正在",
 ];
 
 /// What a span has to clear before ZY5 will report it.
@@ -1547,6 +1565,10 @@ fn best_zy5_candidate(
                 window_start -= 1;
             }
             let window = &span[window_start..rel_de];
+
+            // Raw on purpose: every candidate starts at the span start and so
+            // contains this prefix. A verb inside code puts all of them in an
+            // excluded range, and the sentence-bounded span holds none anyway.
             verb_seen = PREDICATE_VERBS.iter().any(|verb| window.contains(verb));
             verb_scanned_to = rel_de;
         }

@@ -22,7 +22,7 @@ use crate::engine::scan::{ContentType, Scanner};
 use crate::engine::translate::calibrate_issues;
 use crate::engine::zhtype::{detect_chinese_type, ChineseType};
 use crate::fixer::{
-    apply_fixes_with_context, remap_to_post_fix, suppress_convergent_issues, FixMode,
+    apply_fixes_for_content_type, remap_to_post_fix, suppress_convergent_issues, FixMode,
 };
 use crate::rules::ignore::apply_ignore_set;
 use crate::rules::loader::compute_ruleset_hash;
@@ -309,20 +309,21 @@ impl Server {
             ));
         }
 
-        // Auto-detect Simplified Chinese and convert to Traditional via S2T.
-        let s2t_converted: Option<String> = if detect_chinese_type(text) == ChineseType::Simplified
+        // This request's own declaration first, the handshake's second. Both
+        // name the same client in practice; the order is what keeps a
+        // declaration from outliving the request that made it.
+        let client = declared_client.or(self.client_name.as_deref());
+        let params = CheckParams::parse(args, default_output_mode(client))?;
+
+        // JSON keys and placeholders must not be converted as prose.
+        let s2t_converted = if params.content_type.converts_s2t()
+            && detect_chinese_type(text) == ChineseType::Simplified
         {
             Some(self.s2t.get_or_init(S2TConverter::new).convert(text))
         } else {
             None
         };
         let text = s2t_converted.as_deref().unwrap_or(text);
-
-        // This request's own declaration first, the handshake's second. Both
-        // name the same client in practice; the order is what keeps a
-        // declaration from outliving the request that made it.
-        let client = declared_client.or(self.client_name.as_deref());
-        let params = CheckParams::parse(args, default_output_mode(client))?;
 
         // Copy fields bind by value, the two owned ones by reference, so the
         // struct itself stays put for CheckRequest to borrow below.
@@ -606,6 +607,7 @@ impl Server {
         mut issues: Vec<Issue>,
         mode: FixMode,
         excluded: &[crate::engine::excluded::ByteRange],
+        content_type: ContentType,
     ) -> crate::fixer::FixResult {
         // Taken by value and filtered in place. The caller is done with the
         // list, and cloning it here would allocate a String per issue to hand
@@ -613,12 +615,13 @@ impl Server {
         if let Some(tm) = &self.tm_store {
             issues.retain(|i| !tm.should_suppress(&i.found));
         }
-        apply_fixes_with_context(
+        apply_fixes_for_content_type(
             text,
             &issues,
             mode,
             excluded,
             Some(self.catalog.scanner.segmenter()),
+            content_type,
         )
     }
 
@@ -727,7 +730,7 @@ impl Server {
         // Snapshot AFTER suppressions so restored severity reflects final
         // state, then fix what the TM has not vetoed.
         let preserved_states = snapshot_states(&issues);
-        let fix_result = self.apply_vetted_fixes(text, issues, mode, &excluded);
+        let fix_result = self.apply_vetted_fixes(text, issues, mode, &excluded, content_type);
 
         // Re-scan after fixes: use post-fix ai_signature, not pre-fix. Remap
         // exclusion zones to post-fix coordinates instead of rebuilding from

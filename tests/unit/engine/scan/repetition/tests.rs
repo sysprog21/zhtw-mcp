@@ -221,3 +221,18 @@ fn cjk_duplicate_mixed_with_non_cjk() {
     // Latin text between CJK should not cause false positives.
     assert!(scan("去 hello 去").is_empty());
 }
+
+// The CJK check covers Bopomofo and the extensions, not only U+4E00..U+9FFF.
+#[test]
+fn catches_duplicate_in_bopomofo_and_extensions() {
+    assert_eq!(scan("ㄅㄅ").len(), 1);
+    assert_eq!(scan("𠮷𠮷").len(), 1); // Ext B
+    assert_eq!(scan("㐀㐀").len(), 1); // Ext A, U+3400
+    assert_eq!(scan("ㄅㄆㄅㄆ").len(), 1); // two-char unit
+}
+
+#[test]
+fn bopomofo_flanked_single_char_duplicate_is_skipped() {
+    // Same compound rule as for unified ideographs, now applied to Ext A.
+    assert!(scan("㐀㐁㐁㐂").is_empty());
+}

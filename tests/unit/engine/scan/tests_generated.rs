@@ -254,6 +254,58 @@
         assert!(is_cjk_ideograph('ㄆ')); // U+3106
     }
 
+    #[test]
+    fn cjk_ideograph_block_edges() {
+        // (first, last) of each block that is_cjk_ideograph must accept.
+        let blocks: &[(u32, u32)] = &[
+            (0x3100, 0x312F),   // Bopomofo
+            (0x3400, 0x4DBF),   // Ext A
+            (0x4E00, 0x9FFF),   // Unified
+            (0xF900, 0xFAFF),   // Compatibility
+            (0x20000, 0x2A6DF), // Ext B
+            (0x2A700, 0x2B73F), // Ext C
+            (0x2B740, 0x2B81F), // Ext D
+            (0x2B820, 0x2CEAF), // Ext E
+            (0x2CEB0, 0x2EBEF), // Ext F
+            (0x2EBF0, 0x2EE5F), // Ext I
+            (0x2F800, 0x2FA1F), // Compatibility Supplement
+            (0x30000, 0x3134F), // Ext G
+            (0x31350, 0x323AF), // Ext H
+            (0x323B0, 0x3347F), // Ext J
+        ];
+        let is = |cp: u32| char::from_u32(cp).is_some_and(is_cjk_ideograph);
+        for &(lo, hi) in blocks {
+            assert!(is(lo), "first of block U+{lo:X}");
+            assert!(is((lo + hi) / 2), "inside block U+{lo:X}");
+            assert!(is(hi), "last of block U+{hi:X}");
+
+            // A neighbour that sits in another listed block (Ext F/I, G/H/J are
+            // contiguous) is legitimately accepted.
+            let contiguous = |cp: u32| blocks.iter().any(|&(a, b)| (a..=b).contains(&cp));
+            assert_eq!(is(lo - 1), contiguous(lo - 1), "below U+{lo:X}");
+            assert_eq!(is(hi + 1), contiguous(hi + 1), "above U+{hi:X}");
+        }
+        // Ideograph/punctuation split.
+        assert!(!is(0x3000)); // ideographic space
+        assert!(!is(0x3002)); // 。
+        assert!(!is(0x303F));
+        assert!(is('𠮷' as u32));
+    }
+
+    #[test]
+    fn oral_density_counts_bopomofo_and_extension_chars() {
+        // 18 Bopomofo plus the 2-char marker 就是: 20 Han-script characters.
+        // The old 4E00..9FFF count saw only 2 and returned None.
+        let text = format!("就是{}", "ㄅ".repeat(18));
+        let d = compute_oral_density(&text).expect("20 CJK chars reach the floor");
+        assert!((d - 0.1).abs() < 1e-6, "got {d}");
+
+        // Ext B characters count in the denominator too.
+        let text = format!("就是{}", "𠮷".repeat(18));
+        let d = compute_oral_density(&text).expect("Ext B counted");
+        assert!((d - 0.1).abs() < 1e-6, "got {d}");
+    }
+
     // -- punctuation scan tests -----------------------------------------------
 
     fn empty_scanner() -> Scanner {
@@ -949,6 +1001,136 @@
             }),
             "without the anchor ZY2b must fire: {issues:?}"
         );
+    }
+
+    fn register_gated_rule(from: &str, gate: RegisterGate) -> SpellingRule {
+        let mut rule = SpellingRule::new(from, vec![], RuleType::AiFiller);
+        rule.severity = Some(Severity::Info);
+        rule.register = Some(gate);
+        rule
+    }
+
+    fn found_in(scanner: &Scanner, text: &str, mode: RegisterMode, found: &str) -> bool {
+        let cfg = Profile::Base.config().with_register(mode);
+        scanner
+            .scan_with_config(text, &[], cfg)
+            .issues
+            .iter()
+            .any(|issue| issue.found == found)
+    }
+
+    #[test]
+    fn bytewise_fallback_also_scans_without_a_rejected_gated_rule() {
+        let mut scanner = Scanner::new(
+            vec![
+                register_gated_rule("特此公告", RegisterGate::Casual),
+                SpellingRule::new("公告", vec!["佈告".into()], RuleType::CrossStrait),
+            ],
+            vec![],
+        );
+        scanner.force_bytewise();
+        let text = "我們特此公告，大家都知道了。";
+        assert!(found_in(&scanner, text, RegisterMode::Formal, "公告"));
+        assert!(found_in(&scanner, text, RegisterMode::Casual, "特此公告"));
+        assert!(!found_in(&scanner, text, RegisterMode::Casual, "公告"));
+    }
+
+    fn gated_overlap_scanner() -> Scanner {
+        Scanner::new(
+            vec![
+                register_gated_rule("特此公告", RegisterGate::Casual),
+                SpellingRule::new("公告", vec!["佈告".into()], RuleType::CrossStrait),
+                SpellingRule::new("軟件", vec!["軟體".into()], RuleType::CrossStrait),
+            ],
+            vec![],
+        )
+    }
+
+    #[test]
+    fn bytewise_register_subset_keeps_the_shorter_rule() {
+        // Full automaton stays charwise; only the subset build is forced onto
+        // the bytewise path, so its id map is what maps hits back to rules.
+        let mut scanner = gated_overlap_scanner();
+        scanner.force_subset_fault(rule_ir::BuildFault::Charwise);
+        let text = "軟件更新，我們特此公告。";
+        assert!(found_in(&scanner, text, RegisterMode::Formal, "公告"));
+        assert!(found_in(&scanner, text, RegisterMode::Formal, "軟件"));
+        assert!(!found_in(&scanner, text, RegisterMode::Formal, "特此公告"));
+        let sub = scanner.spelling_db.register_subset(Register::Formal);
+        assert!(sub.charwise.is_none() && sub.bytewise.is_some());
+    }
+
+    #[test]
+    fn unbuildable_register_subset_falls_back_to_skipping_hits() {
+        // Neither subset matcher builds: the scan must still report its ungated
+        // issues. It keeps the full automaton and drops the rejected gated hit,
+        // which is the behavior before the subsets existed.
+        let mut scanner = gated_overlap_scanner();
+        scanner.force_subset_fault(rule_ir::BuildFault::Both);
+        let text = "軟件更新，我們特此公告。";
+        let formal = |s: &Scanner| {
+            let cfg = Profile::Base.config().with_register(RegisterMode::Formal);
+            s.scan_with_config(text, &[], cfg)
+                .issues
+                .into_iter()
+                .map(|i| i.found)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(formal(&scanner), ["軟件"]);
+        assert!(!scanner
+            .spelling_db
+            .register_subset(Register::Formal)
+            .is_usable());
+        assert!(found_in(&scanner, text, RegisterMode::Casual, "特此公告"));
+    }
+
+    #[test]
+    fn casual_gated_rule_fires_only_outside_a_formal_document() {
+        let scanner = Scanner::new(
+            vec![register_gated_rule("鑑於", RegisterGate::Casual)],
+            vec![],
+        );
+        let plain = "鑑於目前的狀況，我們先暫停。";
+        let formal = "敬啟者：鑑於目前的狀況，我們先暫停。";
+        assert!(found_in(&scanner, plain, RegisterMode::Auto, "鑑於"));
+        assert!(
+            !found_in(&scanner, formal, RegisterMode::Auto, "鑑於"),
+            "a detected 公文 must silence a casual-only rule"
+        );
+    }
+
+    #[test]
+    fn explicit_register_overrides_detection_for_gated_rules() {
+        let scanner = Scanner::new(
+            vec![register_gated_rule("鑑於", RegisterGate::Casual)],
+            vec![],
+        );
+        let plain = "鑑於目前的狀況，我們先暫停。";
+        let formal = "敬啟者：鑑於目前的狀況，我們先暫停。";
+        assert!(!found_in(&scanner, plain, RegisterMode::Formal, "鑑於"));
+        assert!(found_in(&scanner, formal, RegisterMode::Casual, "鑑於"));
+    }
+
+    #[test]
+    fn formal_gated_rule_is_the_mirror_image() {
+        let scanner = Scanner::new(
+            vec![register_gated_rule("鑑於", RegisterGate::Formal)],
+            vec![],
+        );
+        let plain = "鑑於目前的狀況，我們先暫停。";
+        let formal = "敬啟者：鑑於目前的狀況，我們先暫停。";
+        assert!(!found_in(&scanner, plain, RegisterMode::Auto, "鑑於"));
+        assert!(found_in(&scanner, formal, RegisterMode::Auto, "鑑於"));
+    }
+
+    #[test]
+    fn ungated_rule_ignores_register() {
+        let mut rule = SpellingRule::new("鑑於", vec![], RuleType::AiFiller);
+        rule.severity = Some(Severity::Info);
+        let scanner = Scanner::new(vec![rule], vec![]);
+        let formal = "敬啟者：鑑於目前的狀況，我們先暫停。";
+        assert!(found_in(&scanner, formal, RegisterMode::Auto, "鑑於"));
+        assert!(found_in(&scanner, formal, RegisterMode::Casual, "鑑於"));
     }
 
     #[test]

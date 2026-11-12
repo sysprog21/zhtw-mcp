@@ -9,8 +9,14 @@
 // deny-list prevents false splits (Mr., P.S., etc.).
 
 use crate::engine::excluded::{is_excluded, ByteRange};
+use crate::engine::scan::is_cjk_ideograph;
 
 /// A sentence span identified by byte offsets into the source text.
+///
+/// A sentence never contains excluded bytes: the index cuts at every excluded
+/// range, so a cue search over a sentence slice needs no masking. A paragraph
+/// slice or a fixed window can hold code or a URL; search the blanked view for
+/// those (see Emitter::parts).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SentenceBound {
     pub byte_start: usize,
@@ -221,9 +227,14 @@ fn is_latin_sentence_end(text: &str, dot_start: usize, dot_end: usize) -> bool {
         }
     }
 
-    // Then an uppercase letter (or CJK, which counts as a new sentence).
+    // Then an uppercase letter, or CJK text or a CJK opening mark such as 「
+    // (U+3001..U+303F), which counts as a new sentence. Not is_cjk_context: it
+    // would also admit fullwidth Latin and ！ here.
     match chars.next() {
-        Some(c) if c.is_uppercase() || is_cjk(c) => {}
+        Some(c)
+            if c.is_uppercase()
+                || is_cjk_ideograph(c)
+                || ('\u{3001}'..='\u{303F}').contains(&c) => {}
         _ => return false,
     }
 
@@ -241,7 +252,7 @@ fn is_latin_sentence_end(text: &str, dot_start: usize, dot_end: usize) -> bool {
             match prev_char {
                 None => return false,
                 Some(c) if !c.is_alphanumeric() => return false,
-                Some(c) if is_cjk(c) => return false,
+                Some(c) if is_cjk_ideograph(c) => return false,
                 _ => {}
             }
         }
@@ -338,16 +349,6 @@ fn push_paragraph(paragraphs: &mut Vec<ParagraphBound>, text: &str, start: usize
             byte_end: end,
         });
     }
-}
-
-fn is_cjk(ch: char) -> bool {
-    matches!(ch as u32,
-        0x4E00..=0x9FFF |  // CJK Unified Ideographs
-        0x3400..=0x4DBF |  // CJK Extension A
-        0x2E80..=0x2EFF |  // CJK Radicals Supplement
-        0x3000..=0x303F |  // CJK Symbols and Punctuation
-        0xF900..=0xFAFF    // CJK Compatibility Ideographs
-    )
 }
 
 #[cfg(test)]

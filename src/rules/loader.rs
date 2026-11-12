@@ -39,3 +39,7 @@ pub fn compute_ruleset_hash(
 #[cfg(test)]
 #[path = "../../tests/unit/rules/loader/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../tests/unit/rules/loader/register_gate_overlap.rs"]
+mod register_gate_overlap;

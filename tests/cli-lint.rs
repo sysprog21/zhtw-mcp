@@ -2460,12 +2460,17 @@ fn cli_no_network_env_refuses_verify() {
             cmd.env("ZHTW_NO_NETWORK", v);
         }
         let mut child = cmd.spawn().expect("spawn zhtw-mcp");
-        child
+
+        // The refusal path exits before reading stdin, so the write can hit a
+        // closed pipe. The exit status and stderr below carry the assertion.
+        if let Err(e) = child
             .stdin
             .take()
             .expect("stdin")
             .write_all("這個軟件需要優化。".as_bytes())
-            .expect("write stdin");
+        {
+            assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe, "write stdin: {e}");
+        }
         child.wait_with_output().expect("collect output")
     };
 

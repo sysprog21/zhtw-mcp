@@ -153,7 +153,7 @@ def ensure_downloaded(pin: Pin) -> bool:
         # raw.githubusercontent.com sheds load with transient 503s, so retry
         # a few times with backoff before failing the build.  A 4xx other than
         # 408 or 429 will not heal, so it fails at once.
-        attempts = 4
+        attempts = 4  # one try plus three retries, backoff 2, 4, 8 seconds
         for attempt in range(attempts):
             try:
                 # urlretrieve has no timeout: a stalled connection would hang
@@ -162,6 +162,13 @@ def ensure_downloaded(pin: Pin) -> bool:
                     tmp, "wb"
                 ) as out:
                     shutil.copyfileobj(resp, out)
+                    # copyfileobj returns quietly on an early close, which
+                    # urlretrieve used to report as ContentTooShortError.
+                    expected = int(resp.headers.get("Content-Length", -1))
+                    if expected >= 0 and out.tell() != expected:
+                        raise urllib.error.ContentTooShortError(
+                            f"got {out.tell()} of {expected} bytes", None
+                        )
                 break
             except Exception as e:
                 tmp.unlink(missing_ok=True)

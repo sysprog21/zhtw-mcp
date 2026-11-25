@@ -21,7 +21,10 @@ import argparse
 import hashlib
 import os
 import re
+import shutil
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -147,13 +150,31 @@ def ensure_downloaded(pin: Pin) -> bool:
         # fetch would otherwise leave a partial file that every later run
         # skips over as "already cached".
         tmp = path.with_suffix(path.suffix + ".part")
-        try:
-            urllib.request.urlretrieve(url, tmp)
-            os.replace(tmp, path)
-        except Exception as e:
-            tmp.unlink(missing_ok=True)
-            print(f"error: failed to download {url}: {e}", file=sys.stderr)
-            sys.exit(1)
+        # raw.githubusercontent.com sheds load with transient 503s, so retry
+        # a few times with backoff before failing the build.  A 4xx other than
+        # 408 or 429 will not heal, so it fails at once.
+        attempts = 4
+        for attempt in range(attempts):
+            try:
+                # urlretrieve has no timeout: a stalled connection would hang
+                # the build forever instead of reaching the retry path.
+                with urllib.request.urlopen(url, timeout=30) as resp, open(
+                    tmp, "wb"
+                ) as out:
+                    shutil.copyfileobj(resp, out)
+                break
+            except Exception as e:
+                tmp.unlink(missing_ok=True)
+                permanent = (
+                    isinstance(e, urllib.error.HTTPError)
+                    and e.code < 500
+                    and e.code not in (408, 429)
+                )
+                if permanent or attempt == attempts - 1:
+                    print(f"error: failed to download {url}: {e}", file=sys.stderr)
+                    sys.exit(1)
+                time.sleep(2 ** (attempt + 1))
+        os.replace(tmp, path)
         fetched = True
     return fetched
 
